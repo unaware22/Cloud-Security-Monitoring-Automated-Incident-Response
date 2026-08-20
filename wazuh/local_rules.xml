@@ -1,0 +1,84 @@
+<!-- Wazuh Custom Detection Rules for NexusVault E-Commerce Application -->
+<group name="ecommerce_security,">
+
+  <!-- Parent Rule: Match all application security events -->
+  <rule id="100100" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">\.+</field>
+    <description>NexusVault: Application security event detected.</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 1: SQL Injection Attempt -->
+  <rule id="100101" level="10">
+    <if_sid>100100</if_sid>
+    <field name="event_type">^sql_injection_attempt$</field>
+    <description>NexusVault [HIGH]: SQL Injection attempt detected from $(ip_address) targeting $(endpoint).</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 2: Cross-Site Scripting (XSS) Attempt -->
+  <rule id="100102" level="8">
+    <if_sid>100100</if_sid>
+    <field name="event_type">^xss_attempt$</field>
+    <description>NexusVault [MEDIUM]: Cross-Site Scripting (XSS) payload detected from $(ip_address) on $(endpoint).</description>
+    <mitre>
+      <id>T1059.007</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 3: Admin Brute Force Attempt -->
+  <rule id="100103" level="12">
+    <if_sid>100100</if_sid>
+    <field name="event_type">^admin_bruteforce_attempt$</field>
+    <description>NexusVault [CRITICAL]: Repeated failed admin login / brute-force attempt from $(ip_address).</description>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 4: Order Enumeration Attempt -->
+  <rule id="100104" level="8">
+    <if_sid>100100</if_sid>
+    <field name="event_type">^order_enumeration_attempt$</field>
+    <description>NexusVault [MEDIUM]: Order enumeration / ID scanning attempt from $(ip_address).</description>
+    <mitre>
+      <id>T1087</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 5: Forged / Invalid Payment Callback -->
+  <rule id="100105" level="13">
+    <if_sid>100100</if_sid>
+    <field name="event_type">^invalid_payment_callback$</field>
+    <description>NexusVault [CRITICAL]: Fraudulent or invalid payment callback token received from $(ip_address).</description>
+    <mitre>
+      <id>T1565.001</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 6: Sensitive Path Reconnaissance Scan -->
+  <rule id="100106" level="7">
+    <if_sid>100100</if_sid>
+    <field name="event_type">^sensitive_path_scan$</field>
+    <description>NexusVault [WARNING]: Reconnaissance scan targeting sensitive file/endpoint ($(endpoint)) from $(ip_address).</description>
+    <mitre>
+      <id>T1595.002</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 7: Rate Limit Exceeded / Abuse -->
+  <rule id="100107" level="6">
+    <if_sid>100100</if_sid>
+    <field name="event_type">^rate_limit_exceeded$</field>
+    <description>NexusVault [WARNING]: Traffic rate limit threshold exceeded by IP $(ip_address) on $(endpoint).</description>
+    <mitre>
+      <id>T1498</id>
+    </mitre>
+  </rule>
+
+</group>

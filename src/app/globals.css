@@ -1,0 +1,122 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=VT323&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+
+@font-face {
+  font-family: 'MinecrafterAlt';
+  src: url('/fonts/Minecrafter.Alt.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Minecrafter';
+  src: url('/fonts/Minecrafter.Reg.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MinecraftTen';
+  src: url('/fonts/MinecraftTen-VGORe.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NeutralGroteskBold';
+  src: url('/fonts/neutralgroteskbold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #111111;
+  --foreground: #f8fafc;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  min-height: 100vh;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+.font-neutral-grotesk {
+  font-family: 'NeutralGroteskBold', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.font-minecraft,
+.minecraft-font-folder,
+.minecraft-flat-title {
+  font-family: 'MinecraftTen', monospace;
+  font-weight: normal;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow: none;
+  filter: none;
+}
+
+/* Image Sharpening & Crisp Rendering */
+.hero-bg-crisp {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: high-quality;
+}
+
+/* Authentic Minecraft 3D Action Buttons (Official Minecraft.net #367723) */
+.btn-minecraft-green {
+  background-color: #367723;
+  color: #ffffff;
+  border-bottom: 4px solid #1f4813;
+  transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-minecraft-green:hover {
+  background-color: #418e2a;
+  border-bottom-color: #265917;
+}
+.btn-minecraft-green:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+.btn-minecraft-blue {
+  background-color: #0095f6;
+  color: #ffffff;
+  border-bottom: 4px solid #006bb3;
+  transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-minecraft-blue:hover {
+  background-color: #1aa2ff;
+  border-bottom-color: #0076c7;
+}
+.btn-minecraft-blue:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111111;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #383838;
+}

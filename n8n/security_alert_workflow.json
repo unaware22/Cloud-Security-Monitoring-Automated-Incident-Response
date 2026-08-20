@@ -1,0 +1,86 @@
+{
+  "name": "Wazuh Security Incident Alerting - Telegram & Discord",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wazuh-alert",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook Ingestion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.body.rule.level}}",
+              "operation": "largerEqual",
+              "value2": 8
+            }
+          ]
+        }
+      },
+      "name": "Filter Severity >= Medium (Level 8)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$node[\"Env\"].json[\"TELEGRAM_CHAT_ID\"]}}",
+        "text": "=🚨 *[WAZUH ALERT]* NexusVault E-Commerce Security Incident\n\n*Event Type:* `{{$json.body.data.event_type}}`\n*Severity Level:* Level {{$json.body.rule.level}}\n*Attacker IP:* `{{$json.body.data.ip_address}}`\n*Target Endpoint:* `{{$json.body.data.endpoint}}`\n*Description:* {{$json.body.rule.description}}\n*Timestamp:* {{$json.body.timestamp}}\n\n_Automated Cloud Security Response Active_",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [700, 200]
+    },
+    {
+      "parameters": {
+        "webhookUri": "={{$node[\"Env\"].json[\"DISCORD_WEBHOOK_URL\"]}}",
+        "text": "=🚨 **[SECURITY ALERT]** Incident Detected on NexusVault EC2\n**Event:** `{{$json.body.data.event_type}}` | **Level:** {{$json.body.rule.level}}\n**IP:** `{{$json.body.data.ip_address}}` | **Endpoint:** `{{$json.body.data.endpoint}}`"
+      },
+      "name": "Send Discord Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [700, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Filter Severity >= Medium (Level 8)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Severity >= Medium (Level 8)": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Discord Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
