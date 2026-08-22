@@ -70,8 +70,8 @@ const HERO_WORLDS = [
     targetGame: 'minecraft' as const,
   },
   {
-    id: 'gambar2',
-    bgImage: '/images/gambar2.jpg',
+    id: 'gambarnew',
+    bgImage: '/images/gambarnew.jpg',
     targetGame: 'minecraft' as const,
   },
   {
@@ -166,15 +166,26 @@ export default function HomePage() {
   const [slide, setSlide] = useState(MID);
   const [animated, setAnimated] = useState(true);
   const [pausedCarousel, setPausedCarousel] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const autoRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Responsive device detector
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Product Catalog State
   const [selectedGame, setSelectedGame] = useState<'minecraft' | 'roblox'>('minecraft');
   const [minecraftSub, setMinecraftSub] = useState('all');
-  const [robloxGame,   setRobloxGame]   = useState('all');
-  const [robloxSub,    setRobloxSub]    = useState('all');
-  const [products,     setProducts]     = useState<ProductItem[]>([]);
-  const [loading,      setLoading]      = useState(true);
+  const [robloxGame, setRobloxGame] = useState('all');
+  const [robloxSub, setRobloxSub] = useState('all');
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Auto-switch Hero Background every 6 seconds if not hovered
   useEffect(() => {
@@ -215,6 +226,7 @@ export default function HomePage() {
 
   const activeWorld = HERO_WORLDS[activeHeroIndex];
   const activeDot = slide % N;
+  const itemsPerView = isMobile ? 1 : 3;
 
   const handleSelectWorld = (index: number) => {
     setActiveHeroIndex(index);
@@ -231,9 +243,9 @@ export default function HomePage() {
           if (minecraftSub !== 'all') url += `&subCategory1=${minecraftSub}`;
         } else {
           if (robloxGame !== 'all') url += `&subCategory1=${robloxGame}`;
-          if (robloxSub  !== 'all') url += `&subCategory2=${robloxSub}`;
+          if (robloxSub !== 'all') url += `&subCategory2=${robloxSub}`;
         }
-        const res  = await fetch(url);
+        const res = await fetch(url);
         const data = await res.json();
         const productList = (data && (data.data || data.products)) || [];
         setProducts(productList);
@@ -273,76 +285,75 @@ export default function HomePage() {
     <div className="w-full min-h-screen bg-[#111111] text-white">
 
       {/* ══════════════════════════════════════════════════════════════
-          1. FULL-WIDTH FLUID HERO (Fluidly scales when scale changes)
+          1. HERO & FLASHSALE SECTION (Matching Exact Minecraft.net Layout)
       ══════════════════════════════════════════════════════════════ */}
       <section
-        className="relative w-full h-[52vw] max-h-[85vh] min-h-[350px] flex flex-col justify-end overflow-hidden pt-12 sm:pt-16 pb-4 sm:pb-6 lg:pb-8"
-        onMouseEnter={() => setIsHeroPaused(true)}
-        onMouseLeave={() => setIsHeroPaused(false)}
+        className="relative w-full bg-[#181818] overflow-hidden pt-[68px] sm:pt-[78px] md:pt-[86px] lg:pt-0"
+        onMouseEnter={() => { setIsHeroPaused(true); setPausedCarousel(true); }}
+        onMouseLeave={() => { setIsHeroPaused(false); setPausedCarousel(false); }}
       >
-        {/* Dynamic Backgrounds — High-res from folder Image, Unzoomed, bg-top */}
-        {HERO_WORLDS.map((world, idx) => (
-          <div
-            key={world.id}
-            className={`hero-bg-crisp absolute inset-0 bg-cover bg-top bg-no-repeat transition-opacity duration-700 ease-in-out ${
-              activeHeroIndex === idx ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
-            style={{
-              backgroundImage: `url(${world.bgImage})`,
-            }}
-          />
-        ))}
+        {/* === Hero Artwork Canvas (Extended Downwards so FLASHSALE is Hidden Below the Fold) === */}
+        <div className="relative w-full h-[620px] sm:h-[680px] md:h-[760px] lg:h-[800px] xl:h-[800px] 2xl:h-[800px] min-h-[600px] overflow-hidden bg-[#0c1220]">
+          {HERO_WORLDS.map((world, idx) => (
+            <div
+              key={world.id}
+              className={`hero-bg-crisp absolute inset-0 bg-cover bg-center transition-opacity duration-700 ease-in-out ${activeHeroIndex === idx ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
+              style={{
+                backgroundImage: `url(${world.bgImage})`,
+              }}
+            />
+          ))}
+          {/* Subtle ambient light */}
+          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent pointer-events-none" />
+        </div>
 
-        {/* Ambient Overlays */}
-        <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-transparent to-transparent pointer-events-none" />
-        <div className="absolute inset-x-0 bottom-0 h-32 sm:h-40 bg-gradient-to-t from-[#111111] via-[#111111]/70 to-transparent pointer-events-none" />
+        {/* === Overlapping Row: Action Box (Left) + 3 Thumbnails (Right) === */}
+        <div className="relative z-30 w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 -mt-28 sm:-mt-32 md:-mt-36 lg:-mt-44">
 
-        {/* Bottom Hero Area: Stepped Action Box (Left) & 3 Thumbnail Cards (Right) */}
-        <div className="relative z-10 w-full max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-end">
-            
-            {/* Minecraft.net Iconic Action Box (6 cols) */}
-            <div className="lg:col-span-6 max-w-lg">
+          {/* Desktop 2-Column Row (lg:grid) */}
+          <div className="hidden lg:grid grid-cols-12 gap-8 items-end">
+
+            {/* Left Action Box - Shortened Horizontally, Seamless Without Borders or Shadows */}
+            <div className="lg:col-span-6 xl:col-span-5 max-w-md xl:max-w-[460px] w-full">
               {/* Stepped Pixel Notches on Top Edge */}
-              <div className="flex items-end gap-1 pl-4">
-                <div className="w-4 h-2 bg-[#181818] border-t border-l border-r border-neutral-700/80" />
-                <div className="w-4 h-3.5 bg-[#181818] border-t border-l border-neutral-700/80" />
-                <div className="w-4 h-2 bg-[#181818] border-t border-l border-neutral-700/80" />
+              <div className="flex items-end gap-1.5 pl-8">
+                <div className="w-5 h-3 bg-[#181818]" />
+                <div className="w-5 h-5 bg-[#181818]" />
+                <div className="w-5 h-3 bg-[#181818]" />
               </div>
 
-              {/* Action Box Body */}
-              <div className="bg-[#181818]/95 backdrop-blur-xl border border-neutral-700/80 rounded-none sm:rounded-sm p-4 sm:p-5 space-y-2.5 shadow-2xl">
-                {/* Scaled-down 2-Line Minecraft Title */}
-                <h2 className="text-[15px] sm:text-[18px] md:text-[21px] leading-tight space-y-0.5 select-none font-normal">
-                  <span className="minecraft-font-folder block text-white whitespace-nowrap">
+              {/* Action Box Body (Seamless, No Border, No Shadow) */}
+              <div className="bg-[#181818] p-6 md:p-7 lg:p-8 space-y-3.5 md:space-y-4">
+                <h2 className="text-[20px] md:text-[23px] lg:text-[26px] leading-tight space-y-1 select-none font-normal tracking-wide">
+                  <span className="minecraft-font-folder block text-white whitespace-nowrap drop-shadow-sm">
                     TOKO MINECRAFT DAN
                   </span>
-                  <span className="minecraft-font-folder block text-white whitespace-nowrap">
+                  <span className="minecraft-font-folder block text-white whitespace-nowrap drop-shadow-sm">
                     ROBLOX INDONESIA
                   </span>
                 </h2>
 
-                <p className="text-xs text-neutral-300 leading-relaxed">
+                <p className="text-sm md:text-base text-neutral-200 leading-relaxed font-config-text font-normal">
                   Semua kebutuhan game Minecraft &amp; Roblox resmi, terpercaya, dan bergaransi 100%.
                 </p>
 
-                {/* Single 3D Green Button with Minecraft Green #367723 */}
-                <div className="pt-0.5">
+                <div className="pt-1.5">
                   <a
                     href="#catalog"
                     onClick={() => setSelectedGame(activeWorld.targetGame)}
-                    className="inline-flex items-center gap-2 px-5 sm:px-7 py-2.5 text-xs font-black text-white bg-[#367723] hover:bg-[#418e2a] border-b-4 border-[#1f4813] active:border-b-0 active:translate-y-1 shadow-lg transition-all select-none uppercase tracking-wider rounded-none sm:rounded-sm"
+                    className="inline-flex items-center justify-center gap-3 px-8 md:px-10 py-3.5 md:py-4 text-sm md:text-base lg:text-lg font-black text-white bg-[#367723] hover:bg-[#418e2a] border-b-4 border-[#1f4813] active:border-b-0 active:translate-y-1 transition-all select-none uppercase tracking-wider rounded-none sm:rounded-sm"
                   >
                     <span>BELI SEKARANG</span>
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-5 h-5 md:w-5 md:h-5 stroke-[3]" />
                   </a>
                 </div>
               </div>
             </div>
 
-            {/* Right Side: 3 Square Blocky Thumbnail Cards without Text Labels (6 cols) */}
-            <div className="lg:col-span-6 lg:flex lg:justify-end">
-              <div className="grid grid-cols-3 gap-2 sm:gap-3 max-w-md w-full">
+            {/* Right: 3 Thumbnails (Smaller & Horizontally Aligned with Action Box) */}
+            <div className="lg:col-span-6 xl:col-span-7 flex justify-end items-end pb-0">
+              <div className="flex items-center gap-3 sm:gap-3.5">
                 {HERO_WORLDS.map((world, idx) => {
                   const isActive = activeHeroIndex === idx;
                   return (
@@ -352,19 +363,18 @@ export default function HomePage() {
                       type="button"
                       aria-label={`Pilih Latar ${idx + 1}`}
                       className={`
-                        relative rounded-none overflow-hidden aspect-[16/10] transition-all duration-150
-                        group border-2 select-none
-                        ${
-                          isActive
-                            ? 'border-[#367723] ring-2 ring-[#367723]/70 shadow-2xl scale-105'
-                            : 'border-white/20 hover:border-white/60 opacity-65 hover:opacity-100 hover:scale-[1.02]'
+                        relative rounded-none overflow-hidden w-20 sm:w-22 lg:w-24 aspect-square transition-all duration-150
+                        border-2 select-none flex-shrink-0
+                        ${isActive
+                          ? 'border-[#69c944] ring-2 ring-[#69c944]/80 scale-105'
+                          : 'border-white/20 hover:border-white/60 opacity-60 hover:opacity-100 hover:scale-102'
                         }
                       `}
                     >
                       <img
                         src={world.bgImage}
                         alt="Thumbnail"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover"
                       />
                     </button>
                   );
@@ -373,12 +383,151 @@ export default function HomePage() {
             </div>
 
           </div>
+
+          {/* Mobile Stacked Seam (< lg) */}
+          <div className="block lg:hidden space-y-4">
+            {/* Centered Action Box (Seamless, No Border, No Shadow) */}
+            <div className="w-full max-w-sm sm:max-w-md mx-auto bg-[#181818] p-5 sm:p-6 space-y-3 text-center">
+              <h2 className="text-lg sm:text-xl font-normal tracking-wide text-center leading-snug">
+                <span className="minecraft-font-folder block text-white whitespace-nowrap drop-shadow-sm">
+                  TOKO MINECRAFT DAN
+                </span>
+                <span className="minecraft-font-folder block text-white whitespace-nowrap drop-shadow-sm">
+                  ROBLOX INDONESIA
+                </span>
+              </h2>
+
+              <p className="text-sm sm:text-base text-neutral-200 leading-relaxed font-config-text text-center px-1">
+                Semua kebutuhan game Minecraft &amp; Roblox resmi, terpercaya, dan bergaransi 100%.
+              </p>
+
+              <div className="flex justify-center pt-1">
+                <a
+                  href="#catalog"
+                  onClick={() => setSelectedGame(activeWorld.targetGame)}
+                  className="w-full sm:w-auto px-8 sm:px-10 py-3 sm:py-3.5 text-sm sm:text-base font-black text-white bg-[#367723] hover:bg-[#418e2a] border-b-4 border-[#1f4813] active:border-b-0 active:translate-y-1 transition-all select-none uppercase tracking-wider rounded-none inline-flex items-center justify-center gap-2.5"
+                >
+                  <span>BELI SEKARANG</span>
+                  <ChevronRight className="w-5 h-5 stroke-[3]" />
+                </a>
+              </div>
+            </div>
+
+            {/* 3 Thumbnails Centered below */}
+            <div className="flex justify-center items-center gap-2.5 sm:gap-3 pt-1">
+              {HERO_WORLDS.map((world, idx) => {
+                const isActive = activeHeroIndex === idx;
+                return (
+                  <button
+                    key={world.id}
+                    onClick={() => handleSelectWorld(idx)}
+                    type="button"
+                    aria-label={`Pilih Latar ${idx + 1}`}
+                    className={`
+                      relative rounded-none overflow-hidden w-18 sm:w-20 aspect-square transition-all duration-150
+                      border-2 select-none flex-shrink-0
+                      ${isActive
+                        ? 'border-[#69c944] ring-2 ring-[#69c944]/80 scale-105'
+                        : 'border-white/20 hover:border-white/60 opacity-60 hover:opacity-100'
+                      }
+                    `}
+                  >
+                    <img
+                      src={world.bgImage}
+                      alt="Thumbnail"
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+        </div>
+
+        {/* === FLASHSALE TITLE & CAROUSEL SECTION === */}
+        <div className="w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 pt-16 sm:pt-20 md:pt-14 lg:pt-22 pb-20 sm:pb-24 md:pb-8 lg:pb-8 space-y-8">
+
+          {/* FLASHSALE Title Centered in Minecraft Font (Matches DISCOVER OUR GAMES in screenshot) */}
+          <div className="text-center">
+            <h2 className="minecraft-font-folder text-3xl sm:text-4xl md:text-5xl lg:text-[54px] text-white tracking-widest uppercase drop-shadow-md select-none pb-20 sm:pb-24 md:pb-8 lg:pb-8">
+              FLASHSALE
+            </h2>
+          </div>
+
+          {/* Carousel Banner Track */}
+          <div className="w-full overflow-hidden">
+            <div
+              className="flex"
+              style={{
+                width: `${CLONED.length * (100 / itemsPerView)}%`,
+                transform: `translateX(-${(slide / CLONED.length) * 100}%)`,
+                transition: animated ? 'transform 0.7s cubic-bezier(0.77,0,0.175,1)' : 'none',
+              }}
+            >
+              {CLONED.map((b, idx) => (
+                <div
+                  key={idx}
+                  className="flex-shrink-0 px-2 sm:px-3 py-2"
+                  style={{ width: `${100 / CLONED.length}%` }}
+                >
+                  {/* Card */}
+                  <div className={`relative h-[210px] sm:h-[250px] md:h-[280px] rounded-none sm:rounded-sm overflow-hidden ring-2 ${b.ring} shadow-2xl group cursor-pointer`}>
+                    <div
+                      className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                      style={{ backgroundImage: `url(${b.img})` }}
+                    />
+
+                    {!b.imageOnly && (
+                      <>
+                        <div className={`absolute inset-0 bg-gradient-to-t ${b.overlay}`} />
+                        <div className="relative h-full p-5 sm:p-6 flex flex-col justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-black/50 backdrop-blur-sm border border-white/10 ${b.tagColor}`}>
+                              {b.tag}
+                            </span>
+                            <span className="px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-sm border border-white/20 text-white">
+                              {b.badge}
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            <h3 className="text-base sm:text-lg md:text-xl font-black leading-tight drop-shadow-md">
+                              {b.title}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-gray-300 font-medium font-config-text">
+                              {b.sub}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Carousel indicator dots */}
+          <div className="flex justify-center items-center gap-2 pt-2">
+            {BASE_BANNERS.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  setAnimated(true);
+                  setSlide(MID + (i - (MID % N)));
+                }}
+                className={`h-2 rounded-none transition-all duration-300 ${activeDot === i ? 'w-8 bg-[#ffc825] shadow-md' : 'w-2 bg-white/30 hover:bg-white/60'
+                  }`}
+                aria-label={`Slide ${i + 1}`}
+              />
+            ))}
+          </div>
+
         </div>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════
-          2. STATS SECTION (Custom border.png Frame Matching Screenshot Size)
-             Heroic Large Cyan Frame & Clean Typewriter Stats
+          3. STATS SECTION (Swapped to Section 3)
       ══════════════════════════════════════════════════════════════ */}
       <section
         ref={statsSectionRef}
@@ -393,7 +542,7 @@ export default function HomePage() {
             {/* Left: Heroic Artwork Box with border.png (7 cols, max-w-[800px]) */}
             <div className="lg:col-span-7 flex justify-center lg:justify-start w-full">
               <div className="relative w-full max-w-[800px] aspect-[1672/941] select-none">
-                
+
                 {/* Inner Artwork Image */}
                 <div className="absolute inset-[2.8%] overflow-hidden bg-[#07132a]">
                   <img
@@ -415,7 +564,7 @@ export default function HomePage() {
 
             {/* Right: Clean Typewriter Title + 3 Stat Blocks (5 cols) */}
             <div className="lg:col-span-5 space-y-6 text-center lg:text-left">
-              
+
               {/* Typewriter Title in Authentic Minecraft Font */}
               <div className="min-h-[85px] sm:min-h-[105px] flex items-center justify-center lg:justify-start">
                 <h2 className="minecraft-font-folder text-[24px] sm:text-[32px] md:text-[36px] lg:text-[40px] text-white leading-tight uppercase tracking-wide drop-shadow-md">
@@ -428,7 +577,7 @@ export default function HomePage() {
 
               {/* 3 Prominent Minecraft Pixel Stat Blocks */}
               <div className="grid grid-cols-3 gap-2.5 sm:gap-4 pt-1 max-w-xl mx-auto lg:mx-0">
-                
+
                 {/* Stat 1: Pelanggan */}
                 <div className="p-3.5 sm:p-4 bg-[#07132a]/90 border-2 border-cyan-500/40 rounded-none text-center shadow-lg">
                   <p className="minecraft-font-folder text-lg sm:text-2xl text-cyan-300 font-bold leading-none">
@@ -468,113 +617,33 @@ export default function HomePage() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════
-          3. CAROUSEL 5 DETIK SEKALI (Background #171615)
-      ══════════════════════════════════════════════════════════════ */}
-      <section
-        className="relative w-full py-8 overflow-hidden bg-[#171615] border-b border-[#252422]"
-        onMouseEnter={() => setPausedCarousel(true)}
-        onMouseLeave={() => setPausedCarousel(false)}
-      >
-        {/* Aligned Container Padding to Match Section 2 Border Exactly */}
-        <div className="w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 overflow-hidden">
-          <div className="w-full overflow-hidden">
-            <div
-              className="flex"
-              style={{
-                width: `${CLONED.length * (100 / 3)}%`,
-                transform: `translateX(-${(slide / CLONED.length) * 100}%)`,
-                transition: animated ? 'transform 0.7s cubic-bezier(0.77,0,0.175,1)' : 'none',
-              }}
-            >
-              {CLONED.map((b, idx) => (
-                <div
-                  key={idx}
-                  className="flex-shrink-0 px-2 sm:px-3 py-2"
-                  style={{ width: `${100 / CLONED.length}%` }}
-                >
-                  {/* Card */}
-                  <div className={`relative h-[210px] sm:h-[250px] md:h-[280px] rounded-none sm:rounded-sm overflow-hidden ring-2 ${b.ring} shadow-2xl group cursor-pointer`}>
-                    <div
-                      className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                      style={{ backgroundImage: `url(${b.img})` }}
-                    />
-
-                    {!b.imageOnly && (
-                      <>
-                        <div className={`absolute inset-0 bg-gradient-to-t ${b.overlay}`} />
-                        <div className="relative h-full p-5 sm:p-6 flex flex-col justify-between text-white">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-black/50 backdrop-blur-sm border border-white/10 ${b.tagColor}`}>
-                              {b.tag}
-                            </span>
-                            <span className="px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-sm border border-white/20 text-white">
-                              {b.badge}
-                            </span>
-                          </div>
-                          <div className="space-y-1">
-                            <h3 className="text-base sm:text-lg md:text-xl font-black leading-tight drop-shadow-md">
-                              {b.title}
-                            </h3>
-                            <p className="text-xs sm:text-sm text-gray-300 font-medium">
-                              {b.sub}
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Carousel indicator dots */}
-          <div className="flex justify-center items-center gap-2 mt-4">
-            {BASE_BANNERS.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  setAnimated(true);
-                  setSlide(MID + (i - (MID % N)));
-                }}
-                className={`h-2 rounded-none transition-all duration-300 ${
-                  activeDot === i ? 'w-8 bg-white shadow-md' : 'w-2 bg-white/40 hover:bg-white/70'
-                }`}
-                aria-label={`Slide ${i + 1}`}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════
           4. PRODUCT CATALOG SECTION (Background #262423)
       ══════════════════════════════════════════════════════════════ */}
       <section id="catalog" className="w-full bg-[#262423] py-14 sm:py-20">
         <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 space-y-8">
-          
+
           {/* Game Switcher Tabs: Minecraft & Roblox */}
           <div className="flex items-center justify-center gap-3 sm:gap-5">
             <button
               onClick={() => { setSelectedGame('minecraft'); setMinecraftSub('all'); }}
-              className={`flex items-center gap-2.5 px-7 sm:px-10 py-3 sm:py-3.5 rounded-none text-xs sm:text-sm font-black transition-all duration-200 border ${
-                selectedGame === 'minecraft'
-                  ? 'bg-[#367723] text-white border-b-4 border-[#1f4813] ring-2 ring-[#367723]/50 shadow-xl scale-105'
-                  : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 hover:border-neutral-700'
-              }`}
+              className={`flex items-center gap-2.5 px-7 sm:px-10 py-3 sm:py-3.5 rounded-none text-xs sm:text-sm font-black transition-all duration-200 border ${selectedGame === 'minecraft'
+                ? 'bg-[#367723] text-white border-b-4 border-[#1f4813] ring-2 ring-[#367723]/50 shadow-xl scale-105'
+                : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 hover:border-neutral-700'
+                }`}
             >
-              <Box className="w-4 h-4" /> MINECRAFT
+              <img src="/images/minecraft-icon.png" alt="Minecraft" className="w-5 h-5 sm:w-6 sm:h-6 object-contain select-none flex-shrink-0" />
+              <span>MINECRAFT</span>
             </button>
-            
+
             <button
               onClick={() => { setSelectedGame('roblox'); setRobloxGame('all'); setRobloxSub('all'); }}
-              className={`flex items-center gap-2.5 px-7 sm:px-10 py-3 sm:py-3.5 rounded-none text-xs sm:text-sm font-black transition-all duration-200 border ${
-                selectedGame === 'roblox'
-                  ? 'bg-[#0095f6] text-white border-b-4 border-[#006bb3] ring-2 ring-sky-500/40 shadow-xl scale-105'
-                  : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 hover:border-neutral-700'
-              }`}
+              className={`flex items-center gap-2.5 px-7 sm:px-10 py-3 sm:py-3.5 rounded-none text-xs sm:text-sm font-black transition-all duration-200 border ${selectedGame === 'roblox'
+                ? 'bg-[#0095f6] text-white border-b-4 border-[#006bb3] ring-2 ring-sky-500/40 shadow-xl scale-105'
+                : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 hover:border-neutral-700'
+                }`}
             >
-              <Gamepad2 className="w-4 h-4" /> ROBLOX
+              <img src="/images/roblox-icon.png" alt="Roblox" className="w-5 h-5 sm:w-6 sm:h-6 object-contain select-none flex-shrink-0" />
+              <span>ROBLOX</span>
             </button>
           </div>
 
@@ -587,11 +656,10 @@ export default function HomePage() {
                   <button
                     key={id}
                     onClick={() => setMinecraftSub(id)}
-                    className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-none text-xs sm:text-sm font-bold transition-all border ${
-                      isActive
-                        ? 'bg-[#367723] text-white border-[#367723] shadow-md'
-                        : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 shadow-sm'
-                    }`}
+                    className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-none text-xs sm:text-sm font-bold transition-all border ${isActive
+                      ? 'bg-[#367723] text-white border-[#367723] shadow-md'
+                      : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 shadow-sm'
+                      }`}
                   >
                     <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-emerald-400'}`} />
                     <span>{label}</span>
@@ -612,11 +680,10 @@ export default function HomePage() {
                     <button
                       key={id}
                       onClick={() => setRobloxGame(id)}
-                      className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-none text-xs sm:text-sm font-bold transition-all border ${
-                        isActive
-                          ? 'bg-[#0095f6] text-white border-[#0095f6] shadow-md'
-                          : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 shadow-sm'
-                      }`}
+                      className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-none text-xs sm:text-sm font-bold transition-all border ${isActive
+                        ? 'bg-[#0095f6] text-white border-[#0095f6] shadow-md'
+                        : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 shadow-sm'
+                        }`}
                     >
                       <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-sky-400'}`} />
                       <span>{label}</span>
@@ -633,11 +700,10 @@ export default function HomePage() {
                     <button
                       key={id}
                       onClick={() => setRobloxSub(id)}
-                      className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-none text-xs sm:text-sm font-bold transition-all border ${
-                        isActive
-                          ? 'bg-[#0095f6] text-white border-[#0095f6] shadow-md'
-                          : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 shadow-sm'
-                      }`}
+                      className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-none text-xs sm:text-sm font-bold transition-all border ${isActive
+                        ? 'bg-[#0095f6] text-white border-[#0095f6] shadow-md'
+                        : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 shadow-sm'
+                        }`}
                     >
                       <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-neutral-400'}`} />
                       <span>{label}</span>

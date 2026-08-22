@@ -247,10 +247,10 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
             {/* Description Box */}
             <div className="p-4 rounded-none bg-[#111111] border border-neutral-800 text-xs text-neutral-300 space-y-2">
-              <h4 className="font-bold text-white text-[11px] uppercase tracking-wider">
+              <h4 className="font-bold text-white text-[11px] uppercase tracking-wider font-config-text">
                 Deskripsi Produk:
               </h4>
-              <p className="text-[11px] leading-relaxed text-neutral-300">
+              <p className="text-[12px] leading-relaxed text-neutral-300 font-config-text">
                 {product.description ||
                   'Produk resmi bergaransi 100% Full Access. Data akun / lisensi akan otomatis dikirimkan ke layar Anda seketika setelah pembayaran berhasil dikonfirmasi.'}
               </p>
@@ -258,10 +258,10 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
             {/* Features & Benefits */}
             <div className="space-y-2.5 pt-2 border-t border-neutral-800">
-              <h4 className="font-bold text-neutral-300 text-xs uppercase tracking-wider">
+              <h4 className="font-bold text-neutral-300 text-xs uppercase tracking-wider font-config-text">
                 Keunggulan Layanan:
               </h4>
-              <ul className="space-y-2 text-xs text-neutral-300">
+              <ul className="space-y-2 text-xs text-neutral-300 font-config-text">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                   <span>Akun resmi &amp; legal 100% Full Access</span>

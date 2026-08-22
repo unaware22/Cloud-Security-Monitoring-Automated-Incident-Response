@@ -32,6 +32,22 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'ConfigText';
+  src: url('/fonts/ConfigText.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Config Text';
+  src: url('/fonts/ConfigText.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -51,6 +67,13 @@ body {
 
 .font-neutral-grotesk {
   font-family: 'NeutralGroteskBold', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.font-config-text,
+.font-config,
+.font-description {
+  font-family: 'ConfigText', 'Config Text', sans-serif !important;
+  letter-spacing: 0.015em;
 }
 
 .font-minecraft,

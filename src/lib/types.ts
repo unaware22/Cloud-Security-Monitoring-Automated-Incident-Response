@@ -30,6 +30,9 @@ export interface ProductItem {
   subCategory1: string;
   subCategory2?: string | null;
   deliveryType: 'automatic' | 'manual';
+  sortOrder?: number;
+  serviceTag?: 'proses-instant' | 'pembuatan-cepat' | string;
+  soldCount?: string;
   isActive: boolean;
   createdAt: string | Date;
   updatedAt: string | Date;

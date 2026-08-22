@@ -65,6 +65,8 @@ export async function PUT(
           price: body.price !== undefined ? Number(body.price) : existing.price,
           stock: body.stock !== undefined ? Number(body.stock) : existing.stock,
           sortOrder: body.sort_order !== undefined ? Number(body.sort_order) : (body.sortOrder !== undefined ? Number(body.sortOrder) : existing.sortOrder),
+          serviceTag: body.service_tag ?? body.serviceTag ?? existing.serviceTag,
+          soldCount: body.sold_count ?? body.soldCount ?? existing.soldCount,
           game: body.game ?? existing.game,
           subCategory1: body.sub_category_1 ?? existing.subCategory1,
           subCategory2: body.sub_category_2 !== undefined ? body.sub_category_2 : existing.subCategory2,
@@ -97,6 +99,8 @@ export async function PUT(
         price: updated.price,
         stock: updated.stock,
         sortOrder: updated.sortOrder,
+        serviceTag: updated.serviceTag,
+        soldCount: updated.soldCount,
         game: updated.game as any,
         subCategory1: updated.subCategory1,
         subCategory2: updated.subCategory2,
@@ -120,6 +124,8 @@ export async function PUT(
     originalPrice: body.original_price !== undefined ? Number(body.original_price) : undefined,
     stock: body.stock !== undefined ? Number(body.stock) : undefined,
     sortOrder: body.sort_order !== undefined ? Number(body.sort_order) : (body.sortOrder !== undefined ? Number(body.sortOrder) : undefined),
+    serviceTag: body.service_tag ?? body.serviceTag,
+    soldCount: body.sold_count ?? body.soldCount,
     game: body.game,
     subCategory1: body.sub_category_1,
     subCategory2: body.sub_category_2,
@@ -162,6 +168,12 @@ export async function PATCH(
       if (body.sort_order !== undefined || body.sortOrder !== undefined) {
         dataToUpdate.sortOrder = Number(body.sort_order ?? body.sortOrder);
       }
+      if (body.service_tag !== undefined || body.serviceTag !== undefined) {
+        dataToUpdate.serviceTag = body.service_tag ?? body.serviceTag;
+      }
+      if (body.sold_count !== undefined || body.soldCount !== undefined) {
+        dataToUpdate.soldCount = body.sold_count ?? body.soldCount;
+      }
       if (Object.keys(dataToUpdate).length === 0) {
         dataToUpdate.isActive = !existing.isActive;
       }
@@ -189,6 +201,8 @@ export async function PATCH(
       updateFallbackProduct(params.id, {
         isActive: updated.isActive,
         sortOrder: updated.sortOrder,
+        serviceTag: updated.serviceTag,
+        soldCount: updated.soldCount,
       });
 
       return NextResponse.json({
@@ -208,6 +222,12 @@ export async function PATCH(
     }
     if (body.sort_order !== undefined || body.sortOrder !== undefined) {
       updatedData.sortOrder = Number(body.sort_order ?? body.sortOrder);
+    }
+    if (body.service_tag !== undefined || body.serviceTag !== undefined) {
+      updatedData.serviceTag = body.service_tag ?? body.serviceTag;
+    }
+    if (body.sold_count !== undefined || body.soldCount !== undefined) {
+      updatedData.soldCount = body.sold_count ?? body.soldCount;
     }
     if (Object.keys(updatedData).length === 0) {
       updatedData.isActive = !fallback.isActive;

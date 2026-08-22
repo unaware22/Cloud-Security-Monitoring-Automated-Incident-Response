@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Trash2,
   Percent,
+  Zap,
   Key,
   Shield,
   FileText,
@@ -116,6 +117,8 @@ export default function AdminProductsPage() {
   const [discountPercent, setDiscountPercent] = useState<number>(30);
   const [stock, setStock] = useState<number>(4);
   const [sortOrder, setSortOrder] = useState<number>(1);
+  const [serviceTag, setServiceTag] = useState<'proses-instant' | 'pembuatan-cepat'>('proses-instant');
+  const [soldCount, setSoldCount] = useState<string>('19rb+ Terjual');
   const [game, setGame] = useState<'minecraft' | 'roblox'>('minecraft');
   const [subCategory1, setSubCategory1] = useState('akun');
   const [subCategory2, setSubCategory2] = useState<string>('items');
@@ -156,6 +159,8 @@ export default function AdminProductsPage() {
     setDiscountPercent(30);
     setStock(1);
     setSortOrder(products.length + 1);
+    setServiceTag('proses-instant');
+    setSoldCount('19rb+ Terjual');
     setGame('minecraft');
     setSubCategory1('akun');
     setSubCategory2('items');
@@ -177,6 +182,8 @@ export default function AdminProductsPage() {
     setDiscountPercent(prod.discountPercent !== undefined && prod.discountPercent !== null ? prod.discountPercent : 30);
     setStock(prod.stock);
     setSortOrder(prod.sortOrder ?? 1);
+    setServiceTag(prod.serviceTag === 'pembuatan-cepat' ? 'pembuatan-cepat' : 'proses-instant');
+    setSoldCount(prod.soldCount || '19rb+ Terjual');
     setGame(prod.game);
     setSubCategory1(prod.subCategory1);
     setSubCategory2(prod.subCategory2 || 'items');
@@ -340,6 +347,8 @@ export default function AdminProductsPage() {
       original_price: Number(originalPriceCalculated),
       stock: Number(stock),
       sort_order: Number(sortOrder),
+      service_tag: serviceTag,
+      sold_count: soldCount.trim() || '19rb+ Terjual',
       product_type: 'digital',
       game,
       sub_category_1: subCategory1,
@@ -548,7 +557,21 @@ export default function AdminProductsPage() {
                           </div>
                           <div>
                             <div className="font-bold text-white line-clamp-1">{prod.name}</div>
-                            <div className="font-mono text-[10px] text-gray-500">{prod.slug}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono text-[10px] text-gray-500">{prod.slug}</span>
+                              <span className="text-gray-600">•</span>
+                              <span className="text-[10px] text-amber-400 font-bold">{prod.soldCount || '19rb+ Terjual'}</span>
+                              <span className="text-gray-600">•</span>
+                              {prod.serviceTag === 'pembuatan-cepat' ? (
+                                <span className="text-[10px] text-purple-300 font-semibold flex items-center gap-0.5">
+                                  🚀 Pembuatan Cepat
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-cyan-300 font-semibold flex items-center gap-0.5">
+                                  ⚡ Proses Instant
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -908,7 +931,98 @@ export default function AdminProductsPage() {
                 </div>
               </div>
 
-              {/* 5. STRUCTURED 3-BOX DELIVERY CREDENTIALS (Email, Password, Keterangan) */}
+              {/* 5. Fitur Tag Layanan (Proses Instant / Pembuatan Cepat) & Custom Terjual */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-950/20 via-surface-hover/50 to-surface-hover/30 border border-cyan-500/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-cyan-400" />
+                    <span>Tag Layanan &amp; Label Terjual (Tampilan Customer)</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    Menyesuaikan badge &amp; info di katalog
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Pilihan Tag Layanan */}
+                  <div className="space-y-2">
+                    <label className="block text-gray-300 font-semibold text-xs">Pilih Tag Layanan *</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setServiceTag('proses-instant')}
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 text-center transition-all ${
+                          serviceTag === 'proses-instant'
+                            ? 'bg-cyan-950/70 border-cyan-400 text-white shadow-lg ring-2 ring-cyan-500/40'
+                            : 'bg-surface hover:bg-surface-hover border-surface-border text-gray-400'
+                        }`}
+                      >
+                        <img
+                          src="/images/tag-proses-instant.png"
+                          alt="Proses Instant"
+                          className="h-4 w-auto object-contain"
+                        />
+                        <span className="text-[11px] font-bold">Proses Instant</span>
+                        <span className="text-[9px] text-gray-400">Siap kirim otomatis</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setServiceTag('pembuatan-cepat')}
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 text-center transition-all ${
+                          serviceTag === 'pembuatan-cepat'
+                            ? 'bg-purple-950/70 border-purple-400 text-white shadow-lg ring-2 ring-purple-500/40'
+                            : 'bg-surface hover:bg-surface-hover border-surface-border text-gray-400'
+                        }`}
+                      >
+                        <img
+                          src="/images/tag-pembuatan-cepat.png"
+                          alt="Pembuatan Cepat"
+                          className="h-4 w-auto object-contain"
+                        />
+                        <span className="text-[11px] font-bold">Pembuatan Cepat</span>
+                        <span className="text-[9px] text-gray-400">Custom skins / jasa</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Input Label Terjual */}
+                  <div className="space-y-2">
+                    <label className="block text-gray-300 font-semibold text-xs">
+                      Label Jumlah Terjual *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={soldCount}
+                      onChange={(e) => setSoldCount(e.target.value)}
+                      placeholder="Contoh: 19rb+ Terjual"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-border text-amber-300 font-bold text-xs focus:outline-none focus:border-amber-400"
+                    />
+
+                    {/* Quick Preset Buttons */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[10px] text-gray-400">Preset Cepat:</span>
+                      {['19rb+ Terjual', '1.5rb+ Terjual', '500+ Terjual', '100+ Terjual', '25 Terjual'].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setSoldCount(preset)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all border ${
+                            soldCount === preset
+                              ? 'bg-amber-500 text-black border-amber-400 font-black'
+                              : 'bg-surface hover:bg-surface-hover text-gray-400 border-surface-border'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. STRUCTURED 3-BOX DELIVERY CREDENTIALS (Email, Password, Keterangan) */}
               <div className="p-4 sm:p-5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-emerald-500/20">
                   <div className="flex items-center gap-2">

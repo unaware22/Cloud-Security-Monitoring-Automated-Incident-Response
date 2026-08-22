@@ -36,6 +36,9 @@ module.exports = {
       },
       fontFamily: {
         sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
+        config: ['ConfigText', 'Config Text', 'Plus Jakarta Sans', 'sans-serif'],
+        configText: ['ConfigText', 'Config Text', 'Plus Jakarta Sans', 'sans-serif'],
+        description: ['ConfigText', 'Config Text', 'Plus Jakarta Sans', 'sans-serif'],
       },
     },
   },

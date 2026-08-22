@@ -22,6 +22,8 @@ model Product {
   subCategory1    String      @default("all") @map("sub_category_1")
   subCategory2    String?     @map("sub_category_2")
   deliveryType    String      @default("automatic") @map("delivery_type") // 'automatic' | 'manual'
+  serviceTag      String      @default("proses-instant") @map("service_tag")
+  soldCount       String      @default("19rb+ Terjual") @map("sold_count")
   isActive        Boolean     @default(true) @map("is_active")
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")

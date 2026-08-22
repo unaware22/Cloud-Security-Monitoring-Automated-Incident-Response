@@ -16,6 +16,8 @@ export interface FallbackProduct {
   subCategory2?: string | null;
   deliveryType: 'automatic' | 'manual';
   deliveryContent: string;
+  serviceTag?: string;
+  soldCount?: string;
   imageUrl?: string | null;
   isActive: boolean;
   createdAt: string;

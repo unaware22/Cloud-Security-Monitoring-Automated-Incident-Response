@@ -44,6 +44,10 @@ export interface MemoryOrder {
     content: string;
     delivered_at?: string;
   };
+  deliveryContent?: string | null;
+  delivery_content?: string | null;
+  productId?: string;
+  quantity?: number;
 }
 
 const globalForMemory = globalThis as unknown as {

@@ -55,7 +55,8 @@ export default function ProductCard({ product }: ProductCardProps) {
       ? Math.round((product.price / Math.max(1, 100 - discountPercent)) * 100)
       : product.price;
 
-  const tagType = getProductTag(product);
+  const tagType = product.serviceTag || getProductTag(product);
+  const soldCountDisplay = product.soldCount || '19rb+ Terjual';
 
   return (
     <div className={`group rounded-none bg-[#181818] text-white border transition-all duration-200 flex flex-col justify-between overflow-hidden shadow-xl hover:shadow-2xl select-none ${
@@ -133,7 +134,7 @@ export default function ProductCard({ product }: ProductCardProps) {
                 4.9
               </span>
               <span className="text-neutral-600">•</span>
-              <span className="text-neutral-400 text-[10px] sm:text-[11px]">19rb+ Terjual</span>
+              <span className="text-neutral-400 text-[10px] sm:text-[11px]">{soldCountDisplay}</span>
             </div>
           </div>
         </div>

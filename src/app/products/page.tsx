@@ -83,7 +83,7 @@ function ProductsContent() {
           <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
             Katalog Produk Digital
           </h1>
-          <p className="text-sm text-gray-400 mt-2">
+          <p className="text-sm text-gray-400 mt-2 font-config-text">
             Pilih game dan filter kategori untuk menemukan akun, items, skins, dan paket game yang Anda cari.
           </p>
         </div>

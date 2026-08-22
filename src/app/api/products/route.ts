@@ -90,6 +90,8 @@ export async function GET(req: NextRequest) {
           subCategory1: true,
           subCategory2: true,
           deliveryType: true,
+          serviceTag: true,
+          soldCount: true,
           isActive: true,
           createdAt: true,
           updatedAt: true,
