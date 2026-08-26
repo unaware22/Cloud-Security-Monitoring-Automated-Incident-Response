@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   LayoutGrid, Gem, User, Shirt, Layers, Coins,
   Gamepad2, Box, Fish, Flame, Sprout,
-  Package, UserCheck, Loader2, ChevronRight,
+  Package, UserCheck, Zap, Loader2, ChevronRight,
 } from 'lucide-react';
 import ProductCard from '@/components/product/ProductCard';
 import { ProductItem } from '@/lib/types';
@@ -267,18 +267,17 @@ export default function HomePage() {
   ];
 
   const rbGames = [
-    { id: 'all', label: 'Semua Game', Icon: LayoutGrid },
-    { id: 'fisch', label: 'Fisch', Icon: Fish },
-    { id: 'bloxfruits', label: 'Blox Fruits', Icon: Flame },
-    { id: 'growagirl', label: 'Grow a Girl', Icon: Sprout },
-    { id: 'robux', label: 'Robux', Icon: Coins },
+    { id: 'all', label: 'Semua', Icon: LayoutGrid },
+    { id: 'fish-it', label: 'Fish it', Icon: Fish },
+    { id: 'blox-fruit', label: 'Blox Fruit', Icon: Flame },
+    { id: 'grow-a-garden-2', label: 'Grow a Garden 2', Icon: Sprout },
   ];
 
   const rbSubs = [
-    { id: 'all', label: 'Semua Produk', Icon: LayoutGrid },
+    { id: 'all', label: 'Semua', Icon: LayoutGrid },
     { id: 'akun', label: 'Akun', Icon: UserCheck },
-    { id: 'item', label: 'Item & Pass', Icon: Package },
-    { id: 'currency', label: 'Currency', Icon: Coins },
+    { id: 'item', label: 'Item', Icon: Package },
+    { id: 'joki', label: 'Joki', Icon: Zap },
   ];
 
   return (

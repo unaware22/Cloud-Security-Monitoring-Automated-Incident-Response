@@ -1,9 +1,21 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { MessageCircle } from 'lucide-react';
 
 export default function Footer() {
+  const pathname = usePathname();
   const currentYear = new Date().getFullYear();
+
+  if (
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/checkout') ||
+    pathname?.startsWith('/payment')
+  ) {
+    return null;
+  }
 
   const waSupportUrl = `https://wa.me/6281234567890?text=${encodeURIComponent(
     'Halo Admin SALADINSHOP, saya butuh bantuan terkait pesanan saya.'

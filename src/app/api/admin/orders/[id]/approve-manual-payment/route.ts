@@ -71,12 +71,47 @@ export async function POST(
           });
 
           const mainItem = order.orderItems[0];
-          if (mainItem?.productId) {
-            await tx.product.update({
-              where: { id: mainItem.productId },
-              data: { stock: { decrement: mainItem.quantity || 1 } },
-            }).catch(() => {});
+          const qty = mainItem?.quantity || 1;
+          const rawLines = (mainItem?.product?.deliveryContent || '')
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+
+          let dispatchedContent = '';
+          let remainingContent = '';
+
+          if (rawLines.length > 0) {
+            dispatchedContent = rawLines.slice(0, qty).join('\n');
+            remainingContent = rawLines.slice(qty).join('\n');
+          } else {
+            dispatchedContent =
+              mainItem?.product?.deliveryContent ||
+              'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026 | Full Access: https://account.mojang.com';
           }
+
+          if (mainItem?.productId) {
+            await tx.product
+              .update({
+                where: { id: mainItem.productId },
+                data: {
+                  stock: { decrement: qty },
+                  deliveryContent: remainingContent,
+                },
+              })
+              .catch(() => {});
+          }
+
+          await tx.digitalDelivery
+            .create({
+              data: {
+                orderId: order.id,
+                deliveryEmail: order.customerEmail,
+                deliveryStatus: 'delivered',
+                deliveryData: dispatchedContent,
+                deliveredAt: now,
+              },
+            })
+            .catch(() => {});
 
           if (order.manualPaymentSubmissions.length > 0) {
             await tx.manualPaymentSubmission.update({
@@ -111,8 +146,16 @@ export async function POST(
         });
 
         const mainItem = order.orderItems[0];
-        const deliveryContent =
-          mainItem?.product?.deliveryContent || 'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026 | Full Access: https://account.mojang.com';
+        const qty = mainItem?.quantity || 1;
+        const rawLines = (mainItem?.product?.deliveryContent || '')
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const finalContent =
+          rawLines.length > 0
+            ? rawLines.slice(0, qty).join('\n')
+            : mainItem?.product?.deliveryContent ||
+              'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026';
 
         try {
           await sendDigitalDelivery({
@@ -120,7 +163,7 @@ export async function POST(
             recipientEmail: order.customerEmail,
             orderCode: order.orderCode,
             productName: mainItem?.productNameSnapshot || 'Akun Minecraft Java & Bedrock Edition',
-            deliveryContent,
+            deliveryContent: finalContent,
           });
         } catch {}
 

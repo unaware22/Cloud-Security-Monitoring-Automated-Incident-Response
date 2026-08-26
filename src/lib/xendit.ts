@@ -5,6 +5,7 @@ export interface CreateInvoiceParams {
   amount: number;
   customerName: string;
   customerPhone?: string;
+  paymentMethods?: string[]; // e.g. ['MANDIRI'], ['QRIS'], ['DANA'], ['OVO'], ['SHOPEEPAY'], ['ALFAMART']
 }
 
 export interface XenditInvoiceResponse {
@@ -15,7 +16,9 @@ export interface XenditInvoiceResponse {
 }
 
 /**
- * Creates an invoice in Xendit API (or sandbox simulation fallback)
+ * Creates an invoice in Xendit API with specific payment methods filter.
+ * The invoice URL redirects the user to Xendit's hosted payment page
+ * showing only the selected payment method(s).
  */
 export async function createXenditInvoice(
   params: CreateInvoiceParams
@@ -27,7 +30,7 @@ export async function createXenditInvoice(
   if (!secretKey || secretKey.includes('sample_key') || secretKey.startsWith('mock_')) {
     return {
       invoiceId: `mock-inv-${Date.now()}`,
-      invoiceUrl: `${baseUrl}/payment/${params.externalId}?mock_xendit=true`,
+      invoiceUrl: `${baseUrl}/check-order?order_code=${params.externalId}&status=mock`,
       status: 'PENDING',
       expiryDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     };
@@ -35,35 +38,40 @@ export async function createXenditInvoice(
 
   try {
     const authHeader = `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`;
+    const payload: any = {
+      external_id: params.externalId,
+      amount: params.amount,
+      payer_email: params.payerEmail,
+      description: params.description,
+      invoice_duration: 86400, // 24 hours
+      customer: {
+        given_names: params.customerName,
+        email: params.payerEmail,
+        mobile_number: params.customerPhone,
+      },
+      success_redirect_url: `${baseUrl}/order/success/${params.externalId}`,
+      failure_redirect_url: `${baseUrl}/order/success/${params.externalId}?status=failed`,
+    };
+
+    if (params.paymentMethods && params.paymentMethods.length > 0) {
+      payload.payment_methods = params.paymentMethods;
+    }
+
     const res = await fetch('https://api.xendit.co/v2/invoices', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: authHeader,
       },
-      body: JSON.stringify({
-        external_id: params.externalId,
-        amount: params.amount,
-        payer_email: params.payerEmail,
-        description: params.description,
-        invoice_duration: 86400, // 24 hours
-        customer: {
-          given_names: params.customerName,
-          email: params.payerEmail,
-          mobile_number: params.customerPhone,
-        },
-        success_redirect_url: `${baseUrl}/order/${params.externalId}?status=paid`,
-        failure_redirect_url: `${baseUrl}/order/${params.externalId}?status=failed`,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
       const errBody = await res.text();
       console.error('Xendit Invoice Creation Failed:', res.status, errBody);
-      // Return fallback URL if sandbox API error occurs
       return {
         invoiceId: `inv-fallback-${Date.now()}`,
-        invoiceUrl: `${baseUrl}/payment/${params.externalId}?simulated=true`,
+        invoiceUrl: `${baseUrl}/check-order?order_code=${params.externalId}&status=error`,
         status: 'PENDING',
         expiryDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       };
@@ -80,7 +88,7 @@ export async function createXenditInvoice(
     console.error('Error contacting Xendit API:', error);
     return {
       invoiceId: `inv-local-${Date.now()}`,
-      invoiceUrl: `${baseUrl}/payment/${params.externalId}?simulated=true`,
+      invoiceUrl: `${baseUrl}/check-order?order_code=${params.externalId}&status=error`,
       status: 'PENDING',
       expiryDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     };

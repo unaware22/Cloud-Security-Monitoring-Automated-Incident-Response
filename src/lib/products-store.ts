@@ -15,6 +15,7 @@ export interface FallbackProduct {
   subCategory1: string;
   subCategory2?: string | null;
   deliveryType: 'automatic' | 'manual';
+  deliveryCategory?: 'account' | 'redeem_code' | 'roblox';
   deliveryContent: string;
   serviceTag?: string;
   soldCount?: string;
@@ -41,11 +42,12 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     subCategory1: 'akun',
     subCategory2: null,
     deliveryType: 'automatic',
+    deliveryCategory: 'account',
     deliveryContent: [
-      'Email: saladin-vip01@mojangmail.com | Pass: SaladinSecure#2026_01 | Full Access Migration: https://account.mojang.com',
-      'Email: saladin-vip02@mojangmail.com | Pass: SaladinSecure#2026_02 | Full Access Migration: https://account.mojang.com',
-      'Email: saladin-vip03@mojangmail.com | Pass: SaladinSecure#2026_03 | Full Access Migration: https://account.mojang.com',
-      'Email: saladin-vip04@mojangmail.com | Pass: SaladinSecure#2026_04 | Full Access Migration: https://account.mojang.com',
+      'Email: saladin-vip01@mojangmail.com | Pass: SaladinSecure#2026_01 | Catatan: Full Access Migration di https://account.mojang.com. Harap langsung ganti password dan email pemulihan.',
+      'Email: saladin-vip02@mojangmail.com | Pass: SaladinSecure#2026_02 | Catatan: Full Access Migration di https://account.mojang.com. Harap langsung ganti password dan email pemulihan.',
+      'Email: saladin-vip03@mojangmail.com | Pass: SaladinSecure#2026_03 | Catatan: Full Access Migration di https://account.mojang.com. Harap langsung ganti password dan email pemulihan.',
+      'Email: saladin-vip04@mojangmail.com | Pass: SaladinSecure#2026_04 | Catatan: Full Access Migration di https://account.mojang.com. Harap langsung ganti password dan email pemulihan.',
     ].join('\n'),
     imageUrl: '/images/produk1.jpg',
     isActive: true,
@@ -67,7 +69,8 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     subCategory1: 'skins',
     subCategory2: null,
     deliveryType: 'automatic',
-    deliveryContent: 'Account: bundle-mc-9921@saladinmail.net | Pass: BundleSkin#882 | Skin Pack HD: https://saladinshop.com/dl/skin-bundle-v1.zip',
+    deliveryCategory: 'account',
+    deliveryContent: 'Email: bundle-mc-9921@saladinmail.net | Pass: BundleSkin#882 | Catatan: Unduh Paket Skin Pack HD di https://saladinshop.com/dl/skin-bundle-v1.zip',
     imageUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -87,8 +90,11 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     game: 'minecraft',
     subCategory1: 'skins',
     subCategory2: null,
-    deliveryType: 'automatic',
-    deliveryContent: 'Skin File Download: https://saladinshop.com/skins/custom-skin-hd-77812.png | Tutorial: https://saladinshop.com/guide/skins',
+    deliveryType: 'manual',
+    serviceTag: 'pembuatan-cepat',
+    soldCount: '19rb+ Terjual',
+    deliveryCategory: 'account',
+    deliveryContent: 'File Download: https://saladinshop.com/skins/custom-skin-hd-77812.png | Catatan: Format 64x64 PNG HD Siap Dipakai di Java & Bedrock.',
     imageUrl: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=600&auto=format&fit=crop&q=80',
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -109,7 +115,8 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     subCategory1: 'minecoins',
     subCategory2: null,
     deliveryType: 'automatic',
-    deliveryContent: 'Redeem Code: MNCN-310-SLDN-8812-9912 | Redeem URL: https://minecraft.net/redeem/minecoins',
+    deliveryCategory: 'redeem_code',
+    deliveryContent: 'Kode: MNCN-310-SLDN-8812-9912 | Catatan: Tukarkan di https://minecraft.net/redeem/minecoins',
     imageUrl: '/images/minecoins310.jpg',
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -130,7 +137,8 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     subCategory1: 'minecoins',
     subCategory2: null,
     deliveryType: 'automatic',
-    deliveryContent: 'Redeem Code: MNCN-1020-SLDN-4421-8891 | Redeem URL: https://minecraft.net/redeem/minecoins',
+    deliveryCategory: 'redeem_code',
+    deliveryContent: 'Kode: MNCN-1020-SLDN-4421-8891 | Catatan: Tukarkan di https://minecraft.net/redeem/minecoins',
     imageUrl: '/images/minecoins1000.jpg',
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -151,7 +159,8 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     subCategory1: 'minecoins',
     subCategory2: null,
     deliveryType: 'automatic',
-    deliveryContent: 'Redeem Code: MNCN-3500-SLDN-7712-4419 | Redeem URL: https://minecraft.net/redeem/minecoins',
+    deliveryCategory: 'redeem_code',
+    deliveryContent: 'Kode: MNCN-3500-SLDN-7712-4419 | Catatan: Tukarkan di https://minecraft.net/redeem/minecoins',
     imageUrl: '/images/minecoins3500.jpg',
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -172,7 +181,8 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     subCategory1: 'capes',
     subCategory2: null,
     deliveryType: 'automatic',
-    deliveryContent: 'Optifine Transfer Key: OF-CAPE-8821-9932 | Panduan Aktivasi: https://optifine.net/capeChange',
+    deliveryCategory: 'redeem_code',
+    deliveryContent: 'Kode: OF-CAPE-8821-9932 | Catatan: Panduan Aktivasi di https://optifine.net/capeChange',
     imageUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80',
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -193,54 +203,75 @@ const INITIAL_PRODUCTS: FallbackProduct[] = [
     subCategory1: 'realms',
     subCategory2: null,
     deliveryType: 'automatic',
-    deliveryContent: 'Voucher Realms: REALM-PLUS-3M-991204 | Redeem: https://account.microsoft.com/billing/redeem',
+    deliveryCategory: 'redeem_code',
+    deliveryContent: 'Kode: REALM-PLUS-3M-991204 | Catatan: Klaim voucher di https://account.microsoft.com/billing/redeem',
     imageUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop&q=80',
     isActive: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
-    id: 'prod-rb-1',
-    name: 'Blox Fruit Leopard Fruit (Physical / Perm)',
-    slug: 'blox-fruit-leopard-fruit',
-    description: 'MYTHICAL FRUIT • INSTANT TRADE',
-    price: 145000,
-    originalPrice: 220000,
-    discountPercent: 34,
-    stock: 9,
-    sortOrder: 9,
+    id: 'prod-rb-dragon-fruit',
+    name: 'Dragon Fruit',
+    slug: 'blox-fruit-dragon-fruit',
+    description: 'MYTHICAL FRUIT • INSTANT DELIVERY',
+    price: 150000,
+    originalPrice: 250000,
+    discountPercent: 40,
+    stock: 12,
+    sortOrder: 10,
     productType: 'digital',
     game: 'roblox',
-    subCategory1: 'fisch',
+    subCategory1: 'blox-fruit',
     subCategory2: 'item',
     deliveryType: 'automatic',
-    deliveryContent: 'Private Server Link: https://www.roblox.com/games/2753915549/BloxFruits?privateServerLinkCode=992188 | Bot Trade Username: SaladinTradeBot_01',
-    imageUrl: 'https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=600&auto=format&fit=crop&q=80',
+    deliveryCategory: 'roblox',
+    deliveryContent: 'Username Roblox Admin: SaladinRoblox_Official | Link World Private: https://www.roblox.com/games/2753915549/BloxFruits?privateServerLinkCode=88192019482910 | Catatan: Silakan add friend username Roblox admin di atas, lalu klik Link World Private Server untuk trade fruit langsung.',
+    imageUrl: '/images/dragonfruit.jpg',
     isActive: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
-    id: 'prod-rb-2',
-    name: 'Roblox Account Old 2018 + 5000 Robux',
-    slug: 'roblox-account-old-2018-robux',
-    description: 'OLD ACCOUNT • CLEAN PIN 0%',
-    price: 350000,
-    originalPrice: 550000,
-    discountPercent: 36,
-    stock: 3,
-    sortOrder: 10,
+    id: 'prod-rb-megalodon',
+    name: 'Megalodon Mutasi',
+    slug: 'fish-it-megalodon-mutasi',
+    description: 'MUTATION FISH • INSTANT TRADE',
+    price: 75000,
+    originalPrice: 120000,
+    discountPercent: 37,
+    stock: 8,
+    sortOrder: 11,
     productType: 'digital',
     game: 'roblox',
-    subCategory1: 'bloxfruits',
-    subCategory2: 'akun',
+    subCategory1: 'fish-it',
+    subCategory2: 'item',
     deliveryType: 'automatic',
-    deliveryContent: [
-      'Username: SaladinBlox_2018A | Pass: SaladinTitan#889_A | Backup Codes: 849201, 773104 | Unverified Email',
-      'Username: SaladinBlox_2018B | Pass: SaladinTitan#889_B | Backup Codes: 119402, 638201 | Unverified Email',
-      'Username: SaladinBlox_2018C | Pass: SaladinTitan#889_C | Backup Codes: 559103, 992014 | Unverified Email',
-    ].join('\n'),
-    imageUrl: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=600&auto=format&fit=crop&q=80',
+    deliveryCategory: 'roblox',
+    deliveryContent: 'Username Roblox Admin: SaladinRoblox_Official | Link World Private: https://www.roblox.com/games/fish-it?privateServerLinkCode=991204819283 | Catatan: Silakan add friend username Roblox admin di atas dan join ke private server untuk trade Megalodon Mutasi.',
+    imageUrl: '/images/fishitmegalodon.jpg',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'prod-rb-dragonfly',
+    name: 'Dragonfly',
+    slug: 'grow-a-garden-2-dragonfly',
+    description: 'LEGENDARY PET • GROW A GARDEN 2',
+    price: 65000,
+    originalPrice: 99000,
+    discountPercent: 34,
+    stock: 15,
+    sortOrder: 12,
+    productType: 'digital',
+    game: 'roblox',
+    subCategory1: 'grow-a-garden-2',
+    subCategory2: 'item',
+    deliveryType: 'automatic',
+    deliveryCategory: 'roblox',
+    deliveryContent: 'Username Roblox Admin: SaladinRoblox_Official | Link World Private: https://www.roblox.com/games/grow-a-garden?privateServerLinkCode=7721839218 | Catatan: Silakan add friend username Roblox admin di atas dan join ke private server untuk klaim pet Dragonfly.',
+    imageUrl: '/images/dragonfly.jpg',
     isActive: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -263,10 +294,22 @@ export const fallbackStore = {
         result = result.filter((p) => p.game === filters.game);
       }
       if (filters.subCategory1 && filters.subCategory1 !== 'all') {
-        result = result.filter((p) => p.subCategory1 === filters.subCategory1);
+        const sc1 = filters.subCategory1.toLowerCase();
+        result = result.filter((p) => {
+          const pSub1 = (p.subCategory1 || '').toLowerCase();
+          if (sc1 === 'fish-it' || sc1 === 'fisch') return pSub1 === 'fish-it' || pSub1 === 'fisch' || pSub1 === 'fishit';
+          if (sc1 === 'blox-fruit' || sc1 === 'bloxfruits') return pSub1 === 'blox-fruit' || pSub1 === 'bloxfruits' || pSub1 === 'bloxfruit';
+          if (sc1 === 'grow-a-garden-2' || sc1 === 'growagirl' || sc1 === 'grow-a-garden') return pSub1 === 'grow-a-garden-2' || pSub1 === 'growagirl' || pSub1 === 'grow-a-garden' || pSub1 === 'growagarden2';
+          return pSub1 === sc1;
+        });
       }
       if (filters.subCategory2 && filters.subCategory2 !== 'all') {
-        result = result.filter((p) => p.subCategory2 === filters.subCategory2);
+        const sc2 = filters.subCategory2.toLowerCase();
+        result = result.filter((p) => {
+          const pSub2 = (p.subCategory2 || '').toLowerCase();
+          if (sc2 === 'item' || sc2 === 'items') return pSub2 === 'item' || pSub2 === 'items';
+          return pSub2 === sc2;
+        });
       }
       if (filters.isActive !== undefined) {
         result = result.filter((p) => p.isActive === filters.isActive);

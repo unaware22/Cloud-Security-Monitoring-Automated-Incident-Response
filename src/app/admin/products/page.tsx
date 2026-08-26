@@ -27,69 +27,86 @@ import {
   ArrowDown,
   ArrowUpDown,
   MoveVertical,
+  ExternalLink,
 } from 'lucide-react';
 import { formatIDR } from '@/lib/utils';
+import { parseDeliveryContent, DeliveryCategory } from '@/lib/delivery-parser';
 
-interface AccountDeliveryItem {
+interface AdminDeliveryItem {
   id: string;
   email: string;
   password: string;
+  code: string;
+  robloxUsername: string;
+  privateServerUrl: string;
   keterangan: string;
 }
 
-function parseDeliveryContentToAccounts(raw: string): AccountDeliveryItem[] {
+function parseDeliveryContentToAdminItems(
+  raw: string,
+  category: DeliveryCategory
+): AdminDeliveryItem[] {
   if (!raw || !raw.trim()) {
-    return [{ id: `acc-${Date.now()}-0`, email: '', password: '', keterangan: '' }];
+    return [
+      {
+        id: `item-${Date.now()}-0`,
+        email: '',
+        password: '',
+        code: '',
+        robloxUsername: 'SaladinRoblox_Official',
+        privateServerUrl: '',
+        keterangan: '',
+      },
+    ];
   }
-  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) {
-    return [{ id: `acc-${Date.now()}-0`, email: '', password: '', keterangan: '' }];
+  const parsed = parseDeliveryContent(raw, category);
+  if (parsed.length === 0) {
+    return [
+      {
+        id: `item-${Date.now()}-0`,
+        email: '',
+        password: '',
+        code: '',
+        robloxUsername: 'SaladinRoblox_Official',
+        privateServerUrl: '',
+        keterangan: '',
+      },
+    ];
   }
-  return lines.map((line, idx) => {
-    let email = '';
-    let password = '';
-    let keterangan = '';
 
-    const parts = line.split('|').map((p) => p.trim());
-    for (const part of parts) {
-      if (/^(email|username|user|akun)\s*:\s*/i.test(part)) {
-        email = part.replace(/^(email|username|user|akun)\s*:\s*/i, '').trim();
-      } else if (/^(pass|password|pwd|kata sandi)\s*:\s*/i.test(part)) {
-        password = part.replace(/^(pass|password|pwd|kata sandi)\s*:\s*/i, '').trim();
-      } else if (/^(keterangan|ket|info|detail|note|notes)\s*:\s*/i.test(part)) {
-        keterangan = part.replace(/^(keterangan|ket|info|detail|note|notes)\s*:\s*/i, '').trim();
-      } else {
-        keterangan = keterangan ? `${keterangan} | ${part}` : part;
-      }
-    }
-
-    if (!email && !password && !keterangan) {
-      keterangan = line;
-    } else if (!email && parts.length >= 1) {
-      email = parts[0];
-      if (parts.length >= 2) password = parts[1];
-      if (parts.length >= 3) keterangan = parts.slice(2).join(' | ');
-    }
-
-    return {
-      id: `acc-${Date.now()}-${idx}`,
-      email,
-      password,
-      keterangan,
-    };
-  });
+  return parsed.map((p, idx) => ({
+    id: `item-${Date.now()}-${idx}`,
+    email: p.email || '',
+    password: p.password || '',
+    code: p.code || '',
+    robloxUsername: p.robloxUsername || 'SaladinRoblox_Official',
+    privateServerUrl: p.privateServerUrl || '',
+    keterangan: p.notes || '',
+  }));
 }
 
-function serializeAccountsToString(accounts: AccountDeliveryItem[]): string {
-  return accounts
-    .filter((a) => a.email.trim() || a.password.trim() || a.keterangan.trim())
-    .map((a) => {
+function serializeAdminItemsToString(
+  items: AdminDeliveryItem[],
+  category: DeliveryCategory
+): string {
+  return items
+    .map((item) => {
       const parts: string[] = [];
-      if (a.email.trim()) parts.push(`Email: ${a.email.trim()}`);
-      if (a.password.trim()) parts.push(`Pass: ${a.password.trim()}`);
-      if (a.keterangan.trim()) parts.push(`Keterangan: ${a.keterangan.trim()}`);
+      if (category === 'account') {
+        if (item.email.trim()) parts.push(`Email: ${item.email.trim()}`);
+        if (item.password.trim()) parts.push(`Pass: ${item.password.trim()}`);
+        if (item.keterangan.trim()) parts.push(`Catatan: ${item.keterangan.trim()}`);
+      } else if (category === 'redeem_code') {
+        if (item.code.trim()) parts.push(`Kode: ${item.code.trim()}`);
+        if (item.keterangan.trim()) parts.push(`Catatan: ${item.keterangan.trim()}`);
+      } else if (category === 'roblox') {
+        if (item.robloxUsername.trim()) parts.push(`Username Roblox Admin: ${item.robloxUsername.trim()}`);
+        if (item.privateServerUrl.trim()) parts.push(`Link World Private: ${item.privateServerUrl.trim()}`);
+        if (item.keterangan.trim()) parts.push(`Catatan: ${item.keterangan.trim()}`);
+      }
       return parts.join(' | ');
     })
+    .filter((line) => line.trim().length > 0)
     .join('\n');
 }
 
@@ -123,8 +140,17 @@ export default function AdminProductsPage() {
   const [subCategory1, setSubCategory1] = useState('akun');
   const [subCategory2, setSubCategory2] = useState<string>('items');
   const [deliveryType, setDeliveryType] = useState<'automatic' | 'manual'>('automatic');
-  const [accountList, setAccountList] = useState<AccountDeliveryItem[]>([
-    { id: '1', email: '', password: '', keterangan: '' },
+  const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>('account');
+  const [deliveryItems, setDeliveryItems] = useState<AdminDeliveryItem[]>([
+    {
+      id: '1',
+      email: '',
+      password: '',
+      code: '',
+      robloxUsername: 'SaladinRoblox_Official',
+      privateServerUrl: '',
+      keterangan: '',
+    },
   ]);
   const [imageUrl, setImageUrl] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -163,10 +189,19 @@ export default function AdminProductsPage() {
     setSoldCount('19rb+ Terjual');
     setGame('minecraft');
     setSubCategory1('akun');
-    setSubCategory2('items');
+    setSubCategory2('item');
     setDeliveryType('automatic');
-    setAccountList([
-      { id: `acc-${Date.now()}-0`, email: '', password: '', keterangan: 'Full Access Migration: https://account.mojang.com' },
+    setDeliveryCategory('account');
+    setDeliveryItems([
+      {
+        id: `item-${Date.now()}-0`,
+        email: '',
+        password: '',
+        code: '',
+        robloxUsername: 'SaladinRoblox_Official',
+        privateServerUrl: '',
+        keterangan: 'Full Access Migration di https://account.mojang.com',
+      },
     ]);
     setImageUrl('');
     setIsActive(true);
@@ -186,9 +221,24 @@ export default function AdminProductsPage() {
     setSoldCount(prod.soldCount || '19rb+ Terjual');
     setGame(prod.game);
     setSubCategory1(prod.subCategory1);
-    setSubCategory2(prod.subCategory2 || 'items');
+    setSubCategory2(prod.subCategory2 === 'items' ? 'item' : (prod.subCategory2 || 'item'));
     setDeliveryType(prod.deliveryType || 'automatic');
-    setAccountList(parseDeliveryContentToAccounts(prod.deliveryContent || ''));
+
+    let cat: DeliveryCategory = prod.deliveryCategory;
+    if (!cat) {
+      if (prod.game === 'roblox' || /roblox/i.test(prod.deliveryContent || '')) {
+        cat = 'roblox';
+      } else if (
+        /kode|redeem|voucher|minecoin/i.test(prod.deliveryContent || '') ||
+        /minecoin/i.test(prod.subCategory1 || '')
+      ) {
+        cat = 'redeem_code';
+      } else {
+        cat = 'account';
+      }
+    }
+    setDeliveryCategory(cat);
+    setDeliveryItems(parseDeliveryContentToAdminItems(prod.deliveryContent || '', cat));
     setImageUrl(prod.imageUrl || '');
     setIsActive(prod.isActive);
     setFormError('');
@@ -308,25 +358,48 @@ export default function AdminProductsPage() {
       : price;
 
   // Account item handlers
-  const handleAddAccount = () => {
-    const newId = `acc-${Date.now()}-${accountList.length}`;
+  // Delivery item handlers
+  const handleAddDeliveryItem = () => {
+    const newId = `item-${Date.now()}-${deliveryItems.length}`;
+    const defaultNote =
+      deliveryCategory === 'account'
+        ? 'Full Access Migration di https://account.mojang.com'
+        : deliveryCategory === 'redeem_code'
+        ? 'Tukarkan di https://minecraft.net/redeem/minecoins'
+        : 'Silakan add username Roblox di atas lalu join private server untuk trade.';
+
     const updated = [
-      ...accountList,
-      { id: newId, email: '', password: '', keterangan: 'Full Access Migration: https://account.mojang.com' },
+      ...deliveryItems,
+      {
+        id: newId,
+        email: '',
+        password: '',
+        code: '',
+        robloxUsername: 'SaladinRoblox_Official',
+        privateServerUrl:
+          deliveryCategory === 'roblox'
+            ? 'https://www.roblox.com/games/2753915549/BloxFruits?privateServerLinkCode=88192019482910'
+            : '',
+        keterangan: defaultNote,
+      },
     ];
-    setAccountList(updated);
+    setDeliveryItems(updated);
     setStock(updated.length);
   };
 
-  const handleRemoveAccount = (id: string) => {
-    if (accountList.length <= 1) return;
-    const updated = accountList.filter((a) => a.id !== id);
-    setAccountList(updated);
+  const handleRemoveDeliveryItem = (id: string) => {
+    if (deliveryItems.length <= 1) return;
+    const updated = deliveryItems.filter((a) => a.id !== id);
+    setDeliveryItems(updated);
     setStock(updated.length);
   };
 
-  const handleAccountChange = (id: string, field: keyof AccountDeliveryItem, value: string) => {
-    setAccountList((prev) =>
+  const handleDeliveryItemChange = (
+    id: string,
+    field: keyof AdminDeliveryItem,
+    value: string
+  ) => {
+    setDeliveryItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
   };
@@ -336,7 +409,7 @@ export default function AdminProductsPage() {
     setFormSubmitting(true);
     setFormError('');
 
-    const serializedDelivery = serializeAccountsToString(accountList);
+    const serializedDelivery = serializeAdminItemsToString(deliveryItems, deliveryCategory);
 
     const payload = {
       name: name.trim(),
@@ -354,6 +427,7 @@ export default function AdminProductsPage() {
       sub_category_1: subCategory1,
       sub_category_2: game === 'roblox' ? subCategory2 : null,
       delivery_type: deliveryType,
+      delivery_category: deliveryCategory,
       delivery_content: serializedDelivery,
       image_url: imageUrl.trim(),
       is_active: isActive,
@@ -656,40 +730,43 @@ export default function AdminProductsPage() {
 
       {/* Modal Add / Edit Product */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="max-w-3xl w-full rounded-2xl bg-surface border border-surface-border shadow-2xl p-6 sm:p-8 space-y-6 my-8 text-xs">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-surface-border">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                  <Package className="w-4 h-4" />
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 md:p-6 animate-in fade-in duration-200">
+          <div className="max-w-3xl w-full max-h-[92vh] sm:max-h-[88vh] rounded-2xl bg-[#181818] border border-neutral-800 shadow-2xl flex flex-col text-xs overflow-hidden">
+            {/* 1. Sticky Modal Header */}
+            <div className="flex-shrink-0 px-6 py-4 border-b border-neutral-800 bg-[#202020] flex items-center justify-between z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-inner">
+                  <Package className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-white">
+                  <h2 className="text-base font-black text-white tracking-tight">
                     {editingProduct ? 'Edit Data Produk & Akun' : 'Tambah Produk Baru'}
                   </h2>
-                  <p className="text-[10px] text-gray-400">
-                    Masukkan detail produk, urutan tampil di beranda, dan data delivery akun per unit stok.
+                  <p className="text-[11px] text-gray-400">
+                    Lengkapi informasi produk, klasifikasi game, harga diskon, dan stok akun delivery otomatis.
                   </p>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-surface-hover text-gray-400 hover:text-white"
+                className="p-2 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 text-gray-400 hover:text-white border border-neutral-700/60 transition-colors"
+                aria-label="Tutup"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {formError && (
-              <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 flex items-center gap-2 text-xs">
-                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Form with Scrollable Body and Sticky Action Footer */}
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+                {formError && (
+                  <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 flex items-center gap-2.5 text-xs animate-in slide-in-from-top-1">
+                    <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                    <span>{formError}</span>
+                  </div>
+                )}
               {/* 1. Nama, Slug, dan Urutan Tampil */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-1">
@@ -869,7 +946,7 @@ export default function AdminProductsPage() {
                   Klasifikasi Game &amp; Stok
                 </span>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className={`grid grid-cols-1 ${game === 'roblox' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3`}>
                   <div>
                     <label className="block text-gray-400 mb-1 font-medium">Game *</label>
                     <select
@@ -881,7 +958,7 @@ export default function AdminProductsPage() {
                           setSubCategory1('akun');
                         } else {
                           setSubCategory1('blox-fruit');
-                          setSubCategory2('items');
+                          setSubCategory2('item');
                         }
                       }}
                       className="w-full px-3 py-2 rounded-xl bg-surface border border-surface-border text-white focus:outline-none focus:border-emerald-500 font-bold"
@@ -912,11 +989,26 @@ export default function AdminProductsPage() {
                         className="w-full px-3 py-2 rounded-xl bg-surface border border-surface-border text-white focus:outline-none focus:border-emerald-500"
                       >
                         <option value="blox-fruit">Blox Fruit</option>
-                        <option value="fish-it">Fish It</option>
+                        <option value="fish-it">Fish it</option>
                         <option value="grow-a-garden-2">Grow a Garden 2</option>
                       </select>
                     )}
                   </div>
+
+                  {game === 'roblox' && (
+                    <div>
+                      <label className="block text-gray-400 mb-1 font-medium">Sub Kategori *</label>
+                      <select
+                        value={subCategory2 || 'item'}
+                        onChange={(e) => setSubCategory2(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-surface border border-surface-border text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="akun">Akun</option>
+                        <option value="item">Item</option>
+                        <option value="joki">Joki</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-gray-400 mb-1 font-semibold">Stok Unit *</label>
@@ -1022,59 +1114,113 @@ export default function AdminProductsPage() {
                 </div>
               </div>
 
-              {/* 6. STRUCTURED 3-BOX DELIVERY CREDENTIALS (Email, Password, Keterangan) */}
+              {/* 6. STRUCTURED DIGITAL DELIVERY CREDENTIALS BY 3 CATEGORIES */}
               <div className="p-4 sm:p-5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-emerald-500/20">
                   <div className="flex items-center gap-2">
                     <Key className="w-4 h-4 text-emerald-400" />
                     <label className="block text-emerald-300 font-bold text-xs uppercase tracking-wider">
-                      Data Delivery Digital ({accountList.length} Akun Terdaftar)
+                      Format Pengiriman Digital ({deliveryItems.length} Unit Terdaftar)
                     </label>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleAddAccount}
+                      onClick={handleAddDeliveryItem}
                       className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Tambah Akun</span>
+                      <span>Tambah Unit</span>
                     </button>
 
-                    {accountList.length !== stock && (
+                    {deliveryItems.length !== stock && (
                       <button
                         type="button"
-                        onClick={() => setStock(accountList.length)}
+                        onClick={() => setStock(deliveryItems.length)}
                         className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase transition-all"
-                        title="Sesuaikan stok dengan jumlah data akun di bawah"
+                        title="Sesuaikan stok dengan jumlah data pengiriman di bawah"
                       >
-                        ⚡ Samakan Stok ({accountList.length})
+                        ⚡ Samakan Stok ({deliveryItems.length})
                       </button>
                     )}
                   </div>
                 </div>
 
-                {/* Account Boxes List */}
+                {/* 3 Categories Selection Tabs */}
+                <div className="space-y-2">
+                  <label className="block text-gray-300 font-semibold text-xs">Pilih Kategori Delivery *</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryCategory('account')}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all ${
+                        deliveryCategory === 'account'
+                          ? 'bg-emerald-950/80 border-emerald-400 text-white shadow-lg ring-2 ring-emerald-500/40'
+                          : 'bg-surface hover:bg-surface-hover border-surface-border text-gray-400'
+                      }`}
+                    >
+                      <span className="text-base">🎮</span>
+                      <span className="text-xs font-bold">Kategori Akun</span>
+                      <span className="text-[9px] text-gray-400">Email, Pass, Catatan</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryCategory('redeem_code')}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all ${
+                        deliveryCategory === 'redeem_code'
+                          ? 'bg-amber-950/80 border-amber-400 text-white shadow-lg ring-2 ring-amber-500/40'
+                          : 'bg-surface hover:bg-surface-hover border-surface-border text-gray-400'
+                      }`}
+                    >
+                      <span className="text-base">🎟️</span>
+                      <span className="text-xs font-bold">Kategori Kode Redeem</span>
+                      <span className="text-[9px] text-gray-400">Kode, Catatan / Link</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryCategory('roblox')}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all ${
+                        deliveryCategory === 'roblox'
+                          ? 'bg-cyan-950/80 border-cyan-400 text-white shadow-lg ring-2 ring-cyan-500/40'
+                          : 'bg-surface hover:bg-surface-hover border-surface-border text-gray-400'
+                      }`}
+                    >
+                      <span className="text-base">🧱</span>
+                      <span className="text-xs font-bold">Kategori Roblox</span>
+                      <span className="text-[9px] text-gray-400">Add User, Private Link, Note</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Delivery Items List */}
                 <div className="space-y-3.5 max-h-96 overflow-y-auto pr-1">
-                  {accountList.map((acc, index) => (
+                  {deliveryItems.map((item, index) => (
                     <div
-                      key={acc.id}
+                      key={item.id}
                       className="p-3.5 rounded-xl bg-black/60 border border-emerald-500/30 space-y-2.5 relative group"
                     >
                       {/* Box Header */}
                       <div className="flex items-center justify-between text-[11px] font-bold text-emerald-400">
                         <span className="flex items-center gap-1.5">
                           <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Data Akun #{index + 1}</span>
+                          <span>
+                            {deliveryCategory === 'account'
+                              ? `Data Akun #${index + 1}`
+                              : deliveryCategory === 'redeem_code'
+                              ? `Data Kode Redeem #${index + 1}`
+                              : `Data Item Roblox #${index + 1}`}
+                          </span>
                         </span>
 
-                        {accountList.length > 1 && (
+                        {deliveryItems.length > 1 && (
                           <button
                             type="button"
-                            onClick={() => handleRemoveAccount(acc.id)}
+                            onClick={() => handleRemoveDeliveryItem(item.id)}
                             className="text-rose-400 hover:text-rose-300 text-[10px] flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/40 border border-rose-500/30 transition-all"
-                            title="Hapus Akun Ini"
+                            title="Hapus Unit Ini"
                           >
                             <Trash2 className="w-3 h-3" />
                             <span>Hapus</span>
@@ -1082,90 +1228,175 @@ export default function AdminProductsPage() {
                         )}
                       </div>
 
-                      {/* 3 Input Boxes: 1. Email, 2. Password, 3. Keterangan */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        {/* Box 1: Email / Username */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-cyan-400" />
-                            <span>1. Email / Username *</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={acc.email}
-                            onChange={(e) => handleAccountChange(acc.id, 'email', e.target.value)}
-                            placeholder="user@mojang.com"
-                            className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
-                          />
-                        </div>
+                      {/* FIELD RENDERING: CATEGORY 1 (ACCOUNT) */}
+                      {deliveryCategory === 'account' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                              <Mail className="w-3 h-3 text-cyan-400" />
+                              <span>1. Email / Username *</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={item.email}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'email', e.target.value)}
+                              placeholder="user@mojang.com"
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
 
-                        {/* Box 2: Password */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
-                            <Lock className="w-3 h-3 text-amber-400" />
-                            <span>2. Password *</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={acc.password}
-                            onChange={(e) => handleAccountChange(acc.id, 'password', e.target.value)}
-                            placeholder="SecretPass#123"
-                            className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
-                          />
-                        </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-amber-400" />
+                              <span>2. Password *</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={item.password}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'password', e.target.value)}
+                              placeholder="SecretPass#123"
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
 
-                        {/* Box 3: Keterangan / Detail */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
-                            <Info className="w-3 h-3 text-emerald-400" />
-                            <span>3. Keterangan (Opsional)</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={acc.keterangan}
-                            onChange={(e) => handleAccountChange(acc.id, 'keterangan', e.target.value)}
-                            placeholder="Full Access Migration: mojang.com"
-                            className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-gray-300 text-xs focus:outline-none focus:border-emerald-500"
-                          />
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                              <Info className="w-3 h-3 text-emerald-400" />
+                              <span>3. Catatan / Panduan</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={item.keterangan}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'keterangan', e.target.value)}
+                              placeholder="Full Access Migration: mojang.com"
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-gray-300 text-xs focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* FIELD RENDERING: CATEGORY 2 (REDEEM CODE) */}
+                      {deliveryCategory === 'redeem_code' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-amber-400 font-bold flex items-center gap-1">
+                              <Key className="w-3 h-3 text-amber-400" />
+                              <span>1. Kode Redeem / Lisensi *</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={item.code}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'code', e.target.value)}
+                              placeholder="MNCN-310-SLDN-8812-9912"
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-amber-500/50 text-amber-300 text-xs font-mono font-bold focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                              <Info className="w-3 h-3 text-cyan-400" />
+                              <span>2. Catatan / Link Penukaran</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={item.keterangan}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'keterangan', e.target.value)}
+                              placeholder="Tukarkan di https://minecraft.net/redeem/minecoins"
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-gray-300 text-xs focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* FIELD RENDERING: CATEGORY 3 (ROBLOX) */}
+                      {deliveryCategory === 'roblox' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-amber-400 font-bold flex items-center gap-1">
+                              <Key className="w-3 h-3 text-amber-400" />
+                              <span>1. Username Roblox Admin *</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={item.robloxUsername}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'robloxUsername', e.target.value)}
+                              placeholder="SaladinRoblox_Official"
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-amber-500/50 text-amber-300 text-xs font-mono font-bold focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-sky-400 font-bold flex items-center gap-1">
+                              <ExternalLink className="w-3 h-3 text-sky-400" />
+                              <span>2. Link World Private Server *</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={item.privateServerUrl}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'privateServerUrl', e.target.value)}
+                              placeholder="https://www.roblox.com/games/2753915549/BloxFruits?privateServerLinkCode=..."
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-cyan-500/50 text-sky-300 text-xs font-mono focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                              <Info className="w-3 h-3 text-emerald-400" />
+                              <span>3. Catatan / Petunjuk Trade</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={item.keterangan}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'keterangan', e.target.value)}
+                              placeholder="Silakan add username Roblox di atas lalu join ke server."
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-gray-300 text-xs focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
 
                 <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
-                  💡 <strong>Sistem Otomatis:</strong> Setiap akun di atas akan dikirimkan satu per satu secara berurutan (*FIFO*) ke masing-masing pembeli yang pesanannya disahkan oleh Admin.
+                  💡 <strong>Sistem Otomatis:</strong> Setiap unit pengiriman di atas akan dikirimkan satu per satu secara berurutan (*FIFO*) ke masing-masing pembeli yang pesanannya diverifikasi.
                 </p>
               </div>
 
-              {/* 6. Action Footer */}
-              <div className="flex items-center justify-between pt-4 border-t border-surface-border">
-                <label className="flex items-center gap-2 cursor-pointer">
+              </div>
+
+              {/* 6. Sticky Action Footer */}
+              <div className="flex-shrink-0 px-6 py-4 border-t border-neutral-800 bg-[#202020] flex flex-col sm:flex-row items-center justify-between gap-3 z-10">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={isActive}
                     onChange={(e) => setIsActive(e.target.checked)}
-                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-neutral-900 border-neutral-700"
                   />
-                  <span className="text-gray-300 font-semibold">Produk Aktif untuk Dijual</span>
+                  <span className="text-gray-300 font-semibold text-xs">Produk Aktif untuk Dijual</span>
                 </label>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2 rounded-xl bg-surface hover:bg-surface-hover border border-surface-border text-gray-300 font-semibold"
+                    className="px-5 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/80 text-gray-300 font-semibold transition-all hover:text-white"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
                     disabled={formSubmitting}
-                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg disabled:opacity-50"
+                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition-all disabled:opacity-50"
                   >
-                    {formSubmitting ? 'Menyimpan...' : 'Simpan Produk'}
+                    {formSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <span>{formSubmitting ? 'Menyimpan...' : 'Simpan Produk'}</span>
                   </button>
                 </div>
               </div>

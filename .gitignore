@@ -46,3 +46,9 @@ Thumbs.db
 coverage/
 .nyc_output/
 .turbo/
+*.tsbuildinfo
+
+# Agent skills & internal tools (Do not push to GitHub)
+.agents/
+.gemini/
+scripts/

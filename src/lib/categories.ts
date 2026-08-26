@@ -26,24 +26,21 @@ export const GAME_CATEGORIES: GameConfig[] = [
       {
         id: 'all',
         name: 'Semua',
-        childSubcategories: [{ id: 'all', name: 'Semua' }],
-      },
-      {
-        id: 'fish-it',
-        name: 'Fish It',
         childSubcategories: [
           { id: 'all', name: 'Semua' },
           { id: 'akun', name: 'Akun' },
-          { id: 'items', name: 'Items' },
+          { id: 'item', name: 'Item' },
+          { id: 'joki', name: 'Joki' },
         ],
       },
       {
-        id: 'grow-a-garden-2',
-        name: 'Grow a Garden 2',
+        id: 'fish-it',
+        name: 'Fish it',
         childSubcategories: [
           { id: 'all', name: 'Semua' },
           { id: 'akun', name: 'Akun' },
-          { id: 'items', name: 'Items' },
+          { id: 'item', name: 'Item' },
+          { id: 'joki', name: 'Joki' },
         ],
       },
       {
@@ -52,7 +49,18 @@ export const GAME_CATEGORIES: GameConfig[] = [
         childSubcategories: [
           { id: 'all', name: 'Semua' },
           { id: 'akun', name: 'Akun' },
-          { id: 'items', name: 'Items' },
+          { id: 'item', name: 'Item' },
+          { id: 'joki', name: 'Joki' },
+        ],
+      },
+      {
+        id: 'grow-a-garden-2',
+        name: 'Grow a Garden 2',
+        childSubcategories: [
+          { id: 'all', name: 'Semua' },
+          { id: 'akun', name: 'Akun' },
+          { id: 'item', name: 'Item' },
+          { id: 'joki', name: 'Joki' },
         ],
       },
     ],

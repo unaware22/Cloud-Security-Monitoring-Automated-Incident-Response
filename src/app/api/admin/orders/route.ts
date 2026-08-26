@@ -55,6 +55,10 @@ export async function GET(req: NextRequest) {
                 },
               },
             },
+            paymentTransactions: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
             manualPaymentSubmissions: {
               orderBy: { createdAt: 'desc' },
               take: 1,
@@ -69,6 +73,25 @@ export async function GET(req: NextRequest) {
       ]);
 
       if (orders && orders.length > 0) {
+        const mappedOrders = orders.map((ord: any) => {
+          let customerNotes: string | null = null;
+          let customSkinDetails: any = null;
+          try {
+            const raw = ord.paymentTransactions?.[0]?.rawPayload;
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              customerNotes = parsed.customer_notes || parsed.notes || null;
+              customSkinDetails = parsed.custom_skin_details || null;
+            }
+          } catch {}
+          return {
+            ...ord,
+            customerNotes,
+            notes: customerNotes,
+            customSkinDetails,
+          };
+        });
+
         return NextResponse.json({
           success: true,
           pagination: {
@@ -77,7 +100,7 @@ export async function GET(req: NextRequest) {
             total,
             totalPages: Math.ceil(total / limit),
           },
-          data: orders,
+          data: mappedOrders,
         });
       }
     } catch {

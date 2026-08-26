@@ -15,6 +15,13 @@ export type GameConfig = {
   subcategories: SubCategory[];
 };
 
+export interface CustomSkinDetails {
+  description: string;
+  skinSize: '32x32' | '64x64' | string;
+  skinModel: 'wide' | 'slim' | string;
+  referenceImageUrl?: string | null;
+}
+
 export interface ProductItem {
   id: string;
   name: string;

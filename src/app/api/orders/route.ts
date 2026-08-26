@@ -9,27 +9,58 @@ import {
   recordSecurityEvent,
 } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
-import { createXenditInvoice } from '@/lib/xendit';
+import { createMidtransSnapTransaction, calculatePaymentFee } from '@/lib/midtrans';
 import { fallbackStore } from '@/lib/products-store';
 import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
 
 export const dynamic = 'force-dynamic';
 
 const CheckoutSchema = z.object({
-  product_id: z.string().min(1, 'Product ID is required'),
-  quantity: z.number().int().min(1, 'Quantity must be at least 1').max(20, 'Max quantity is 20'),
-  customer_name: z.string().trim().min(2, 'Name is too short').max(100, 'Name is too long'),
-  customer_email: z.string().trim().email('Invalid email address').max(120),
-  customer_phone: z.string().trim().min(8, 'Phone number is too short').max(20, 'Phone number is too long'),
-  payment_method: z.enum(['xendit_invoice', 'manual_transfer', 'manual_qris']),
+  product_id: z.string().min(1, 'Produk wajib dipilih'),
+  quantity: z.number().int().min(1).default(1),
+  customer_name: z.string().trim().min(2, 'Nama lengkap wajib diisi').max(100),
+  customer_email: z.string().trim().email('Format email tidak valid').max(150),
+  customer_phone: z.string().trim().min(8, 'Nomor telepon tidak valid').max(20),
+  payment_method: z.string().default('va_mandiri'),
+  notes: z.string().trim().max(1000).optional(),
+  skin_description: z.string().trim().optional(),
+  skin_size: z.string().trim().optional(),
+  skin_model: z.string().trim().optional(),
+  skin_reference_image: z.string().optional(),
+  custom_skin_details: z.any().optional(),
 });
+
+/**
+ * Maps frontend payment_method values to Xendit Invoice API payment_methods array.
+ */
+function getXenditPaymentMethods(paymentMethod: string): string[] | undefined {
+  const methodMap: Record<string, string[]> = {
+    // Virtual Account Banks
+    va_mandiri: ['MANDIRI'],
+    va_bca: ['BCA'],
+    va_bri: ['BRI'],
+    va_bni: ['BNI'],
+    va_permata: ['PERMATA'],
+    va_bsi: ['BSI'],
+    // QRIS
+    qris: ['QRIS'],
+    // E-Wallets
+    dana: ['DANA'],
+    ovo: ['OVO'],
+    shopeepay: ['SHOPEEPAY'],
+    // Retail Outlets
+    alfamart: ['ALFAMART'],
+  };
+
+  return methodMap[paymentMethod] || undefined;
+}
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req.headers);
   const userAgent = req.headers.get('user-agent') || 'Unknown';
   const requestId = req.headers.get('x-request-id') || `req-${Date.now()}`;
 
-  // 1. Check Rate Limit
+  // 1. Rate Limiting Check
   const rateLimitResult = await checkRateLimit(ip, RATE_LIMIT_RULES.CHECKOUT, {
     endpoint: '/api/orders',
     method: 'POST',
@@ -41,7 +72,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: 'Too Many Requests',
-        message: 'Rate limit exceeded for checkout. Please wait a minute.',
+        message: 'Terlalu banyak permintaan checkout. Harap tunggu beberapa saat.',
       },
       { status: 429 }
     );
@@ -52,7 +83,7 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { error: 'Bad Request', message: 'Malformed JSON payload' },
+      { error: 'Bad Request', message: 'Format data payload tidak valid' },
       { status: 400 }
     );
   }
@@ -100,6 +131,12 @@ export async function POST(req: NextRequest) {
     customer_email,
     customer_phone,
     payment_method,
+    notes,
+    skin_description,
+    skin_size,
+    skin_model,
+    skin_reference_image,
+    custom_skin_details,
   } = parseResult.data;
 
   const dbOnline = await isDatabaseOnline();
@@ -140,31 +177,72 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const totalAmount = product.price * quantity;
+  const isSkinProduct =
+    product.slug.includes('skin') ||
+    product.name.toLowerCase().includes('skin') ||
+    product.subCategory1 === 'skins' ||
+    product.serviceTag === 'pembuatan-cepat';
+
+  let customSkinPayload: any = null;
+  if (isSkinProduct || skin_description || skin_size || skin_model) {
+    const desc = skin_description || custom_skin_details?.description || '';
+    if (isSkinProduct && desc.trim().length < 20) {
+      return NextResponse.json(
+        {
+          error: 'Validation Error',
+          message: 'Deskripsi skin impian minimal 20 karakter agar hasil sesuai.',
+        },
+        { status: 422 }
+      );
+    }
+    customSkinPayload = {
+      description: desc.trim(),
+      skinSize: skin_size || custom_skin_details?.skinSize || '64x64',
+      skinModel: skin_model || custom_skin_details?.skinModel || 'wide',
+      referenceImageUrl: skin_reference_image || custom_skin_details?.referenceImageUrl || null,
+    };
+  }
+
+  let combinedNotes = notes ? notes.trim() : '';
+  if (customSkinPayload) {
+    const skinSummary = `[SKIN CUSTOM] Ukuran: ${customSkinPayload.skinSize === '32x32' ? '32x32 px' : '64x64 px'} | Model: ${customSkinPayload.skinModel === 'slim' ? 'Slim (Alex)' : 'Wide (Steve)'}${customSkinPayload.referenceImageUrl ? ' | [Ada Referensi Gambar]' : ''}\nDeskripsi:\n${customSkinPayload.description}`;
+    combinedNotes = combinedNotes ? `${combinedNotes}\n\n${skinSummary}` : skinSummary;
+  }
+
+  const productSubtotal = product.price * quantity;
+  const feeData = calculatePaymentFee(productSubtotal);
+  const totalAmount = feeData.totalWithFee;
+  const adminFee = feeData.totalFee;
+
   const orderCode = generateOrderCode();
   const expiredAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 Hours
-  const initialPaymentStatus =
-    payment_method === 'xendit_invoice' ? 'pending' : 'pending_manual';
+  const initialPaymentStatus = 'pending';
 
-  // 5. If Xendit, initialize invoice
+  // 5. Create Midtrans Snap Transaction
   let paymentUrl: string | null = null;
   let providerInvoiceId: string | null = null;
 
-  if (payment_method === 'xendit_invoice') {
-    const invoiceData = await createXenditInvoice({
-      externalId: orderCode,
-      amount: totalAmount,
-      payerEmail: customer_email,
-      description: `Order ${orderCode} - ${product.name}`,
+  try {
+    const snapData = await createMidtransSnapTransaction({
+      orderId: orderCode,
+      grossAmount: totalAmount,
+      productPrice: productSubtotal,
+      feeAmount: adminFee,
       customerName: customer_name,
+      customerEmail: customer_email,
       customerPhone: customer_phone,
+      productName: product.name,
+      productId: product.id,
+      quantity,
+      paymentMethod: payment_method,
     });
 
-    paymentUrl = invoiceData.invoiceUrl;
-    providerInvoiceId = invoiceData.invoiceId;
-  } else {
+    paymentUrl = snapData.redirectUrl;
+    providerInvoiceId = snapData.token;
+  } catch (invErr) {
+    console.error('Midtrans Snap creation error:', invErr);
     const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
-    paymentUrl = `${baseUrl}/payment/${orderCode}`;
+    paymentUrl = `${baseUrl}/check-order?order_code=${orderCode}&status=error`;
   }
 
   // 6. If DB Online, execute PostgreSQL transaction
@@ -193,14 +271,14 @@ export async function POST(req: NextRequest) {
             productNameSnapshot: product.name,
             quantity,
             priceSnapshot: product.price,
-            subtotal: totalAmount,
+            subtotal: productSubtotal,
           },
         });
 
         await tx.paymentTransaction.create({
           data: {
             orderId: order.id,
-            provider: payment_method === 'xendit_invoice' ? 'xendit' : 'manual',
+            provider: 'midtrans',
             providerInvoiceId,
             paymentUrl,
             amount: totalAmount,
@@ -208,6 +286,10 @@ export async function POST(req: NextRequest) {
             rawPayload: JSON.stringify({
               payment_method,
               provider_invoice_id: providerInvoiceId,
+              product_subtotal: productSubtotal,
+              admin_fee: adminFee,
+              customer_notes: combinedNotes || null,
+              custom_skin_details: customSkinPayload || null,
             }),
           },
         });
@@ -250,7 +332,7 @@ export async function POST(req: NextRequest) {
     paymentStatus: initialPaymentStatus,
     deliveryStatus: 'pending',
     paymentMethod: payment_method,
-    paymentUrl,
+    paymentUrl: paymentUrl,
     expiredAt: expiredAt.toISOString(),
     createdAt: new Date().toISOString(),
     items: [
@@ -275,11 +357,13 @@ export async function POST(req: NextRequest) {
     ],
     productId: product.id,
     quantity,
-    deliveryContent: product.deliveryContent || 'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026 | Full Access: https://account.mojang.com',
-    delivery_content: product.deliveryContent || 'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026 | Full Access: https://account.mojang.com',
-    digital_delivery: {
-      content: product.deliveryContent || 'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026 | Full Access: https://account.mojang.com',
-    },
+    deliveryContent: null,
+    delivery_content: null,
+    deliveryType: product.deliveryType || (isSkinProduct ? 'manual' : 'automatic'),
+    digital_delivery: null,
+    customerNotes: combinedNotes || null,
+    notes: combinedNotes || null,
+    customSkinDetails: customSkinPayload || null,
   };
 
   inMemoryOrders.unshift(memoryOrderRecord);

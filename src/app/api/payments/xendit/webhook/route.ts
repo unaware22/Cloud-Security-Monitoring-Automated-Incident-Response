@@ -4,6 +4,8 @@ import { getClientIp, recordSecurityEvent } from '@/lib/security';
 import { verifyXenditWebhookToken } from '@/lib/xendit';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { sendDigitalDelivery } from '@/lib/email';
+import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
+import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +71,6 @@ export async function POST(req: NextRequest) {
   try {
     const externalId = payload.external_id || payload.id;
     const status = (payload.status || '').toUpperCase();
-    const paidAmount = payload.paid_amount || payload.amount;
 
     if (!externalId) {
       return NextResponse.json(
@@ -78,83 +79,159 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const order = await prisma.order.findUnique({
-      where: { orderCode: externalId },
-      include: {
-        orderItems: {
-          include: {
-            product: true,
+    const dbOnline = await isDatabaseOnline();
+
+    if (dbOnline) {
+      const order = await prisma.order.findUnique({
+        where: { orderCode: externalId },
+        include: {
+          orderItems: {
+            include: {
+              product: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!order) {
-      return NextResponse.json(
-        { error: 'Not Found', message: 'Order reference not found' },
-        { status: 404 }
-      );
+      if (order) {
+        // 4. Idempotency Check: Already processed
+        if (order.paymentStatus === 'paid') {
+          return NextResponse.json({
+            success: true,
+            message: 'Webhook already processed for this order (Idempotent)',
+          });
+        }
+
+        if (status === 'PAID' || status === 'SETTLED') {
+          const now = new Date();
+          // Update Order Status
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: 'paid',
+              orderStatus: 'completed',
+              deliveryStatus: 'delivered',
+              paidAt: now,
+            },
+          });
+
+          const mainItem = order.orderItems[0];
+          const qty = mainItem?.quantity || 1;
+          const rawLines = (mainItem?.product?.deliveryContent || '')
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+
+          let deliveryContent = '';
+          let remainingContent = '';
+
+          if (rawLines.length > 0) {
+            deliveryContent = rawLines.slice(0, qty).join('\n');
+            remainingContent = rawLines.slice(qty).join('\n');
+          } else {
+            deliveryContent =
+              mainItem?.product?.deliveryContent ||
+              'Akun telah aktif. Silakan hubungi CS jika ada kendala.';
+          }
+
+          if (mainItem?.productId) {
+            await prisma.product
+              .update({
+                where: { id: mainItem.productId },
+                data: {
+                  stock: { decrement: qty },
+                  deliveryContent: remainingContent,
+                },
+              })
+              .catch(() => {});
+          }
+
+          // Update or record PaymentTransaction
+          await prisma.paymentTransaction.updateMany({
+            where: { orderId: order.id },
+            data: {
+              status: 'paid',
+              providerPaymentId: payload.payment_id || payload.id || null,
+              rawPayload: JSON.stringify(payload),
+            },
+          });
+
+          // Dispatch Digital Delivery
+          await prisma.digitalDelivery.create({
+            data: {
+              orderId: order.id,
+              deliveryEmail: order.customerEmail,
+              deliveryStatus: 'delivered',
+              deliveryData: deliveryContent,
+              deliveredAt: now,
+            },
+          }).catch(() => {});
+
+          try {
+            await sendDigitalDelivery({
+              orderId: order.id,
+              recipientEmail: order.customerEmail,
+              orderCode: order.orderCode,
+              productName: mainItem?.productNameSnapshot || 'Akun Game',
+              deliveryContent,
+            });
+          } catch {}
+
+          return NextResponse.json({
+            success: true,
+            message: 'Payment received and order delivered successfully',
+            order_code: order.orderCode,
+          });
+        } else if (status === 'EXPIRED') {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: 'expired',
+              orderStatus: 'expired',
+            },
+          });
+
+          return NextResponse.json({
+            success: true,
+            message: 'Order status updated to expired',
+          });
+        }
+      }
     }
 
-    // 4. Idempotency Check: Already processed
-    if (order.paymentStatus === 'paid') {
-      return NextResponse.json({
-        success: true,
-        message: 'Webhook already processed for this order (Idempotent)',
-      });
-    }
+    // In-Memory Fallback
+    const memoryOrder = inMemoryOrders.find((o) => o.orderCode === externalId);
+    if (memoryOrder) {
+      if (status === 'PAID' || status === 'SETTLED') {
+        memoryOrder.paymentStatus = 'paid';
+        memoryOrder.orderStatus = 'completed';
+        memoryOrder.deliveryStatus = 'delivered';
+        memoryOrder.paidAt = new Date().toISOString();
 
-    if (status === 'PAID' || status === 'SETTLED') {
-      // Update Order Status
-      await prisma.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: 'paid',
-          orderStatus: 'processing',
-          paidAt: new Date(),
-        },
-      });
+        const prodId =
+          memoryOrder.productId ||
+          (memoryOrder as any).product_id ||
+          memoryOrder.orderItems?.[0]?.productId;
+        const qty = memoryOrder.quantity || memoryOrder.orderItems?.[0]?.quantity || 1;
 
-      // Update or record PaymentTransaction
-      await prisma.paymentTransaction.updateMany({
-        where: { orderId: order.id },
-        data: {
-          status: 'paid',
-          providerPaymentId: payload.payment_id || payload.id || null,
-          rawPayload: JSON.stringify(payload),
-        },
-      });
-
-      // Dispatch Digital Delivery
-      const mainItem = order.orderItems[0];
-      const deliveryContent =
-        mainItem?.product?.deliveryContent || 'Digital item activated';
-
-      await sendDigitalDelivery({
-        orderId: order.id,
-        recipientEmail: order.customerEmail,
-        orderCode: order.orderCode,
-        productName: mainItem?.productNameSnapshot || 'Digital Item',
-        deliveryContent,
-      });
+        if (prodId) {
+          const dispatchRes = dispatchProductDelivery(prodId, qty);
+          if (dispatchRes?.dispatchedContent) {
+            memoryOrder.deliveryContent = dispatchRes.dispatchedContent;
+            memoryOrder.delivery_content = dispatchRes.dispatchedContent;
+            memoryOrder.digital_delivery = { content: dispatchRes.dispatchedContent };
+          } else {
+            decrementProductStock(prodId, qty);
+          }
+        }
+      } else if (status === 'EXPIRED') {
+        memoryOrder.paymentStatus = 'expired';
+        memoryOrder.orderStatus = 'expired';
+      }
 
       return NextResponse.json({
         success: true,
-        message: 'Payment received and order delivered successfully',
-        order_code: order.orderCode,
-      });
-    } else if (status === 'EXPIRED') {
-      await prisma.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: 'expired',
-          orderStatus: 'expired',
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: 'Order status updated to expired',
+        message: `Webhook received with status ${status} (in-memory)`,
       });
     }
 

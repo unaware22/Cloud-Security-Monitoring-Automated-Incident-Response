@@ -14,6 +14,9 @@ export interface MemoryOrder {
   deliveryStatus: string;
   paymentMethod: string;
   paymentUrl?: string | null;
+  vaNumber?: string | null;
+  bankCode?: string | null;
+  qrString?: string | null;
   expiredAt: string;
   createdAt: string;
   paidAt?: string | null;
@@ -43,11 +46,20 @@ export interface MemoryOrder {
   digital_delivery?: {
     content: string;
     delivered_at?: string;
-  };
+  } | null;
   deliveryContent?: string | null;
   delivery_content?: string | null;
+  deliveryType?: 'automatic' | 'manual' | string;
   productId?: string;
   quantity?: number;
+  customerNotes?: string | null;
+  notes?: string | null;
+  customSkinDetails?: {
+    description: string;
+    skinSize: string;
+    skinModel: string;
+    referenceImageUrl?: string | null;
+  } | null;
 }
 
 const globalForMemory = globalThis as unknown as {

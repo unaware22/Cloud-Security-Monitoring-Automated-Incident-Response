@@ -16,11 +16,12 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Hide customer navbar on admin, checkout, and payment routes
+  // Hide customer navbar on admin, checkout, payment, and order success routes
   if (
     pathname.startsWith('/admin') ||
     pathname.startsWith('/checkout') ||
-    pathname.startsWith('/payment')
+    pathname.startsWith('/payment') ||
+    pathname.startsWith('/order')
   ) {
     return null;
   }

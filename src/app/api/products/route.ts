@@ -52,10 +52,24 @@ export async function GET(req: NextRequest) {
         where.game = game.toLowerCase();
       }
       if (subCategory1 && subCategory1 !== 'all') {
-        where.subCategory1 = subCategory1.toLowerCase();
+        const sc1 = subCategory1.toLowerCase();
+        if (sc1 === 'fish-it' || sc1 === 'fisch') {
+          where.subCategory1 = { in: ['fish-it', 'fisch', 'fishit'] };
+        } else if (sc1 === 'blox-fruit' || sc1 === 'bloxfruits') {
+          where.subCategory1 = { in: ['blox-fruit', 'bloxfruits', 'bloxfruit'] };
+        } else if (sc1 === 'grow-a-garden-2' || sc1 === 'growagirl' || sc1 === 'grow-a-garden') {
+          where.subCategory1 = { in: ['grow-a-garden-2', 'growagirl', 'grow-a-garden', 'growagarden2'] };
+        } else {
+          where.subCategory1 = sc1;
+        }
       }
       if (subCategory2 && subCategory2 !== 'all') {
-        where.subCategory2 = subCategory2.toLowerCase();
+        const sc2 = subCategory2.toLowerCase();
+        if (sc2 === 'item' || sc2 === 'items') {
+          where.subCategory2 = { in: ['item', 'items'] };
+        } else {
+          where.subCategory2 = sc2;
+        }
       }
       if (search && search.trim()) {
         where.OR = [
@@ -128,10 +142,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({
-    success: true,
-    count: list.length,
-    data: list,
-    products: list,
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      count: list.length,
+      data: list,
+      products: list,
+    },
+    {
+      headers: {
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+      },
+    }
+  );
 }

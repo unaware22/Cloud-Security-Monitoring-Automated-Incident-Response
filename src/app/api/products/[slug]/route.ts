@@ -80,8 +80,15 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({
-    success: true,
-    data: product,
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      data: product,
+    },
+    {
+      headers: {
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+      },
+    }
+  );
 }
