@@ -54,3 +54,50 @@ Tujuan project:
 
 ## Notifikasi Pembayaran Berhasil
 <img width="1890" height="991" alt="image" src="https://github.com/user-attachments/assets/0d6247c9-9888-4292-9c5f-e9dc7de54079" />
+
+# Minggu ke- 2
+## Halaman Utama
+<img width="1911" height="993" alt="image" src="https://github.com/user-attachments/assets/ec0921ce-46d5-412c-8bbd-b6935c77b860" />
+
+---
+## Halaman Kedua
+<img width="1912" height="994" alt="image" src="https://github.com/user-attachments/assets/98a70ba9-0598-47fe-bf57-c2819dce1729" />
+
+---
+## Halaman Ketiga
+<img width="1908" height="990" alt="image" src="https://github.com/user-attachments/assets/07320771-45d6-470c-807a-defa61f1b7fd" />
+
+---
+## Halaman Produk
+<img width="1912" height="995" alt="image" src="https://github.com/user-attachments/assets/bf04aa85-e882-44ea-a5ca-b90de4d24b90" />
+
+---
+<img width="1911" height="994" alt="image" src="https://github.com/user-attachments/assets/051331c5-3b6f-4da5-afed-ba6eb3b3f680" />
+
+---
+## Footer
+<img width="1909" height="996" alt="image" src="https://github.com/user-attachments/assets/662149d7-5a5b-4ea7-9240-8178fbf6f971" />
+
+---
+# Fitur
+## Halaman Checkout
+<img width="1910" height="992" alt="image" src="https://github.com/user-attachments/assets/2d3eb26f-a69c-45f8-ab19-4bcdd4323ce6" />
+
+---
+## Halaman Konfirmasi
+<img width="1907" height="992" alt="image" src="https://github.com/user-attachments/assets/e8261e0f-bf7d-4114-b3db-4b8614970444" />
+
+---
+## Halaman Payment (Dummy QR Code)
+<img width="1910" height="993" alt="image" src="https://github.com/user-attachments/assets/e3e8fb0c-c36a-444f-a53c-cdba5374992f" />
+
+---
+
+## Halaman Admin Verifikasi Pembayaran User
+<img width="1902" height="938" alt="image" src="https://github.com/user-attachments/assets/fd8bcf7b-efe1-4d64-b717-deffee79e46d" />
+
+---
+
+## Notifikasi Pembayaran Berhasil
+<img width="1907" height="994" alt="image" src="https://github.com/user-attachments/assets/9409467f-f28d-4566-8aab-8d2999422461" />
+
