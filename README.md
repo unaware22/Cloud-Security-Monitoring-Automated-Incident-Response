@@ -1,6 +1,6 @@
 # AWS E-Commerce Security Monitoring Thesis Docs
 
-Dokumen rancangan untuk membangun website e-commerce produk digital menggunakan **Xendit**, **AWS EC2**, **Amazon RDS PostgreSQL**, **Wazuh**, dan **n8n**.
+Dokumen rancangan untuk membangun website e-commerce produk digital menggunakan **Midtrans**, **AWS EC2**, **Amazon RDS PostgreSQL**, **Wazuh**, dan **n8n**.
 
 Tujuan project:
 - Website e-commerce produk digital yang layak dipakai, bukan sengaja dibuat vulnerable.
