@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyAdminToken, COOKIE_NAME } from '@/lib/auth';
+import { getAdminSession } from '@/lib/auth';
 import { getClientIp } from '@/lib/security';
 import { sendDigitalDelivery } from '@/lib/email';
 import { isDatabaseOnline, inMemoryOrders, inMemoryAudits } from '@/lib/db-store';
@@ -14,31 +14,35 @@ export async function POST(
 ) {
   const ip = getClientIp(req.headers);
   const userAgent = req.headers.get('user-agent') || 'Unknown';
-  const orderId = params.id;
+  const rawId = params.id;
+  const cleanId = decodeURIComponent(rawId || '').trim();
 
-  // 1. Auth Guard
-  const token = req.cookies.get(COOKIE_NAME)?.value;
-  if (!token) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'Admin login required' }, { status: 401 });
+  if (!cleanId) {
+    return NextResponse.json({ error: 'Bad Request', message: 'Order ID / Code is required' }, { status: 400 });
   }
 
-  const session = await verifyAdminToken(token);
+  // 1. Auth Guard
+  const session = await getAdminSession(req);
   if (!session) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'Invalid or expired session' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized', message: 'Admin session expired or invalid' }, { status: 401 });
   }
 
   const dbOnline = await isDatabaseOnline();
+  let dbOrderFound = false;
 
-  // Database Flow
+  // 2. Database Flow
   if (dbOnline) {
     try {
       const order = await prisma.order.findFirst({
         where: {
-          OR: [{ id: orderId }, { orderCode: orderId.toUpperCase() }],
+          OR: [
+            { id: cleanId },
+            { orderCode: cleanId },
+            { orderCode: cleanId.toUpperCase() },
+          ],
         },
         include: {
           manualPaymentSubmissions: {
-            where: { status: 'pending' },
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
@@ -49,6 +53,8 @@ export async function POST(
       });
 
       if (order) {
+        dbOrderFound = true;
+
         if (order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual') {
           return NextResponse.json(
             { error: 'Conflict', message: 'Pesanan sudah disahkan sebelumnya' },
@@ -59,6 +65,71 @@ export async function POST(
         const oldStatus = order.paymentStatus;
         const now = new Date();
 
+        // Safely resolve admin user ID to prevent FK constraint violations
+        let validAdminId: string | null = null;
+        try {
+          const matchedAdmin = await prisma.adminUser.findFirst({
+            where: {
+              OR: [
+                { id: session.userId },
+                { email: session.email?.toLowerCase() },
+              ],
+            },
+          });
+          if (matchedAdmin) {
+            validAdminId = matchedAdmin.id;
+          } else {
+            const anyAdmin = await prisma.adminUser.findFirst();
+            validAdminId = anyAdmin?.id || null;
+          }
+        } catch {
+          validAdminId = null;
+        }
+
+        const mainItem = order.orderItems[0];
+        const qty = mainItem?.quantity || 1;
+        const prodId = mainItem?.productId;
+
+        // Determine dispatched credential content
+        let dispatchedContent = '';
+        if (prodId) {
+          const dispatchRes = dispatchProductDelivery(prodId, qty);
+          if (dispatchRes?.dispatchedContent) {
+            dispatchedContent = dispatchRes.dispatchedContent;
+          }
+        }
+
+        if (!dispatchedContent) {
+          const rawLines = (mainItem?.product?.deliveryContent || '')
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+
+          if (rawLines.length > 0) {
+            dispatchedContent = rawLines.slice(0, qty).join('\n');
+            const remainingContent = rawLines.slice(qty).join('\n');
+            if (prodId) {
+              await prisma.product
+                .update({
+                  where: { id: prodId },
+                  data: {
+                    stock: { decrement: qty },
+                    deliveryContent: remainingContent,
+                  },
+                })
+                .catch(() => {});
+            }
+          } else {
+            dispatchedContent =
+              mainItem?.product?.deliveryContent ||
+              'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026 | Full Access: https://account.mojang.com';
+            if (prodId) {
+              decrementProductStock(prodId, qty);
+            }
+          }
+        }
+
+        // Execute DB updates
         await prisma.$transaction(async (tx) => {
           await tx.order.update({
             where: { id: order.id },
@@ -70,37 +141,6 @@ export async function POST(
             },
           });
 
-          const mainItem = order.orderItems[0];
-          const qty = mainItem?.quantity || 1;
-          const rawLines = (mainItem?.product?.deliveryContent || '')
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter(Boolean);
-
-          let dispatchedContent = '';
-          let remainingContent = '';
-
-          if (rawLines.length > 0) {
-            dispatchedContent = rawLines.slice(0, qty).join('\n');
-            remainingContent = rawLines.slice(qty).join('\n');
-          } else {
-            dispatchedContent =
-              mainItem?.product?.deliveryContent ||
-              'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026 | Full Access: https://account.mojang.com';
-          }
-
-          if (mainItem?.productId) {
-            await tx.product
-              .update({
-                where: { id: mainItem.productId },
-                data: {
-                  stock: { decrement: qty },
-                  deliveryContent: remainingContent,
-                },
-              })
-              .catch(() => {});
-          }
-
           await tx.digitalDelivery
             .create({
               data: {
@@ -111,61 +151,69 @@ export async function POST(
                 deliveredAt: now,
               },
             })
-            .catch(() => {});
+            .catch((e) => console.warn('Digital delivery create warning:', e));
 
-          if (order.manualPaymentSubmissions.length > 0) {
-            await tx.manualPaymentSubmission.update({
-              where: { id: order.manualPaymentSubmissions[0].id },
-              data: {
-                status: 'approved',
-                reviewedBy: session.userId,
-                reviewedAt: now,
-              },
-            });
+          if (order.manualPaymentSubmissions && order.manualPaymentSubmissions.length > 0) {
+            await tx.manualPaymentSubmission
+              .update({
+                where: { id: order.manualPaymentSubmissions[0].id },
+                data: {
+                  status: 'approved',
+                  reviewedBy: validAdminId,
+                  reviewedAt: now,
+                },
+              })
+              .catch((e) => console.warn('Manual submission update warning:', e));
           }
 
-          await tx.auditLog.create({
-            data: {
-              adminId: session.userId,
-              action: 'MANUAL_PAYMENT_APPROVE',
-              entityType: 'orders',
-              entityId: order.id,
-              oldValue: JSON.stringify({
-                payment_status: oldStatus,
-                order_status: order.orderStatus,
-              }),
-              newValue: JSON.stringify({
-                payment_status: 'paid_manual',
-                order_status: 'completed',
-                approved_by: session.email,
-              }),
-              ipAddress: ip,
-              userAgent,
-            },
-          });
+          await tx.auditLog
+            .create({
+              data: {
+                adminId: validAdminId,
+                action: 'MANUAL_PAYMENT_APPROVE',
+                entityType: 'orders',
+                entityId: order.id,
+                oldValue: JSON.stringify({
+                  payment_status: oldStatus,
+                  order_status: order.orderStatus,
+                }),
+                newValue: JSON.stringify({
+                  payment_status: 'paid_manual',
+                  order_status: 'completed',
+                  approved_by: session.email,
+                }),
+                ipAddress: ip,
+                userAgent,
+              },
+            })
+            .catch((e) => console.warn('Audit log create warning:', e));
         });
 
-        const mainItem = order.orderItems[0];
-        const qty = mainItem?.quantity || 1;
-        const rawLines = (mainItem?.product?.deliveryContent || '')
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean);
-        const finalContent =
-          rawLines.length > 0
-            ? rawLines.slice(0, qty).join('\n')
-            : mainItem?.product?.deliveryContent ||
-              'Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026';
+        // Sync to memory store if present
+        const memoryOrder = inMemoryOrders.find(
+          (o) => o.id === order.id || o.orderCode.toUpperCase() === order.orderCode.toUpperCase()
+        );
+        if (memoryOrder) {
+          memoryOrder.paymentStatus = 'paid_manual';
+          memoryOrder.orderStatus = 'completed';
+          memoryOrder.deliveryStatus = 'delivered';
+          memoryOrder.paidAt = now.toISOString();
+          memoryOrder.deliveryContent = dispatchedContent;
+          memoryOrder.delivery_content = dispatchedContent;
+        }
 
+        // Send Email
         try {
           await sendDigitalDelivery({
             orderId: order.id,
             recipientEmail: order.customerEmail,
             orderCode: order.orderCode,
-            productName: mainItem?.productNameSnapshot || 'Akun Minecraft Java & Bedrock Edition',
-            deliveryContent: finalContent,
+            productName: mainItem?.productNameSnapshot || 'Akun Game Digital SALADINSHOP',
+            deliveryContent: dispatchedContent,
           });
-        } catch {}
+        } catch (emailErr) {
+          console.warn('Failed to send digital delivery email:', emailErr);
+        }
 
         return NextResponse.json({
           success: true,
@@ -174,21 +222,37 @@ export async function POST(
             order_id: order.id,
             order_code: order.orderCode,
             payment_status: 'paid_manual',
+            delivery_status: 'delivered',
           },
         });
       }
-    } catch {
-      // Fallback below
+    } catch (dbErr: any) {
+      console.error('[Approve Manual Payment DB Error]:', dbErr);
+      if (dbOrderFound) {
+        return NextResponse.json(
+          { error: 'Internal Server Error', message: `Gagal memperbarui pesanan di database: ${dbErr?.message || 'Database error'}` },
+          { status: 500 }
+        );
+      }
     }
   }
 
-  // In-Memory Approval
+  // 3. In-Memory Fallback Approval
   const memoryOrder = inMemoryOrders.find(
-    (o) => o.id === orderId || o.orderCode.toUpperCase() === orderId.toUpperCase()
+    (o) =>
+      o.id === cleanId ||
+      o.orderCode.toUpperCase() === cleanId.toUpperCase() ||
+      o.orderCode.toLowerCase() === cleanId.toLowerCase()
   );
 
   if (!memoryOrder) {
-    return NextResponse.json({ error: 'Not Found', message: 'Order not found' }, { status: 404 });
+    return NextResponse.json(
+      {
+        error: 'Not Found',
+        message: `Pesanan (${cleanId}) tidak ditemukan di sistem.`,
+      },
+      { status: 404 }
+    );
   }
 
   const wasAlreadyPaid = memoryOrder.paymentStatus === 'paid' || memoryOrder.paymentStatus === 'paid_manual';
@@ -200,7 +264,6 @@ export async function POST(
 
   let dispatchedCredential = memoryOrder.deliveryContent || memoryOrder.delivery_content || '';
 
-  // Deduct stock and dispatch unique credential on approval only once (if not already paid)
   if (!wasAlreadyPaid) {
     const prodId =
       memoryOrder.productId ||
@@ -246,6 +309,7 @@ export async function POST(
       order_id: memoryOrder.id,
       order_code: memoryOrder.orderCode,
       payment_status: 'paid_manual',
+      delivery_status: 'delivered',
     },
   });
 }

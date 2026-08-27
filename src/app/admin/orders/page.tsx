@@ -37,6 +37,8 @@ export default function AdminOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [approvingOrderId, setApprovingOrderId] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Manual Custom Skin Delivery Form in Modal
   const [skinDownloadUrl, setSkinDownloadUrl] = useState('');
@@ -129,6 +131,41 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const handleApproveOrder = async (orderId: string, orderCode: string) => {
+    setApprovingOrderId(orderId);
+    setActionNotice(null);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/approve-manual-payment`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setActionNotice({
+          type: 'success',
+          message: `✓ Pembayaran pesanan ${orderCode} berhasil disahkan! Kredensial digital otomatis dialokasikan & dikirim ke pembeli.`,
+        });
+        fetchOrders();
+        if (selectedOrder && selectedOrder.id === orderId) {
+          setSelectedOrder({
+            ...selectedOrder,
+            paymentStatus: 'paid_manual',
+            orderStatus: 'completed',
+            deliveryStatus: 'delivered',
+          });
+        }
+      } else {
+        setActionNotice({
+          type: 'error',
+          message: json.message || 'Gagal mengesahkan pembayaran pesanan.',
+        });
+      }
+    } catch {
+      setActionNotice({ type: 'error', message: 'Terjadi kesalahan jaringan saat mengesahkan pembayaran.' });
+    } finally {
+      setApprovingOrderId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -148,6 +185,32 @@ export default function AdminOrdersPage() {
           <span>Refresh</span>
         </button>
       </div>
+
+      {/* Action Notification Notice */}
+      {actionNotice && (
+        <div
+          className={`p-4 rounded-xl flex items-center justify-between gap-3 text-xs border ${
+            actionNotice.type === 'success'
+              ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+              : 'bg-rose-950/70 border-rose-500/40 text-rose-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {actionNotice.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <p className="font-medium">{actionNotice.message}</p>
+          </div>
+          <button
+            onClick={() => setActionNotice(null)}
+            className="text-gray-400 hover:text-white p-1 rounded-lg"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center gap-3">
@@ -171,6 +234,7 @@ export default function AdminOrdersPage() {
           <option value="paid">Lunas (Otomatis)</option>
           <option value="paid_manual">Lunas (Manual)</option>
           <option value="pending">Menunggu Bayar</option>
+          <option value="pending_manual">Menunggu Verifikasi Manual</option>
           <option value="expired">Kedaluwarsa</option>
         </select>
 
@@ -211,7 +275,7 @@ export default function AdminOrdersPage() {
               <tbody className="divide-y divide-surface-border text-gray-300">
                 {orders.map((order) => {
                   const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual';
-                  const isPending = order.paymentStatus === 'pending';
+                  const isPending = order.paymentStatus === 'pending' || order.paymentStatus === 'pending_manual';
                   const isSkinCustom =
                     order.customSkinDetails != null ||
                     order.orderItems?.[0]?.productNameSnapshot?.toLowerCase().includes('skin') ||
@@ -259,18 +323,16 @@ export default function AdminOrdersPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           {isPending && (
                             <button
-                              onClick={async () => {
-                                try {
-                                  const res = await fetch(`/api/admin/orders/${order.id}/approve-manual-payment`, { method: 'POST' });
-                                  if (res.ok) fetchOrders();
-                                } catch (e) {
-                                  console.error(e);
-                                }
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm"
-                              title="Sahkan Pembayaran"
+                              onClick={() => handleApproveOrder(order.id, order.orderCode)}
+                              disabled={approvingOrderId === order.id}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all disabled:opacity-50"
+                              title="Sahkan Pembayaran Manual"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              {approvingOrderId === order.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              )}
                               <span>Sahkan</span>
                             </button>
                           )}
@@ -511,6 +573,27 @@ export default function AdminOrdersPage() {
                 <StatusBadge status={selectedOrder.deliveryStatus} type="delivery" />
               </div>
             </div>
+
+            {/* Approve Action in Modal if Pending */}
+            {(selectedOrder.paymentStatus === 'pending' || selectedOrder.paymentStatus === 'pending_manual') && (
+              <button
+                onClick={() => handleApproveOrder(selectedOrder.id, selectedOrder.orderCode)}
+                disabled={approvingOrderId === selectedOrder.id}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+              >
+                {approvingOrderId === selectedOrder.id ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Mengesahkan Pembayaran...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Sahkan Pembayaran Sekarang</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Resend Action (only for non-custom instant orders) */}
             {!selectedOrder.customSkinDetails && (selectedOrder.paymentStatus === 'paid' || selectedOrder.paymentStatus === 'paid_manual') && (

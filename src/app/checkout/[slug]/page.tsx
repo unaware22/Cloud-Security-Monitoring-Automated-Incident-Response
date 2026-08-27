@@ -19,8 +19,15 @@ import {
   Info,
   Star,
 } from 'lucide-react';
+import Script from 'next/script';
 import { formatIDR } from '@/lib/utils';
 import { ProductItem } from '@/lib/types';
+
+declare global {
+  interface Window {
+    snap?: any;
+  }
+}
 
 interface PaymentMethodItem {
   id: string;
@@ -183,8 +190,22 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Midtrans Live Watcher & Active Payment States
+  const [activeOrder, setActiveOrder] = useState<any | null>(null);
+  const [isWaitingPayment, setIsWaitingPayment] = useState(false);
+  const activePollerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Confirmation Dialog State
   const [showConfirmation, setShowConfirmation] = useState(false);
+
+  // Cleanup watcher poller on unmount
+  useEffect(() => {
+    return () => {
+      if (activePollerRef.current) {
+        clearInterval(activePollerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch product detail
   useEffect(() => {
@@ -349,6 +370,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
     if (!product) return;
 
     setSubmitting(true);
+    setErrorMessage('');
 
     try {
       const res = await fetch('/api/orders', {
@@ -392,16 +414,88 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
         localStorage.setItem(`order_email_${orderData.order_code}`, customerEmail.trim());
       }
 
-      // Redirect directly to Xendit hosted payment page
-      if (orderData.payment_url) {
+      setActiveOrder(orderData);
+      setIsWaitingPayment(true);
+
+      // Real-Time Live Watcher: check payment status every 1.5s and auto-redirect upon settlement
+      if (activePollerRef.current) clearInterval(activePollerRef.current);
+      activePollerRef.current = setInterval(async () => {
+        try {
+          const vRes = await fetch('/api/orders/verify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_code: orderData.order_code }),
+          });
+          const vJson = await vRes.json();
+          if (vJson.success && vJson.data) {
+            const st = vJson.data.payment_status;
+            const ost = vJson.data.order_status;
+            if (
+              st === 'paid' ||
+              st === 'paid_manual' ||
+              st === 'settlement' ||
+              st === 'capture' ||
+              ost === 'completed' ||
+              ost === 'processing' ||
+              vJson.data.delivery_status === 'delivered'
+            ) {
+              if (activePollerRef.current) clearInterval(activePollerRef.current);
+              window.location.href = `/order/success/${orderData.order_code}`;
+            }
+          }
+        } catch {}
+      }, 1500);
+
+      const snapToken = orderData.snap_token || orderData.provider_invoice_id;
+
+      // Use Snap.js popup if SDK loaded
+      if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
+        setSubmitting(false);
+        window.snap.pay(snapToken, {
+          onSuccess: () => {
+            if (activePollerRef.current) clearInterval(activePollerRef.current);
+            window.location.href = `/order/success/${orderData.order_code}`;
+          },
+          onPending: () => {
+            // Keep background poller active to catch instant settlement
+          },
+          onError: () => {
+            if (activePollerRef.current) clearInterval(activePollerRef.current);
+            window.location.href = `/check-order?order_code=${orderData.order_code}&status=error`;
+          },
+          onClose: async () => {
+            // Check status immediately upon close
+            try {
+              const vRes = await fetch('/api/orders/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_code: orderData.order_code }),
+              });
+              const vJson = await vRes.json();
+              if (
+                vJson.success &&
+                (vJson.data?.payment_status === 'paid' ||
+                 vJson.data?.payment_status === 'paid_manual' ||
+                 vJson.data?.payment_status === 'settlement' ||
+                 vJson.data?.order_status === 'completed')
+              ) {
+                if (activePollerRef.current) clearInterval(activePollerRef.current);
+                window.location.href = `/order/success/${orderData.order_code}`;
+              }
+            } catch {}
+          },
+        });
+      } else if (orderData.payment_url) {
         window.location.href = orderData.payment_url;
       } else {
         setErrorMessage('URL pembayaran tidak tersedia. Silakan coba lagi.');
         setSubmitting(false);
+        setIsWaitingPayment(false);
       }
     } catch {
       setErrorMessage('Terjadi kesalahan jaringan saat checkout.');
       setSubmitting(false);
+      setIsWaitingPayment(false);
     }
   };
 
@@ -1163,6 +1257,88 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
           </div>
         </div>
       )}
+
+      {/* Waiting for Payment & Live Watcher Modal */}
+      {isWaitingPayment && activeOrder && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#181818] border border-emerald-500/40 rounded-2xl max-w-md w-full p-6 text-center space-y-5 shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center mx-auto text-emerald-400">
+              <Loader2 className="w-7 h-7 animate-spin" />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Sinkronisasi Otomatis Real-time</span>
+              </span>
+              <h3 className="text-lg font-bold text-white uppercase tracking-wide">
+                Menunggu Pembayaran
+              </h3>
+              <p className="text-xs text-neutral-300">
+                Kode Pesanan:{' '}
+                <span className="font-mono font-bold text-emerald-400">
+                  {activeOrder.order_code}
+                </span>
+              </p>
+            </div>
+
+            <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 text-xs text-left space-y-2">
+              <div className="flex justify-between items-center text-neutral-400">
+                <span>Total Tagihan:</span>
+                <span className="font-mono font-bold text-white text-sm">
+                  {formatIDR(activeOrder.total_amount)}
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-400 leading-relaxed pt-2 border-t border-neutral-800">
+                ⚡ <strong>Otomatis Langsung Berpindah:</strong> Begitu Anda selesai membayar (scan QRIS / transfer), layar ini akan langsung seketika membuka kredensial akun digital Anda tanpa perlu menutup jendela secara manual.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const snapToken = activeOrder.snap_token || activeOrder.provider_invoice_id;
+                  if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
+                    window.snap.pay(snapToken, {
+                      onSuccess: () => {
+                        window.location.href = `/order/success/${activeOrder.order_code}`;
+                      },
+                      onError: () => {
+                        window.location.href = `/check-order?order_code=${activeOrder.order_code}&status=error`;
+                      },
+                    });
+                  } else if (activeOrder.payment_url) {
+                    window.open(activeOrder.payment_url, '_blank');
+                  }
+                }}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
+              >
+                Buka Ulang Jendela Midtrans
+              </button>
+              <Link
+                href={`/order/success/${activeOrder.order_code}`}
+                className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs uppercase tracking-wider transition-colors block text-center"
+              >
+                Cek Status Pesanan Saya
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Midtrans Snap JS SDK */}
+      <Script
+        src={
+          process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === 'true'
+            ? 'https://app.midtrans.com/snap/snap.js'
+            : 'https://app.sandbox.midtrans.com/snap/snap.js'
+        }
+        data-client-key={
+          process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || 'Mid-client-J4MaBkgPGtLKV3H0'
+        }
+        strategy="afterInteractive"
+      />
     </div>
   );
 }

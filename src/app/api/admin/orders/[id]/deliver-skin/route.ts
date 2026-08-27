@@ -13,11 +13,12 @@ export async function POST(
 ) {
   const session = await getAdminSession(req);
   if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized', message: 'Admin session expired or invalid' }, { status: 401 });
   }
 
   const ip = getClientIp(req.headers);
   const userAgent = req.headers.get('user-agent') || 'Unknown';
+  const cleanId = decodeURIComponent(params.id || '').trim();
 
   let body: any = {};
   try {
@@ -41,7 +42,13 @@ export async function POST(
   if (dbOnline) {
     try {
       const order = await prisma.order.findFirst({
-        where: { OR: [{ id: params.id }, { orderCode: params.id }] },
+        where: {
+          OR: [
+            { id: cleanId },
+            { orderCode: cleanId },
+            { orderCode: cleanId.toUpperCase() },
+          ],
+        },
         include: {
           orderItems: {
             include: { product: true },
@@ -50,6 +57,26 @@ export async function POST(
       });
 
       if (order) {
+        let validAdminId: string | null = null;
+        try {
+          const matchedAdmin = await prisma.adminUser.findFirst({
+            where: {
+              OR: [
+                { id: session.userId },
+                { email: session.email?.toLowerCase() },
+              ],
+            },
+          });
+          if (matchedAdmin) {
+            validAdminId = matchedAdmin.id;
+          } else {
+            const anyAdmin = await prisma.adminUser.findFirst();
+            validAdminId = anyAdmin?.id || null;
+          }
+        } catch {
+          validAdminId = null;
+        }
+
         const formattedDeliveryContent = `Skin File Download: ${skinDownloadUrl}${deliveryNotes ? ` | Catatan Desainer: ${deliveryNotes}` : ''} | Format: PNG (Ready for Java & Bedrock)`;
 
         await prisma.order.update({
@@ -57,46 +84,65 @@ export async function POST(
           data: {
             orderStatus: 'completed',
             deliveryStatus: 'delivered',
-            paymentStatus: order.paymentStatus === 'pending' ? 'paid_manual' : order.paymentStatus,
+            paymentStatus: order.paymentStatus === 'pending' || order.paymentStatus === 'pending_manual' ? 'paid_manual' : order.paymentStatus,
           },
         });
 
-        await prisma.digitalDelivery.create({
-          data: {
-            orderId: order.id,
-            deliveryEmail: order.customerEmail,
-            deliveryStatus: 'delivered',
-            deliveryData: formattedDeliveryContent,
-            deliveredAt: now,
-          },
-        }).catch(() => {});
+        await prisma.digitalDelivery
+          .create({
+            data: {
+              orderId: order.id,
+              deliveryEmail: order.customerEmail,
+              deliveryStatus: 'delivered',
+              deliveryData: formattedDeliveryContent,
+              deliveredAt: now,
+            },
+          })
+          .catch(() => {});
 
         // Send Email to Customer
-        await sendCustomSkinDeliveredEmail({
-          recipientEmail: order.customerEmail,
-          orderCode: order.orderCode,
-          productName: order.orderItems?.[0]?.productNameSnapshot || 'Custom Skin Minecraft',
-          customerName: order.customerName,
-          skinDownloadUrl,
-          deliveryNotes,
-        });
+        try {
+          await sendCustomSkinDeliveredEmail({
+            recipientEmail: order.customerEmail,
+            orderCode: order.orderCode,
+            productName: order.orderItems?.[0]?.productNameSnapshot || 'Custom Skin Minecraft',
+            customerName: order.customerName,
+            skinDownloadUrl,
+            deliveryNotes,
+          });
+        } catch (emailErr) {
+          console.warn('Failed sending skin delivery email:', emailErr);
+        }
 
         // Audit log
-        await prisma.auditLog.create({
-          data: {
-            adminId: session.userId,
-            action: 'CUSTOM_SKIN_DELIVERED',
-            entityType: 'orders',
-            entityId: order.id,
-            newValue: JSON.stringify({
-              skinDownloadUrl,
-              deliveryNotes,
-              deliveredAt: now.toISOString(),
-            }),
-            ipAddress: ip,
-            userAgent,
-          },
-        }).catch(() => {});
+        await prisma.auditLog
+          .create({
+            data: {
+              adminId: validAdminId,
+              action: 'CUSTOM_SKIN_DELIVERED',
+              entityType: 'orders',
+              entityId: order.id,
+              newValue: JSON.stringify({
+                skinDownloadUrl,
+                deliveryNotes,
+                deliveredAt: now.toISOString(),
+              }),
+              ipAddress: ip,
+              userAgent,
+            },
+          })
+          .catch(() => {});
+
+        // Sync memory store
+        const memOrder = inMemoryOrders.find(
+          (o) => o.id === order.id || o.orderCode.toUpperCase() === order.orderCode.toUpperCase()
+        );
+        if (memOrder) {
+          memOrder.orderStatus = 'completed';
+          memOrder.deliveryStatus = 'delivered';
+          memOrder.deliveryContent = formattedDeliveryContent;
+          memOrder.delivery_content = formattedDeliveryContent;
+        }
 
         return NextResponse.json({
           success: true,
@@ -110,7 +156,10 @@ export async function POST(
 
   // 2. In-Memory fallback
   const memOrder = inMemoryOrders.find(
-    (o) => o.id === params.id || o.orderCode === params.id
+    (o) =>
+      o.id === cleanId ||
+      o.orderCode.toUpperCase() === cleanId.toUpperCase() ||
+      o.orderCode.toLowerCase() === cleanId.toLowerCase()
   );
 
   if (memOrder) {
@@ -118,7 +167,7 @@ export async function POST(
 
     memOrder.orderStatus = 'completed';
     memOrder.deliveryStatus = 'delivered';
-    if (memOrder.paymentStatus === 'pending') {
+    if (memOrder.paymentStatus === 'pending' || memOrder.paymentStatus === 'pending_manual') {
       memOrder.paymentStatus = 'paid_manual';
     }
     memOrder.deliveryContent = formattedDeliveryContent;
@@ -128,14 +177,18 @@ export async function POST(
       delivered_at: now.toISOString(),
     };
 
-    await sendCustomSkinDeliveredEmail({
-      recipientEmail: memOrder.customerEmail,
-      orderCode: memOrder.orderCode,
-      productName: memOrder.orderItems?.[0]?.productNameSnapshot || 'Custom Skin Minecraft',
-      customerName: memOrder.customerName,
-      skinDownloadUrl,
-      deliveryNotes,
-    });
+    try {
+      await sendCustomSkinDeliveredEmail({
+        recipientEmail: memOrder.customerEmail,
+        orderCode: memOrder.orderCode,
+        productName: memOrder.orderItems?.[0]?.productNameSnapshot || 'Custom Skin Minecraft',
+        customerName: memOrder.customerName,
+        skinDownloadUrl,
+        deliveryNotes,
+      });
+    } catch (emailErr) {
+      console.warn('Failed sending skin delivery email in fallback:', emailErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -143,5 +196,5 @@ export async function POST(
     });
   }
 
-  return NextResponse.json({ error: 'Not Found', message: 'Pesanan tidak ditemukan' }, { status: 404 });
+  return NextResponse.json({ error: 'Not Found', message: `Pesanan (${cleanId}) tidak ditemukan` }, { status: 404 });
 }

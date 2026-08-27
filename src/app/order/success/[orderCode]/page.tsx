@@ -112,6 +112,10 @@ export default function OrderSuccessPage({
 
   useEffect(() => {
     fetchAndVerifyOrder();
+    const quickTimer = setTimeout(() => {
+      fetchAndVerifyOrder();
+    }, 800);
+    return () => clearTimeout(quickTimer);
   }, [orderCode]);
 
   useEffect(() => {
@@ -126,7 +130,7 @@ export default function OrderSuccessPage({
         fetchAndVerifyOrder();
         return prev + 1;
       });
-    }, 4000);
+    }, 1500);
 
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);

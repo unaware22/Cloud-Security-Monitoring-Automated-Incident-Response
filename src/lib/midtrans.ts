@@ -166,8 +166,15 @@ export async function createMidtransSnapTransaction(
     item_details: itemDetails,
     callbacks: {
       finish: `${baseUrl}/order/success/${params.orderId}`,
-      unfinish: `${baseUrl}/check-order?order_code=${params.orderId}`,
+      unfinish: `${baseUrl}/order/success/${params.orderId}`,
       error: `${baseUrl}/check-order?order_code=${params.orderId}&status=error`,
+    },
+    gopay: {
+      enable_callback: true,
+      callback_url: `${baseUrl}/order/success/${params.orderId}`,
+    },
+    shopeepay: {
+      callback_url: `${baseUrl}/order/success/${params.orderId}`,
     },
   };
 
