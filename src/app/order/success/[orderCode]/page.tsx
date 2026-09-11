@@ -79,11 +79,18 @@ export default function OrderSuccessPage({
   const fetchAndVerifyOrder = async (isManual = false) => {
     if (isManual) setLoading(true);
 
+    const transactionStatus = searchParams.get('transaction_status') || undefined;
+    const statusCode = searchParams.get('status_code') || undefined;
+
     try {
       const res = await fetch('/api/orders/verify-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_code: orderCode }),
+        body: JSON.stringify({
+          order_code: orderCode,
+          transaction_status: transactionStatus,
+          status_code: statusCode,
+        }),
       });
 
       const json = await res.json();
@@ -682,7 +689,7 @@ export default function OrderSuccessPage({
                   <AlertCircle className="w-12 h-12 text-rose-400 mx-auto" />
                   <h1 className="text-2xl font-bold text-white uppercase tracking-wider">Pembayaran Dibatalkan / Gagal</h1>
                   <p className="text-xs text-rose-200 max-w-md mx-auto leading-relaxed">
-                    Transaksi dengan kode <span className="font-mono font-bold text-white">{order.order_code}</span> belum terselesaikan di Xendit.
+                    Transaksi dengan kode <span className="font-mono font-bold text-white">{order.order_code}</span> belum terselesaikan atau telah dibatalkan.
                   </p>
 
                   <div className="flex flex-col sm:flex-row justify-center gap-3 pt-3">
@@ -691,7 +698,7 @@ export default function OrderSuccessPage({
                         href={order.payment_url}
                         className="px-6 py-3.5 rounded-none text-xs font-black uppercase tracking-wider bg-[#ffc825] hover:bg-[#ffcf3d] border-b-4 border-[#b87e00] text-black"
                       >
-                        Buka Kembali Halaman Xendit &rarr;
+                        Lanjutkan Pembayaran &rarr;
                       </a>
                     )}
                     <Link
@@ -722,8 +729,8 @@ export default function OrderSuccessPage({
                       Memverifikasi Pembayaran...
                     </h2>
                     <p className="text-xs text-neutral-400 leading-relaxed">
-                      Sistem sedang mengecek status pembayaran kode transaksi{' '}
-                      <span className="font-mono font-bold text-white">{order.order_code}</span> dari Xendit secara realtime.
+                      Sistem sedang memverifikasi status pembayaran transaksi{' '}
+                      <span className="font-mono font-bold text-white">{order.order_code}</span> secara otomatis...
                     </p>
                   </div>
 
@@ -738,27 +745,6 @@ export default function OrderSuccessPage({
                     <p className="text-[10px] text-neutral-500 font-mono">
                       Sinkronisasi otomatis ({pollAttempts}/40)...
                     </p>
-                  </div>
-
-                  {/* Manual Actions */}
-                  <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-                    <button
-                      onClick={() => fetchAndVerifyOrder(true)}
-                      className="px-5 py-3 rounded-none text-xs font-semibold uppercase tracking-wider bg-[#111111] hover:bg-neutral-800 border border-neutral-700 text-white flex items-center justify-center gap-2"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                      <span>Cek Ulang Sekarang</span>
-                    </button>
-
-                    {order.payment_url && (
-                      <a
-                        href={order.payment_url}
-                        className="px-5 py-3 rounded-none text-xs font-bold uppercase tracking-wider bg-[#367723] hover:bg-[#418e2a] border-b-4 border-[#1f4813] text-white flex items-center justify-center gap-2"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>Buka Halaman Xendit</span>
-                      </a>
-                    )}
                   </div>
                 </div>
               </div>

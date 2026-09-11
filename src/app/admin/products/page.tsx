@@ -28,6 +28,8 @@ import {
   ArrowUpDown,
   MoveVertical,
   ExternalLink,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { formatIDR } from '@/lib/utils';
 import { parseDeliveryContent, DeliveryCategory } from '@/lib/delivery-parser';
@@ -155,6 +157,31 @@ export default function AdminProductsPage() {
   const [imageUrl, setImageUrl] = useState('');
   const [isActive, setIsActive] = useState(true);
 
+  // Security Masking State for Digital Goods Credentials
+  const [revealedItems, setRevealedItems] = useState<Record<string, boolean>>({});
+
+  const toggleReveal = (itemId: string) => {
+    setRevealedItems((prev) => ({
+      ...prev,
+      [itemId]: !prev[itemId],
+    }));
+  };
+
+  const isAllRevealed =
+    deliveryItems.length > 0 && deliveryItems.every((it) => revealedItems[it.id]);
+
+  const toggleRevealAll = () => {
+    if (isAllRevealed) {
+      setRevealedItems({});
+    } else {
+      const allRevealed: Record<string, boolean> = {};
+      deliveryItems.forEach((it) => {
+        allRevealed[it.id] = true;
+      });
+      setRevealedItems(allRevealed);
+    }
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const presetDiscounts = [0, 10, 20, 30, 40, 50, 60, 70];
 
@@ -206,6 +233,7 @@ export default function AdminProductsPage() {
     setImageUrl('');
     setIsActive(true);
     setFormError('');
+    setRevealedItems({});
     setIsModalOpen(true);
   };
 
@@ -242,6 +270,7 @@ export default function AdminProductsPage() {
     setImageUrl(prod.imageUrl || '');
     setIsActive(prod.isActive);
     setFormError('');
+    setRevealedItems({});
     setIsModalOpen(true);
   };
 
@@ -1195,6 +1224,33 @@ export default function AdminProductsPage() {
                   </div>
                 </div>
 
+                {/* Security Shield Banner & Master Toggle */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                    <span className="text-[11px] text-gray-300">
+                      <strong className="text-emerald-400">Security Shield:</strong> Kredensial akun & kode otomatis disensor (<span className="font-mono text-emerald-300">••••••••</span>) demi mencegah kebocoran data.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleRevealAll}
+                    className="px-2.5 py-1 rounded-lg bg-surface hover:bg-surface-hover text-[10px] font-semibold text-gray-200 border border-surface-border flex items-center gap-1.5 transition-all self-end sm:self-auto"
+                  >
+                    {isAllRevealed ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Sensor Semua Unit</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Buka Semua Sandi</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
                 {/* Delivery Items List */}
                 <div className="space-y-3.5 max-h-96 overflow-y-auto pr-1">
                   {deliveryItems.map((item, index) => (
@@ -1213,19 +1269,59 @@ export default function AdminProductsPage() {
                               ? `Data Kode Redeem #${index + 1}`
                               : `Data Item Roblox #${index + 1}`}
                           </span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-normal flex items-center gap-1 ${
+                              revealedItems[item.id]
+                                ? 'bg-amber-950/70 text-amber-300 border border-amber-500/40'
+                                : 'bg-emerald-950/70 text-emerald-300 border border-emerald-500/40'
+                            }`}
+                          >
+                            {revealedItems[item.id] ? (
+                              <>
+                                <Eye className="w-2.5 h-2.5 text-amber-300" />
+                                <span>Terbuka</span>
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="w-2.5 h-2.5 text-emerald-300" />
+                                <span>Disensor</span>
+                              </>
+                            )}
+                          </span>
                         </span>
 
-                        {deliveryItems.length > 1 && (
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => handleRemoveDeliveryItem(item.id)}
-                            className="text-rose-400 hover:text-rose-300 text-[10px] flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/40 border border-rose-500/30 transition-all"
-                            title="Hapus Unit Ini"
+                            onClick={() => toggleReveal(item.id)}
+                            className="text-[10px] flex items-center gap-1 px-2 py-0.5 rounded bg-surface hover:bg-surface-hover text-gray-300 border border-surface-border transition-colors"
+                            title={revealedItems[item.id] ? 'Sembunyikan kredensial unit ini' : 'Buka kredensial unit ini'}
                           >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Hapus</span>
+                            {revealedItems[item.id] ? (
+                              <>
+                                <EyeOff className="w-3 h-3 text-amber-400" />
+                                <span>Tutup</span>
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3 h-3 text-emerald-400" />
+                                <span>Lihat</span>
+                              </>
+                            )}
                           </button>
-                        )}
+
+                          {deliveryItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDeliveryItem(item.id)}
+                              className="text-rose-400 hover:text-rose-300 text-[10px] flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/40 border border-rose-500/30 transition-all"
+                              title="Hapus Unit Ini"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* FIELD RENDERING: CATEGORY 1 (ACCOUNT) */}
@@ -1247,18 +1343,41 @@ export default function AdminProductsPage() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
-                              <Lock className="w-3 h-3 text-amber-400" />
-                              <span>2. Password *</span>
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={item.password}
-                              onChange={(e) => handleDeliveryItemChange(item.id, 'password', e.target.value)}
-                              placeholder="SecretPass#123"
-                              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
-                            />
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                                <Lock className="w-3 h-3 text-amber-400" />
+                                <span>2. Password *</span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => toggleReveal(item.id)}
+                                className="text-[9px] text-gray-400 hover:text-amber-300 flex items-center gap-0.5 transition-colors"
+                              >
+                                {revealedItems[item.id] ? 'Sembunyikan' : 'Lihat'}
+                              </button>
+                            </div>
+                            <div className="relative">
+                              <input
+                                type={revealedItems[item.id] ? 'text' : 'password'}
+                                required
+                                value={item.password}
+                                onChange={(e) => handleDeliveryItemChange(item.id, 'password', e.target.value)}
+                                placeholder="SecretPass#123"
+                                className="w-full px-3 py-2 pr-9 rounded-lg bg-surface border border-surface-border text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleReveal(item.id)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                                title={revealedItems[item.id] ? 'Sembunyikan password' : 'Lihat password'}
+                              >
+                                {revealedItems[item.id] ? (
+                                  <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5 text-gray-400" />
+                                )}
+                              </button>
+                            </div>
                           </div>
 
                           <div className="space-y-1">
@@ -1281,18 +1400,41 @@ export default function AdminProductsPage() {
                       {deliveryCategory === 'redeem_code' && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                           <div className="space-y-1">
-                            <label className="text-[10px] text-amber-400 font-bold flex items-center gap-1">
-                              <Key className="w-3 h-3 text-amber-400" />
-                              <span>1. Kode Redeem / Lisensi *</span>
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={item.code}
-                              onChange={(e) => handleDeliveryItemChange(item.id, 'code', e.target.value)}
-                              placeholder="MNCN-310-SLDN-8812-9912"
-                              className="w-full px-3 py-2 rounded-lg bg-surface border border-amber-500/50 text-amber-300 text-xs font-mono font-bold focus:outline-none focus:border-amber-400"
-                            />
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] text-amber-400 font-bold flex items-center gap-1">
+                                <Key className="w-3 h-3 text-amber-400" />
+                                <span>1. Kode Redeem / Lisensi *</span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => toggleReveal(item.id)}
+                                className="text-[9px] text-gray-400 hover:text-amber-300 flex items-center gap-0.5 transition-colors"
+                              >
+                                {revealedItems[item.id] ? 'Sembunyikan' : 'Lihat'}
+                              </button>
+                            </div>
+                            <div className="relative">
+                              <input
+                                type={revealedItems[item.id] ? 'text' : 'password'}
+                                required
+                                value={item.code}
+                                onChange={(e) => handleDeliveryItemChange(item.id, 'code', e.target.value)}
+                                placeholder="MNCN-310-SLDN-8812-9912"
+                                className="w-full px-3 py-2 pr-9 rounded-lg bg-surface border border-amber-500/50 text-amber-300 text-xs font-mono font-bold focus:outline-none focus:border-amber-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleReveal(item.id)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-amber-300 transition-colors"
+                                title={revealedItems[item.id] ? 'Sembunyikan kode' : 'Lihat kode'}
+                              >
+                                {revealedItems[item.id] ? (
+                                  <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5 text-gray-400" />
+                                )}
+                              </button>
+                            </div>
                           </div>
 
                           <div className="space-y-1">
@@ -1330,18 +1472,41 @@ export default function AdminProductsPage() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[10px] text-sky-400 font-bold flex items-center gap-1">
-                              <ExternalLink className="w-3 h-3 text-sky-400" />
-                              <span>2. Link World Private Server *</span>
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={item.privateServerUrl}
-                              onChange={(e) => handleDeliveryItemChange(item.id, 'privateServerUrl', e.target.value)}
-                              placeholder="https://www.roblox.com/games/2753915549/BloxFruits?privateServerLinkCode=..."
-                              className="w-full px-3 py-2 rounded-lg bg-surface border border-cyan-500/50 text-sky-300 text-xs font-mono focus:outline-none focus:border-cyan-400"
-                            />
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] text-sky-400 font-bold flex items-center gap-1">
+                                <ExternalLink className="w-3 h-3 text-sky-400" />
+                                <span>2. Link World Private Server *</span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => toggleReveal(item.id)}
+                                className="text-[9px] text-gray-400 hover:text-sky-300 flex items-center gap-0.5 transition-colors"
+                              >
+                                {revealedItems[item.id] ? 'Sembunyikan' : 'Lihat'}
+                              </button>
+                            </div>
+                            <div className="relative">
+                              <input
+                                type={revealedItems[item.id] ? 'text' : 'password'}
+                                required
+                                value={item.privateServerUrl}
+                                onChange={(e) => handleDeliveryItemChange(item.id, 'privateServerUrl', e.target.value)}
+                                placeholder="https://www.roblox.com/games/2753915549/BloxFruits?privateServerLinkCode=..."
+                                className="w-full px-3 py-2 pr-9 rounded-lg bg-surface border border-cyan-500/50 text-sky-300 text-xs font-mono focus:outline-none focus:border-cyan-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleReveal(item.id)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-sky-300 transition-colors"
+                                title={revealedItems[item.id] ? 'Sembunyikan link' : 'Lihat link'}
+                              >
+                                {revealedItems[item.id] ? (
+                                  <EyeOff className="w-3.5 h-3.5 text-sky-400" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5 text-gray-400" />
+                                )}
+                              </button>
+                            </div>
                           </div>
 
                           <div className="space-y-1">

@@ -17,7 +17,7 @@ const LoginSchema = z.object({
   password: z.string().min(1),
 });
 
-const DEFAULT_ADMIN_EMAIL = 'admin@saladinshop.com';
+const DEFAULT_ADMIN_EMAIL = 'admin@store.local';
 const DEFAULT_ADMIN_PASS = 'AdminSaladin123!';
 
 export async function POST(req: NextRequest) {
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Fallback for offline database or unseeded DB
     const isMasterSaladin = email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase() && (password === DEFAULT_ADMIN_PASS || password === 'admin123');
-    const isMasterThesis = (email.toLowerCase() === 'admin@store.local' || email.toLowerCase() === 'admin@saladinshop.com') && (password === 'Admin#Secure2026' || password === 'admin123' || password === 'AdminSaladin123!');
+    const isMasterThesis = (email.toLowerCase() === 'admin@store.local' || email.toLowerCase() === 'admin@saladinshop.com' || email.toLowerCase() === 'admin@example.com') && (password === 'Admin#Secure2026' || password === 'admin123' || password === 'AdminSaladin123!');
 
     if (isMasterSaladin || isMasterThesis) {
       console.log('[Admin Login] Authenticated via Master Seed Credentials.');

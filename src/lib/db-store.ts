@@ -54,6 +54,9 @@ export interface MemoryOrder {
   quantity?: number;
   customerNotes?: string | null;
   notes?: string | null;
+  providerInvoiceId?: string | null;
+  provider_invoice_id?: string | null;
+  paymentTransactions?: any[];
   customSkinDetails?: {
     description: string;
     skinSize: string;

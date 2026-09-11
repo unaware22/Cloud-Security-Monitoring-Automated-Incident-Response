@@ -45,11 +45,13 @@ function getXenditPaymentMethods(paymentMethod: string): string[] | undefined {
     // QRIS
     qris: ['QRIS'],
     // E-Wallets
+    gopay: ['GOPAY', 'QRIS'],
     dana: ['DANA'],
     ovo: ['OVO'],
     shopeepay: ['SHOPEEPAY'],
     // Retail Outlets
     alfamart: ['ALFAMART'],
+    indomaret: ['INDOMARET'],
   };
 
   return methodMap[paymentMethod] || undefined;

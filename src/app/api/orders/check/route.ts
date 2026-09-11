@@ -5,7 +5,7 @@ import { getClientIp, detectSQLi, recordSecurityEvent } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
-import { checkMidtransTransactionStatus } from '@/lib/midtrans';
+import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,6 +142,18 @@ export async function POST(req: NextRequest) {
             }
           } catch (errM) {
             console.warn('Midtrans check sync error:', errM);
+          }
+
+          // 1b. Check Midtrans Snap Token
+          if (!isPaidFromProvider && order.paymentTransactions?.[0]?.providerInvoiceId) {
+            try {
+              const snapCheck = await checkMidtransSnapTokenStatus(order.paymentTransactions[0].providerInvoiceId);
+              if (snapCheck.isPaid) {
+                isPaidFromProvider = true;
+              }
+            } catch (errSnap) {
+              console.warn('Midtrans snap check sync error:', errSnap);
+            }
           }
 
           // 2. Fallback check Xendit

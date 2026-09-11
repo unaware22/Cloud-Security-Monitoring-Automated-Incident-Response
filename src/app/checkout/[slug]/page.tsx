@@ -36,93 +36,16 @@ interface PaymentMethodItem {
   logo: React.ReactNode;
 }
 
-// Payment Logo Components
-function QRISLogo() {
+// Real Authentic Payment Logo Badge Component (Uniform size, centered, crisp white container)
+function PaymentLogoBadge({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200 px-1">
-      <span className="text-[10px] font-black text-rose-600 tracking-tight font-sans">
-        QR<span className="text-neutral-900">IS</span>
-      </span>
-    </div>
-  );
-}
-
-function OVOLogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[11px] font-black text-[#4c2a86] tracking-tighter lowercase font-sans">
-        ovo
-      </span>
-    </div>
-  );
-}
-
-function DANALogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[10px] font-black text-[#118eea] tracking-tight uppercase font-sans">
-        dana
-      </span>
-    </div>
-  );
-}
-
-function ShopeePayLogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[9px] font-black text-[#ee4d2d] tracking-tighter font-sans">
-        Shopee<span className="text-amber-500 font-bold">Pay</span>
-      </span>
-    </div>
-  );
-}
-
-function BRIVALogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[9px] font-black text-[#00529c] tracking-tight font-sans">
-        BRIVA
-      </span>
-    </div>
-  );
-}
-
-function MandiriLogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[9px] font-black text-[#003d79] tracking-tight font-sans">
-        mandiri
-      </span>
-    </div>
-  );
-}
-
-function BSILogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[10px] font-black text-[#00a39d] tracking-tight font-sans">
-        BSI
-      </span>
-    </div>
-  );
-}
-
-function BCALogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[10px] font-black text-[#005baa] tracking-tight font-sans">
-        BCA
-      </span>
-    </div>
-  );
-}
-
-function AlfamartLogo() {
-  return (
-    <div className="w-10 h-7 bg-white rounded flex items-center justify-center border border-neutral-200">
-      <span className="text-[9px] font-black text-[#e11b22] tracking-tighter font-sans">
-        Alfa<span className="text-[#005baa]">mart</span>
-      </span>
+    <div className="w-16 h-10 bg-white rounded-md p-1.5 flex items-center justify-center border border-neutral-300 shadow-sm flex-shrink-0">
+      <img
+        src={src}
+        alt={alt}
+        className="w-full h-full object-contain"
+        loading="lazy"
+      />
     </div>
   );
 }
@@ -263,65 +186,83 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
     reader.readAsDataURL(file);
   };
 
-  // Payment Methods Definitions
+  // Payment Methods Definitions with Real Icons
   const PAYMENT_METHODS: PaymentMethodItem[] = [
     // 1. QRIS
     {
       id: 'qris',
-      name: 'QRIS',
+      name: 'QRIS (Semua E-Wallet & Bank)',
       category: 'qris',
-      logo: <QRISLogo />,
+      logo: <PaymentLogoBadge src="/images/payments/qris.svg" alt="QRIS" />,
     },
     // 2. E-wallet
+    {
+      id: 'gopay',
+      name: 'GoPay',
+      category: 'ewallet',
+      logo: <PaymentLogoBadge src="/images/payments/gopay.svg" alt="GoPay" />,
+    },
     {
       id: 'ovo',
       name: 'OVO',
       category: 'ewallet',
-      logo: <OVOLogo />,
+      logo: <PaymentLogoBadge src="/images/payments/ovo.svg" alt="OVO" />,
     },
     {
       id: 'dana',
       name: 'DANA',
       category: 'ewallet',
-      logo: <DANALogo />,
+      logo: <PaymentLogoBadge src="/images/payments/dana.svg" alt="DANA" />,
     },
     {
       id: 'shopeepay',
       name: 'ShopeePay',
       category: 'ewallet',
-      logo: <ShopeePayLogo />,
+      logo: <PaymentLogoBadge src="/images/payments/shopeepay.svg" alt="ShopeePay" />,
     },
     // 3. Virtual Account
     {
-      id: 'va_bri',
-      name: 'BRI Virtual Account',
+      id: 'va_bca',
+      name: 'BCA Virtual Account',
       category: 'va',
-      logo: <BRIVALogo />,
+      logo: <PaymentLogoBadge src="/images/payments/bca.svg" alt="BCA" />,
     },
     {
       id: 'va_mandiri',
       name: 'Mandiri Virtual Account',
       category: 'va',
-      logo: <MandiriLogo />,
+      logo: <PaymentLogoBadge src="/images/payments/mandiri.svg" alt="Mandiri" />,
+    },
+    {
+      id: 'va_bri',
+      name: 'BRI Virtual Account',
+      category: 'va',
+      logo: <PaymentLogoBadge src="/images/payments/bri.svg" alt="BRI" />,
+    },
+    {
+      id: 'va_bni',
+      name: 'BNI Virtual Account',
+      category: 'va',
+      logo: <PaymentLogoBadge src="/images/payments/bni.svg" alt="BNI" />,
     },
     {
       id: 'va_bsi',
       name: 'BSI Virtual Account',
       category: 'va',
-      logo: <BSILogo />,
-    },
-    {
-      id: 'va_bca',
-      name: 'BCA Virtual Account',
-      category: 'va',
-      logo: <BCALogo />,
+      logo: <PaymentLogoBadge src="/images/payments/bsi.svg" alt="BSI" />,
     },
     // 4. Retail
     {
       id: 'alfamart',
       name: 'Alfamart',
       category: 'retail',
-      logo: <AlfamartLogo />,
+      logo: <PaymentLogoBadge src="/images/payments/alfamart.svg" alt="Alfamart" />,
+    },
+    {
+      id: 'indomaret',
+      name: 'Indomaret',
+      category: 'retail',
+      logo: <PaymentLogoBadge src="/images/payments/indomaret.svg" alt="Indomaret" />,
     },
   ];
 
@@ -452,12 +393,36 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
       if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
         setSubmitting(false);
         window.snap.pay(snapToken, {
-          onSuccess: () => {
+          onSuccess: async (result?: any) => {
             if (activePollerRef.current) clearInterval(activePollerRef.current);
+            try {
+              await fetch('/api/orders/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  order_code: orderData.order_code,
+                  transaction_status: result?.transaction_status || 'settlement',
+                  status_code: result?.status_code || '200',
+                  payment_type: result?.payment_type,
+                }),
+              });
+            } catch {}
             window.location.href = `/order/success/${orderData.order_code}`;
           },
-          onPending: () => {
-            // Keep background poller active to catch instant settlement
+          onPending: async (result?: any) => {
+            if (result?.transaction_status === 'settlement' || result?.status_code === '200') {
+              try {
+                await fetch('/api/orders/verify-payment', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    order_code: orderData.order_code,
+                    transaction_status: result?.transaction_status,
+                    status_code: result?.status_code,
+                  }),
+                });
+              } catch {}
+            }
           },
           onError: () => {
             if (activePollerRef.current) clearInterval(activePollerRef.current);
@@ -475,9 +440,10 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               if (
                 vJson.success &&
                 (vJson.data?.payment_status === 'paid' ||
-                 vJson.data?.payment_status === 'paid_manual' ||
-                 vJson.data?.payment_status === 'settlement' ||
-                 vJson.data?.order_status === 'completed')
+                  vJson.data?.payment_status === 'paid_manual' ||
+                  vJson.data?.payment_status === 'settlement' ||
+                  vJson.data?.order_status === 'completed' ||
+                  vJson.data?.order_status === 'processing')
               ) {
                 if (activePollerRef.current) clearInterval(activePollerRef.current);
                 window.location.href = `/order/success/${orderData.order_code}`;
@@ -927,6 +893,10 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                       placeholder="nama@email.com"
                       className="w-full px-3.5 py-3 rounded-none bg-[#111111] border border-neutral-700 text-white placeholder-neutral-500 focus:outline-none focus:border-sky-500 disabled:opacity-50"
                     />
+                    <p className="text-[11px] text-amber-400/90 mt-1 flex items-center gap-1">
+                      <span>⚠️</span>
+                      <span>Pastikan email aktif & benar. Detail akun/pesanan otomatis dikirimkan ke email ini.</span>
+                    </p>
                   </div>
                 </div>
 
@@ -1019,11 +989,8 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                               <div className="flex items-center gap-3">
                                 {method.logo}
                                 <div>
-                                  <p className="font-bold text-xs sm:text-sm text-white flex items-center gap-2">
-                                    <span>{method.name}</span>
-                                    {isSelected && (
-                                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                                    )}
+                                  <p className="font-bold text-xs sm:text-sm text-white">
+                                    {method.name}
                                   </p>
                                   <p className="text-[10px] text-amber-400 font-medium">
                                     Biaya Layanan: +{formatIDR(adminFee)} <span className="text-neutral-500 font-mono text-[9px]">(Rp 750 + 0.7%)</span>

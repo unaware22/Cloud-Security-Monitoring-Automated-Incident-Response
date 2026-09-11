@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 import { sendDigitalDelivery, sendCustomSkinProcessingEmail } from '@/lib/email';
-import { checkMidtransTransactionStatus } from '@/lib/midtrans';
+import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   const dbOnline = await isDatabaseOnline();
 
-  // 1. Try to verify with Midtrans API directly
+  // 1. Try to verify with Midtrans API directly (order status)
   let paymentPaid = false;
   try {
     const midtransStatus = await checkMidtransTransactionStatus(orderCode);
@@ -40,6 +40,42 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.warn('Midtrans status check error:', err);
+  }
+
+  // 1b. Try to verify via Midtrans Snap Token if order status is not available
+  if (!paymentPaid) {
+    try {
+      let snapToken: string | null = null;
+      if (dbOnline) {
+        const ord = await prisma.order.findUnique({
+          where: { orderCode },
+          include: { paymentTransactions: true },
+        });
+        snapToken = ord?.paymentTransactions?.[0]?.providerInvoiceId || null;
+      } else {
+        const mem = inMemoryOrders.find((o) => o.orderCode === orderCode);
+        snapToken = mem?.providerInvoiceId || mem?.provider_invoice_id || null;
+      }
+
+      if (snapToken) {
+        const snapStatus = await checkMidtransSnapTokenStatus(snapToken);
+        if (snapStatus.isPaid) {
+          paymentPaid = true;
+        }
+      }
+    } catch (errSnap) {
+      console.warn('Midtrans Snap verification error:', errSnap);
+    }
+  }
+
+  // 1c. If client received confirmed settlement from Midtrans redirect / Snap callback
+  if (
+    !paymentPaid &&
+    (body.transaction_status === 'settlement' ||
+      body.transaction_status === 'capture' ||
+      (body.status_code === '200' && body.transaction_status))
+  ) {
+    paymentPaid = true;
   }
 
   // Fallback to Xendit if not paid on Midtrans

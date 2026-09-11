@@ -123,6 +123,9 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
               user: process.env.SMTP_USER,
               pass: process.env.SMTP_PASS,
             },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
           })
         : nodemailer.createTransport({
             host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -132,11 +135,23 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
               user: process.env.SMTP_USER,
               pass: process.env.SMTP_PASS,
             },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
           });
+
+      // Automatically BCC the store admin/owner on all customer dispatches
+      const bccAdmin =
+        process.env.SMTP_USER &&
+        process.env.SMTP_USER.includes('@') &&
+        process.env.SMTP_USER.toLowerCase() !== payload.to.toLowerCase()
+          ? process.env.SMTP_USER
+          : undefined;
 
       const info = await transporter.sendMail({
         from,
         to: payload.to,
+        bcc: bccAdmin,
         replyTo: process.env.SMTP_USER || from,
         subject: payload.subject,
         html: payload.html,
@@ -146,7 +161,7 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
         },
       });
 
-      console.log(`[GMAIL SMTP SUCCESS] Sent email to ${payload.to} | Message ID: ${info.messageId}`);
+      console.log(`[GMAIL SMTP SUCCESS] Sent email to ${payload.to}${bccAdmin ? ` (BCC: ${bccAdmin})` : ''} | Message ID: ${info.messageId}`);
       return {
         success: true,
         messageId: info.messageId,
@@ -303,38 +318,48 @@ export async function sendDigitalDelivery(params: SendDeliveryParams): Promise<{
       `,
     });
 
-    // Record DigitalDelivery in database if online
-    await prisma.digitalDelivery.create({
-      data: {
-        orderId,
-        deliveryEmail: recipientEmail,
-        deliveryStatus: 'delivered',
-        deliveryData: deliveryContent,
-        deliveredAt: new Date(),
-      },
-    }).catch(() => {});
+    if (orderId) {
+      // Record DigitalDelivery in database if online
+      await prisma.digitalDelivery
+        .create({
+          data: {
+            orderId,
+            deliveryEmail: recipientEmail,
+            deliveryStatus: 'delivered',
+            deliveryData: deliveryContent,
+            deliveredAt: new Date(),
+          },
+        })
+        .catch(() => {});
 
-    // Update order delivery status
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        deliveryStatus: 'delivered',
-        orderStatus: 'completed',
-      },
-    }).catch(() => {});
+      // Update order delivery status
+      await prisma.order
+        .update({
+          where: { id: orderId },
+          data: {
+            deliveryStatus: 'delivered',
+            orderStatus: 'completed',
+          },
+        })
+        .catch(() => {});
+    }
 
     return { success: true, messageId: emailResult.messageId };
   } catch (error: any) {
     console.error('Failed to send digital delivery:', error);
 
-    await prisma.digitalDelivery.create({
-      data: {
-        orderId,
-        deliveryEmail: recipientEmail,
-        deliveryStatus: 'failed',
-        errorMessage: error?.message || 'Unknown delivery failure',
-      },
-    }).catch(() => {});
+    if (orderId) {
+      await prisma.digitalDelivery
+        .create({
+          data: {
+            orderId,
+            deliveryEmail: recipientEmail,
+            deliveryStatus: 'failed',
+            errorMessage: error?.message || 'Unknown delivery failure',
+          },
+        })
+        .catch(() => {});
+    }
 
     return { success: false, error: error?.message || 'Delivery error' };
   }

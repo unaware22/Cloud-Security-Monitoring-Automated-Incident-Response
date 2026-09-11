@@ -169,17 +169,23 @@ export async function createMidtransSnapTransaction(
       unfinish: `${baseUrl}/order/success/${params.orderId}`,
       error: `${baseUrl}/check-order?order_code=${params.orderId}&status=error`,
     },
-    gopay: {
-      enable_callback: true,
-      callback_url: `${baseUrl}/order/success/${params.orderId}`,
-    },
-    shopeepay: {
-      callback_url: `${baseUrl}/order/success/${params.orderId}`,
-    },
   };
 
   if (enabledPayments && enabledPayments.length > 0) {
     payload.enabled_payments = enabledPayments;
+  }
+
+  if (!enabledPayments || enabledPayments.includes('gopay')) {
+    payload.gopay = {
+      enable_callback: true,
+      callback_url: `${baseUrl}/order/success/${params.orderId}`,
+    };
+  }
+
+  if (!enabledPayments || enabledPayments.includes('shopeepay')) {
+    payload.shopeepay = {
+      callback_url: `${baseUrl}/order/success/${params.orderId}`,
+    };
   }
 
 
@@ -253,6 +259,44 @@ export async function checkMidtransTransactionStatus(
   } catch (err) {
     console.error('[Midtrans checkTransactionStatus Error]:', err);
     return null;
+  }
+}
+
+/**
+ * Checks Snap transaction token status directly from Midtrans Snap API.
+ * In Midtrans Snap, a completed/settled transaction returns 409 {"error_messages":["transaction has been succeed"]}.
+ */
+export async function checkMidtransSnapTokenStatus(
+  token: string
+): Promise<{ isPaid: boolean; rawStatus?: string }> {
+  if (!token) return { isPaid: false };
+  const isProduction = process.env.MIDTRANS_IS_PRODUCTION === 'true';
+  const snapHost = isProduction
+    ? 'https://app.midtrans.com'
+    : 'https://app.sandbox.midtrans.com';
+
+  try {
+    const res = await fetch(`${snapHost}/snap/v1/transactions/${encodeURIComponent(token)}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    const text = await res.text();
+    if (
+      text.includes('transaction has been succeed') ||
+      text.includes('settlement') ||
+      text.includes('capture')
+    ) {
+      return { isPaid: true, rawStatus: 'settlement' };
+    }
+
+    return { isPaid: false };
+  } catch (err) {
+    console.warn('[Midtrans checkMidtransSnapTokenStatus Error]:', err);
+    return { isPaid: false };
   }
 }
 

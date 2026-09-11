@@ -15,7 +15,7 @@ import {
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('admin@store.local');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -87,7 +87,7 @@ export default function AdminLoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@store.local"
+                  placeholder="admin@example.com"
                   className="w-full pl-10 pr-4 py-3 rounded-none bg-[#111111] border border-neutral-700 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#367723]"
                 />
               </div>
