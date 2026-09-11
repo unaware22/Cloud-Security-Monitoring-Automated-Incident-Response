@@ -24,6 +24,10 @@ RUN apk add --no-cache openssl libc6-compat && \
     adduser --system --uid 1001 nextjs
 
 COPY --from=dependencies /app/node_modules ./node_modules
+# `prisma generate` writes the generated client to node_modules/.prisma in the
+# build stage. The runtime image needs that generated client for every API
+# route that imports @prisma/client.
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
