@@ -45,6 +45,10 @@ CasaOS Custom Install tidak selalu dapat memvalidasi tag image dari GHCR.
 Dockge dipakai karena dapat menjalankan Docker Compose dan menarik image GHCR
 secara langsung.
 
+Untuk setiap pembaruan kode, gunakan tag image unik `homelab-<commit>` yang
+diterbitkan oleh workflow, ubah tag `image` pada stack, lalu klik **Deploy**.
+Ini menghindari kemungkinan Docker menjalankan cache dari tag lama.
+
 `NEXT_PUBLIC_MIDTRANS_CLIENT_KEY` dimasukkan saat image dibangun karena variabel publik Next.js dibaca pada waktu build. Untuk mengganti key tersebut, jalankan ulang workflow image dengan build argument baru; jangan menaruhnya dalam repository.
 
 Setelah aplikasi hidup, jalankan seed **sekali** dari terminal container dengan `npm run seed`. Hapus `SEED_ADMIN_PASSWORD` dari `.env.homelab` setelah admin dibuat.

@@ -35,7 +35,9 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
-          tags: ghcr.io/${{ github.repository_owner }}/ecommerce-security-staging:homelab-staging
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ecommerce-security-staging:homelab-staging
+            ghcr.io/${{ github.repository_owner }}/ecommerce-security-staging:homelab-${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false
             NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=
