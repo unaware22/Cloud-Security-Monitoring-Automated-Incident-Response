@@ -9,6 +9,11 @@ ARG NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false
 ARG NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
 ENV NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=$NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION
 ENV NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=$NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
+# Prisma detects the available OpenSSL ABI while generating its query engine.
+# Alpine must therefore have OpenSSL installed in the build stage as well as
+# in the final image; otherwise Prisma generates an OpenSSL 1.1 engine that
+# cannot load on the OpenSSL 3 runtime.
+RUN apk add --no-cache openssl
 COPY . .
 RUN npx prisma generate
 RUN npm run build
