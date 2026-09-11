@@ -15,9 +15,12 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
+ARG NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false
+ARG NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs && \
+RUN apk add --no-cache openssl libc6-compat && \
+    addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 COPY --from=dependencies /app/node_modules ./node_modules
@@ -32,4 +35,4 @@ RUN mkdir -p /app/logs && chown -R nextjs:nodejs /app
 USER nextjs
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && ./node_modules/.bin/next start -p 3000"]
+CMD ["sh", "-c", "npx prisma migrate deploy && exec ./node_modules/.bin/next start -H 0.0.0.0 -p 3000"]

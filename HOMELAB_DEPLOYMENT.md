@@ -5,7 +5,7 @@ Gunakan deployment ini sebagai **staging skripsi**, bukan toko publik. Jalankan 
 ## Batas aman lingkungan
 
 - PostgreSQL tidak membuka port ke LAN atau internet.
-- Aplikasi hanya membuka `127.0.0.1:3000`; akses eksternal harus melalui reverse proxy HTTPS atau tunnel yang Anda kelola.
+- Aplikasi membuka port LAN `3000` hanya untuk pengujian lokal. Jangan meneruskannya ke internet; akses publik kelak harus melalui reverse proxy HTTPS atau tunnel yang Anda kelola.
 - Wazuh Agent berjalan pada host CasaOS dan memantau `runtime-logs/security_events.log` serta log reverse proxy.
 - Jangan menjalankan Wazuh Manager, Indexer, dan Dashboard penuh pada host CasaOS ber-RAM 3 GB. Gunakan Agent + n8n ringan, atau Manager Wazuh terpisah.
 
@@ -33,9 +33,19 @@ data dan secret deployment tidak tercampur dengan konfigurasi pengembangan.
 
 ## Menjalankan di CasaOS
 
-Impor `docker-compose.homelab.yml` melalui fitur Compose/Custom Install CasaOS dari folder project ini. CasaOS akan membangun aplikasi, menyalakan PostgreSQL, menerapkan migrasi Prisma, lalu menjalankan aplikasi.
+1. Instal **Dockge** dari App Store CasaOS, lalu buka `http://192.168.1.50:5001`.
+2. Buat stack baru bernama `ecommerce-security` dan tempel isi
+   `docker-compose.homelab.yml` yang telah disesuaikan untuk CasaOS.
+3. Masukkan secret aplikasi (Midtrans dan SMTP) hanya pada bagian
+   `environment` stack di Dockge. Jangan masukkan `.env` atau secret ke GitHub.
+4. Klik **Deploy**. Dockge menarik image aplikasi, menyalakan PostgreSQL,
+   menerapkan migrasi Prisma, lalu menjalankan aplikasi di port `3000`.
 
-`NEXT_PUBLIC_MIDTRANS_CLIENT_KEY` dimasukkan saat image dibangun karena variabel publik Next.js dibaca pada waktu build. Untuk mengganti key tersebut, rebuild aplikasi dari CasaOS setelah memperbarui `.env`.
+CasaOS Custom Install tidak selalu dapat memvalidasi tag image dari GHCR.
+Dockge dipakai karena dapat menjalankan Docker Compose dan menarik image GHCR
+secara langsung.
+
+`NEXT_PUBLIC_MIDTRANS_CLIENT_KEY` dimasukkan saat image dibangun karena variabel publik Next.js dibaca pada waktu build. Untuk mengganti key tersebut, jalankan ulang workflow image dengan build argument baru; jangan menaruhnya dalam repository.
 
 Setelah aplikasi hidup, jalankan seed **sekali** dari terminal container dengan `npm run seed`. Hapus `SEED_ADMIN_PASSWORD` dari `.env.homelab` setelah admin dibuat.
 
