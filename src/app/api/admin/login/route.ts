@@ -176,7 +176,13 @@ export async function POST(req: NextRequest) {
         name: COOKIE_NAME,
         value: token,
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        // A Secure cookie is required over HTTPS, but browsers reject it on
+        // the HTTP-only LAN address used by the homelab. Inspect the request
+        // scheme instead of relying solely on NODE_ENV so the same image
+        // works on the homelab and behind an HTTPS AWS load balancer.
+        secure:
+          req.headers.get('x-forwarded-proto') === 'https' ||
+          req.nextUrl.protocol === 'https:',
         sameSite: 'lax',
         path: '/',
         maxAge: 60 * 60 * 24,
