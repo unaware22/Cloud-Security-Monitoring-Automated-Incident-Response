@@ -35,7 +35,13 @@ COPY --from=build /app/prisma ./prisma
 ENV NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=$NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION
 ENV NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=$NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
 
-RUN mkdir -p /app/logs && chown -R nextjs:nodejs /app
+# Generate the Prisma Client again in the final Alpine runtime image.  The
+# client generated in a different stage can be missing the runtime-specific
+# query engine, which makes the app report the database as unavailable even
+# when PostgreSQL itself is healthy.
+RUN npx prisma generate && \
+    mkdir -p /app/logs && \
+    chown -R nextjs:nodejs /app
 USER nextjs
 
 EXPOSE 3000
