@@ -1,0 +1,41 @@
+name: Publish homelab image
+
+on:
+  push:
+    branches:
+      - codex/homelab-staging
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'prisma/**'
+      - 'src/**'
+      - '.github/workflows/publish-homelab-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ghcr.io/${{ github.repository_owner }}/ecommerce-security-staging:homelab-staging
+          build-args: |
+            NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false
+            NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=
