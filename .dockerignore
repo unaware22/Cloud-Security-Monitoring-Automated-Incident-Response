@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+node_modules
+.next
+logs
+runtime-logs
+.git
+.agents
+.gemini
+coverage
+npm-debug.log*

@@ -7,14 +7,21 @@ async function main() {
   console.log('--- Starting SALADINSHOP Database Seeding ---');
 
   // 1. Seed Admin User
-  const adminEmail = 'admin@saladinshop.com';
+  const adminEmail = process.env.SEED_ADMIN_EMAIL;
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+
+  if (!adminEmail || !adminPassword || adminPassword.length < 12) {
+    throw new Error(
+      'SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD (minimum 12 characters) are required before seeding.'
+    );
+  }
   const existingAdmin = await prisma.adminUser.findUnique({
     where: { email: adminEmail },
   });
 
   if (!existingAdmin) {
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash('AdminSaladin123!', salt);
+    const passwordHash = await bcrypt.hash(adminPassword, salt);
     const admin = await prisma.adminUser.create({
       data: {
         email: adminEmail,

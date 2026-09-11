@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordSecurityEvent } from '@/lib/security';
 
+function isAuthorized(req: NextRequest): boolean {
+  const expectedToken = process.env.SECURITY_EVENT_RELAY_TOKEN;
+  const suppliedToken = req.headers.get('x-security-event-token');
+
+  return Boolean(
+    expectedToken &&
+      expectedToken.length >= 32 &&
+      suppliedToken &&
+      suppliedToken === expectedToken
+  );
+}
+
 export async function POST(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    // Avoid advertising a useful endpoint to internet scanners.
+    return NextResponse.json({ error: 'Not Found' }, { status: 404 });
+  }
+
   try {
     const body = await req.json();
     const {

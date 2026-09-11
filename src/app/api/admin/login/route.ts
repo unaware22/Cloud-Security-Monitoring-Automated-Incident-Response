@@ -17,9 +17,6 @@ const LoginSchema = z.object({
   password: z.string().min(1),
 });
 
-const DEFAULT_ADMIN_EMAIL = 'admin@store.local';
-const DEFAULT_ADMIN_PASS = 'AdminSaladin123!';
-
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req.headers);
   const userAgent = req.headers.get('user-agent') || 'Unknown';
@@ -86,15 +83,16 @@ export async function POST(req: NextRequest) {
 
   try {
     let admin = null;
-    let isDbAvailable = true;
-
     try {
       admin = await prisma.adminUser.findUnique({
         where: { email: email.toLowerCase() },
       });
     } catch (dbErr) {
-      console.warn('[Admin Login] Database connection unavailable, checking fallback credentials...');
-      isDbAvailable = false;
+      console.error('[Admin Login] Database connection unavailable');
+      return NextResponse.json(
+        { error: 'Service Unavailable', message: 'Layanan autentikasi sedang tidak tersedia.' },
+        { status: 503 }
+      );
     }
 
     // 1. If user is in DB
@@ -187,42 +185,8 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // 2. Fallback for offline database or unseeded DB
-    const isMasterSaladin = email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase() && (password === DEFAULT_ADMIN_PASS || password === 'admin123');
-    const isMasterThesis = (email.toLowerCase() === 'admin@store.local' || email.toLowerCase() === 'admin@saladinshop.com' || email.toLowerCase() === 'admin@example.com') && (password === 'Admin#Secure2026' || password === 'admin123' || password === 'AdminSaladin123!');
-
-    if (isMasterSaladin || isMasterThesis) {
-      console.log('[Admin Login] Authenticated via Master Seed Credentials.');
-
-      const token = await createAdminToken({
-        userId: 'admin-master-saladin',
-        email: email.toLowerCase(),
-        role: 'admin',
-      });
-
-      const response = NextResponse.json({
-        success: true,
-        data: {
-          id: 'admin-master-saladin',
-          email: email.toLowerCase(),
-          role: 'admin',
-        },
-      });
-
-      response.cookies.set({
-        name: COOKIE_NAME,
-        value: token,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24,
-      });
-
-      return response;
-    }
-
-    // Invalid credentials
+    // Invalid credentials. Admin accounts must exist in PostgreSQL; there is no
+    // source-code credential fallback in any deployed environment.
     await recordSecurityEvent({
       eventType: 'admin_bruteforce_attempt',
       severity: 'high',

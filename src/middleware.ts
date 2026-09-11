@@ -44,9 +44,15 @@ const XSS_PATTERNS = [
   /document\.cookie/i,
 ];
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.ADMIN_JWT_SECRET || 'thesis-admin-jwt-secret-fallback-key-2026'
-);
+function getJwtSecret(): Uint8Array | null {
+  const secret = process.env.ADMIN_JWT_SECRET;
+  return secret && secret.length >= 32 ? new TextEncoder().encode(secret) : null;
+}
+
+function getSecurityRelayToken(): string | null {
+  const token = process.env.SECURITY_EVENT_RELAY_TOKEN;
+  return token && token.length >= 32 ? token : null;
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -56,6 +62,7 @@ export async function middleware(req: NextRequest) {
     '127.0.0.1';
   const userAgent = req.headers.get('user-agent') || 'Unknown';
   const requestId = `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
+  const relayToken = getSecurityRelayToken();
 
   // Skip static assets and internal Next.js requests
   if (
@@ -73,7 +80,10 @@ export async function middleware(req: NextRequest) {
     try {
       await fetch(new URL('/api/security-log-relay', req.url), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(relayToken ? { 'x-security-event-token': relayToken } : {}),
+        },
         body: JSON.stringify({
           eventType: 'sensitive_path_scan',
           severity: 'warning',
@@ -109,8 +119,11 @@ export async function middleware(req: NextRequest) {
 
       try {
         await fetch(new URL('/api/security-log-relay', req.url), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(relayToken ? { 'x-security-event-token': relayToken } : {}),
+        },
           body: JSON.stringify({
             eventType,
             severity,
@@ -150,7 +163,9 @@ export async function middleware(req: NextRequest) {
 
     if (token) {
       try {
-        await jwtVerify(token, JWT_SECRET);
+        const jwtSecret = getJwtSecret();
+        if (!jwtSecret) throw new Error('ADMIN_JWT_SECRET is not configured');
+        await jwtVerify(token, jwtSecret);
         isValid = true;
       } catch {
         isValid = false;

@@ -3,9 +3,17 @@ import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
 import { AdminSessionPayload } from './types';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.ADMIN_JWT_SECRET || 'thesis-admin-jwt-secret-fallback-key-2026'
-);
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.ADMIN_JWT_SECRET;
+
+  // Authentication must fail closed. A predictable fallback would allow anyone
+  // who reads the source code to forge an admin session.
+  if (!secret || secret.length < 32) {
+    throw new Error('ADMIN_JWT_SECRET must be set to at least 32 characters');
+  }
+
+  return new TextEncoder().encode(secret);
+}
 
 const COOKIE_NAME = 'admin_session_token';
 
@@ -17,7 +25,7 @@ export async function createAdminToken(payload: AdminSessionPayload): Promise<st
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('24h')
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -25,7 +33,7 @@ export async function createAdminToken(payload: AdminSessionPayload): Promise<st
  */
 export async function verifyAdminToken(token: string): Promise<AdminSessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return {
       userId: payload.userId as string,
       email: payload.email as string,

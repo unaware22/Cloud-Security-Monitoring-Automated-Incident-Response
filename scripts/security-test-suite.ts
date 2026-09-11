@@ -82,7 +82,7 @@ async function runSecurityTests() {
               customer_name: '<script>alert(document.cookie)</script>',
               customer_email: 'attacker@evil.com',
               customer_phone: '08123456789',
-              payment_method: 'xendit_invoice',
+              payment_method: 'dana',
             }),
           });
           return res.status === 400;
@@ -114,26 +114,26 @@ async function runSecurityTests() {
       },
     },
 
-    // 6. Forged Xendit Webhook Token
+    // 6. Forged Midtrans Webhook Signature
     {
       name: '6. Forged Payment Webhook Callback Token',
-      expectedBehavior: '401 Unauthorized, invalid_payment_callback logged with Critical/High severity',
+      expectedBehavior: '403 Forbidden, invalid_payment_callback logged with High severity',
       run: async () => {
         try {
-          const res = await fetch(`${BASE_URL}/api/payments/xendit/webhook`, {
+          const res = await fetch(`${BASE_URL}/api/payments/midtrans/webhook`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-callback-token': 'attacker_fake_forged_callback_token_9999',
             },
             body: JSON.stringify({
-              id: 'forged-tx-123',
-              external_id: 'ORD-TEST1234',
-              status: 'PAID',
-              amount: 500000,
+              order_id: 'ORD-TEST1234',
+              status_code: '200',
+              gross_amount: '500000.00',
+              transaction_status: 'settlement',
+              signature_key: 'forged_midtrans_signature_key',
             }),
           });
-          return res.status === 401;
+          return res.status === 403;
         } catch {
           return false;
         }

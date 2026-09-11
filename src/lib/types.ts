@@ -70,7 +70,7 @@ export type DeliveryStatus =
   | 'resent';
 
 export type PaymentMethod =
-  | 'xendit_invoice'
+  | 'midtrans'
   | 'manual_transfer'
   | 'manual_qris';
 

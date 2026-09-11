@@ -4,14 +4,13 @@ import { prisma } from '@/lib/prisma';
 import { getClientIp, detectSQLi, recordSecurityEvent } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
-import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
 
 export const dynamic = 'force-dynamic';
 
 const CheckOrderSchema = z.object({
   order_code: z.string().trim().min(4, 'Kode pesanan wajib diisi').max(30),
-  email: z.string().trim().optional(),
+  email: z.string().trim().email('Email wajib diisi dan harus valid').max(150),
 });
 
 export async function POST(req: NextRequest) {
@@ -89,12 +88,10 @@ export async function POST(req: NextRequest) {
       const whereClause: any = {
         orderCode: order_code.trim().toUpperCase(),
       };
-      if (email && email.trim()) {
-        whereClause.customerEmail = {
-          equals: email.trim(),
-          mode: 'insensitive',
-        };
-      }
+      whereClause.customerEmail = {
+        equals: email.trim(),
+        mode: 'insensitive',
+      };
 
       const order = await prisma.order.findFirst({
         where: whereClause,
@@ -126,7 +123,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (order) {
-        // Auto-sync with Midtrans / Xendit if order is pending
+        // Auto-sync with Midtrans if order is pending
         if (order.paymentStatus === 'pending') {
           let isPaidFromProvider = false;
 
@@ -153,31 +150,6 @@ export async function POST(req: NextRequest) {
               }
             } catch (errSnap) {
               console.warn('Midtrans snap check sync error:', errSnap);
-            }
-          }
-
-          // 2. Fallback check Xendit
-          if (!isPaidFromProvider) {
-            const secretKey = process.env.XENDIT_SECRET_KEY;
-            if (secretKey && !secretKey.includes('sample_key')) {
-              try {
-                const authHeader = `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`;
-                const resX = await fetch(
-                  `https://api.xendit.co/v2/invoices?external_id=${encodeURIComponent(order.orderCode)}`,
-                  { method: 'GET', headers: { Authorization: authHeader } }
-                );
-                if (resX.ok) {
-                  const invoices = await resX.json();
-                  const paidInvoice = invoices.find(
-                    (inv: any) => inv.status === 'PAID' || inv.status === 'SETTLED'
-                  );
-                  if (paidInvoice) {
-                    isPaidFromProvider = true;
-                  }
-                }
-              } catch (errX) {
-                console.warn('Xendit sync check error:', errX);
-              }
             }
           }
 
@@ -315,53 +287,10 @@ export async function POST(req: NextRequest) {
   const found = inMemoryOrders.find((o) => {
     const codeMatch = o.orderCode.toUpperCase() === order_code.trim().toUpperCase();
     if (!codeMatch) return false;
-    if (email && email.trim()) {
-      return o.customerEmail.toLowerCase() === email.trim().toLowerCase();
-    }
-    return true;
+    return o.customerEmail.toLowerCase() === email.trim().toLowerCase();
   });
 
   if (found) {
-    if (found.paymentStatus === 'pending') {
-      const secretKey = process.env.XENDIT_SECRET_KEY;
-      if (secretKey && !secretKey.includes('sample_key')) {
-        try {
-          const authHeader = `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`;
-          const resX = await fetch(
-            `https://api.xendit.co/v2/invoices?external_id=${encodeURIComponent(found.orderCode)}`,
-            { method: 'GET', headers: { Authorization: authHeader } }
-          );
-          if (resX.ok) {
-            const invoices = await resX.json();
-            const paidInvoice = invoices.find(
-              (inv: any) => inv.status === 'PAID' || inv.status === 'SETTLED'
-            );
-            if (paidInvoice) {
-              const now = new Date();
-              found.paymentStatus = 'paid';
-              found.orderStatus = 'completed';
-              found.deliveryStatus = 'delivered';
-              found.paidAt = now.toISOString();
-              const prodId = (found as any).productId || (found as any).product_id || found.orderItems?.[0]?.productId;
-              const qty = (found as any).quantity || found.orderItems?.[0]?.quantity || 1;
-              if (prodId) {
-                const dispatchRes = dispatchProductDelivery(prodId, qty);
-                if (dispatchRes?.dispatchedContent) {
-                  (found as any).deliveryContent = dispatchRes.dispatchedContent;
-                  (found as any).delivery_content = dispatchRes.dispatchedContent;
-                  (found as any).digital_delivery = { content: dispatchRes.dispatchedContent };
-                } else {
-                  decrementProductStock(prodId, qty);
-                }
-              }
-            }
-          }
-        } catch (errX) {
-          console.warn('In-memory Xendit sync error:', errX);
-        }
-      }
-    }
-
     const isPaid = found.paymentStatus === 'paid' || found.paymentStatus === 'paid_manual';
     return NextResponse.json({
       success: true,

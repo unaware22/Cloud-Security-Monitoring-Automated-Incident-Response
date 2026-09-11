@@ -365,7 +365,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
           const vRes = await fetch('/api/orders/verify-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order_code: orderData.order_code }),
+            body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
           });
           const vJson = await vRes.json();
           if (vJson.success && vJson.data) {
@@ -399,12 +399,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               await fetch('/api/orders/verify-payment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  order_code: orderData.order_code,
-                  transaction_status: result?.transaction_status || 'settlement',
-                  status_code: result?.status_code || '200',
-                  payment_type: result?.payment_type,
-                }),
+                body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
               });
             } catch {}
             window.location.href = `/order/success/${orderData.order_code}`;
@@ -415,11 +410,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                 await fetch('/api/orders/verify-payment', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    order_code: orderData.order_code,
-                    transaction_status: result?.transaction_status,
-                    status_code: result?.status_code,
-                  }),
+                  body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
                 });
               } catch {}
             }
@@ -434,7 +425,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               const vRes = await fetch('/api/orders/verify-payment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order_code: orderData.order_code }),
+                body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
               });
               const vJson = await vRes.json();
               if (

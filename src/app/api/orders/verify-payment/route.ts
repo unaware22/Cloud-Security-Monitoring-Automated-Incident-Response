@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/orders/verify-payment
- * Called after Midtrans / Xendit redirects user back. Checks status directly with API
+ * Called after a Midtrans redirect. Checks status directly with Midtrans API
  * and updates order + dispatches delivery if paid.
  */
 export async function POST(req: NextRequest) {
@@ -21,11 +21,29 @@ export async function POST(req: NextRequest) {
   }
 
   const orderCode = body.order_code;
-  if (!orderCode) {
-    return NextResponse.json({ error: 'Missing order_code' }, { status: 400 });
+  const customerEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  if (!orderCode || !customerEmail) {
+    return NextResponse.json({ error: 'Missing order_code or email' }, { status: 400 });
   }
 
   const dbOnline = await isDatabaseOnline();
+
+  if (!dbOnline) {
+    return NextResponse.json({ error: 'Service Unavailable' }, { status: 503 });
+  }
+
+  // An order code is not a customer credential. Require the buyer's checkout
+  // email before returning payment or digital-delivery details.
+  const matchingOrder = await prisma.order.findFirst({
+    where: {
+      orderCode,
+      customerEmail: { equals: customerEmail, mode: 'insensitive' },
+    },
+  });
+
+  if (!matchingOrder) {
+    return NextResponse.json({ error: 'Not Found' }, { status: 404 });
+  }
 
   // 1. Try to verify with Midtrans API directly (order status)
   let paymentPaid = false;
@@ -52,9 +70,6 @@ export async function POST(req: NextRequest) {
           include: { paymentTransactions: true },
         });
         snapToken = ord?.paymentTransactions?.[0]?.providerInvoiceId || null;
-      } else {
-        const mem = inMemoryOrders.find((o) => o.orderCode === orderCode);
-        snapToken = mem?.providerInvoiceId || mem?.provider_invoice_id || null;
       }
 
       if (snapToken) {
@@ -65,44 +80,6 @@ export async function POST(req: NextRequest) {
       }
     } catch (errSnap) {
       console.warn('Midtrans Snap verification error:', errSnap);
-    }
-  }
-
-  // 1c. If client received confirmed settlement from Midtrans redirect / Snap callback
-  if (
-    !paymentPaid &&
-    (body.transaction_status === 'settlement' ||
-      body.transaction_status === 'capture' ||
-      (body.status_code === '200' && body.transaction_status))
-  ) {
-    paymentPaid = true;
-  }
-
-  // Fallback to Xendit if not paid on Midtrans
-  if (!paymentPaid) {
-    const secretKey = process.env.XENDIT_SECRET_KEY;
-    if (secretKey && !secretKey.includes('sample_key')) {
-      try {
-        const authHeader = `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`;
-        const res = await fetch(
-          `https://api.xendit.co/v2/invoices?external_id=${encodeURIComponent(orderCode)}`,
-          {
-            method: 'GET',
-            headers: { Authorization: authHeader },
-          }
-        );
-        if (res.ok) {
-          const invoices = await res.json();
-          const paidInvoice = invoices.find(
-            (inv: any) => inv.status === 'PAID' || inv.status === 'SETTLED'
-          );
-          if (paidInvoice) {
-            paymentPaid = true;
-          }
-        }
-      } catch (err) {
-        console.warn('Xendit invoice verification error:', err);
-      }
     }
   }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMidtransSignature } from '@/lib/midtrans';
-import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
+import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 import { sendDigitalDelivery, sendCustomSkinProcessingEmail } from '@/lib/email';
 import { getClientIp, recordSecurityEvent } from '@/lib/security';
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       endpoint: '/api/payments/midtrans/webhook',
       userAgent: req.headers.get('user-agent') || 'Unknown',
-      payloadSnippet: `order_id=${order_id}&signature=${signature_key}`,
+      payloadSnippet: `order_id=${order_id}&signature=[REDACTED]`,
       statusCode: 403,
       description: 'Midtrans Webhook SHA-512 Signature Mismatch',
       requestId,
@@ -73,6 +73,13 @@ export async function POST(req: NextRequest) {
 
   const now = new Date();
   const dbOnline = await isDatabaseOnline();
+  const allowInMemoryFallback = isInMemoryFallbackEnabled();
+
+  if (!dbOnline && !allowInMemoryFallback) {
+    // A non-2xx response asks Midtrans to retry instead of acknowledging a
+    // payment that cannot be stored durably.
+    return NextResponse.json({ error: 'Service Unavailable' }, { status: 503 });
+  }
 
   // 3. Process Paid Order in Database
   if (dbOnline) {
@@ -86,14 +93,45 @@ export async function POST(req: NextRequest) {
       });
 
       if (order) {
-        if (isPaid && order.paymentStatus !== 'paid') {
-          const mainItem = order.orderItems[0];
-          const product = mainItem?.product;
-          const isManual =
-            product?.deliveryType === 'manual' ||
-            product?.serviceTag === 'pembuatan-cepat' ||
-            product?.subCategory1 === 'skins' ||
-            product?.slug?.includes('skin');
+        if (Number(gross_amount) !== order.totalAmount) {
+          await recordSecurityEvent({
+            eventType: 'invalid_payment_callback',
+            severity: 'high',
+            ipAddress: ip,
+            method: 'POST',
+            endpoint: '/api/payments/midtrans/webhook',
+            userAgent: req.headers.get('user-agent') || 'Unknown',
+            payloadSnippet: `order_id=${order_id}&gross_amount=${gross_amount}`,
+            statusCode: 400,
+            description: 'Midtrans webhook amount does not match the stored order amount',
+            requestId,
+          });
+          return NextResponse.json({ error: 'Bad Request', message: 'Payment amount mismatch' }, { status: 400 });
+        }
+
+        const mainItem = order.orderItems[0];
+        const product = mainItem?.product;
+        const isManual =
+          product?.deliveryType === 'manual' ||
+          product?.serviceTag === 'pembuatan-cepat' ||
+          product?.subCategory1 === 'skins' ||
+          product?.slug?.includes('skin');
+
+        // Claim the pending order atomically. This prevents concurrent webhook
+        // retries from delivering the same digital product more than once.
+        const paymentClaim = isPaid
+          ? await prisma.order.updateMany({
+              where: { id: order.id, paymentStatus: 'pending' },
+              data: {
+                paymentStatus: 'paid',
+                orderStatus: isManual ? 'processing' : 'completed',
+                deliveryStatus: isManual ? 'processing' : 'delivered',
+                paidAt: now,
+              },
+            })
+          : null;
+
+        if (isPaid && paymentClaim?.count === 1) {
 
           let txPayload: any = {};
           try {
@@ -104,16 +142,6 @@ export async function POST(req: NextRequest) {
 
           if (isManual) {
             // Set processing for manual craft
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                paymentStatus: 'paid',
-                orderStatus: 'processing',
-                deliveryStatus: 'processing',
-                paidAt: now,
-              },
-            });
-
             await prisma.paymentTransaction.updateMany({
               where: { orderId: order.id },
               data: { status: 'paid' },
@@ -132,16 +160,6 @@ export async function POST(req: NextRequest) {
             } catch {}
           } else {
             // Instant digital delivery
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                paymentStatus: 'paid',
-                orderStatus: 'completed',
-                deliveryStatus: 'delivered',
-                paidAt: now,
-              },
-            });
-
             const qty = mainItem?.quantity || 1;
             const rawLines = (mainItem?.product?.deliveryContent || '')
               .split(/\r?\n/)
@@ -215,8 +233,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4. Update in-memory orders
-  const memOrder = inMemoryOrders.find((o) => o.orderCode === order_id);
+  // 4. Update in-memory orders only during explicitly enabled local development.
+  const memOrder = allowInMemoryFallback
+    ? inMemoryOrders.find((o) => o.orderCode === order_id)
+    : undefined;
   if (memOrder) {
     if (isPaid && memOrder.paymentStatus !== 'paid') {
       const isManual =

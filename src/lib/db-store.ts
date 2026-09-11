@@ -88,6 +88,15 @@ export const inMemoryAudits = globalForMemory.inMemoryAudits;
 export const inMemorySecurityEvents = globalForMemory.inMemorySecurityEvents;
 
 /**
+ * Memory-backed orders are useful only for local UI development. They must
+ * never be used by a deployed service because a restart loses payment and
+ * delivery records.
+ */
+export function isInMemoryFallbackEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.ALLOW_IN_MEMORY_FALLBACK === 'true';
+}
+
+/**
  * Super-fast database reachability check with 600ms timeout
  */
 export async function isDatabaseOnline(): Promise<boolean> {

@@ -11,7 +11,7 @@ import {
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { createMidtransSnapTransaction, calculatePaymentFee } from '@/lib/midtrans';
 import { fallbackStore } from '@/lib/products-store';
-import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
+import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,33 +29,6 @@ const CheckoutSchema = z.object({
   skin_reference_image: z.string().optional(),
   custom_skin_details: z.any().optional(),
 });
-
-/**
- * Maps frontend payment_method values to Xendit Invoice API payment_methods array.
- */
-function getXenditPaymentMethods(paymentMethod: string): string[] | undefined {
-  const methodMap: Record<string, string[]> = {
-    // Virtual Account Banks
-    va_mandiri: ['MANDIRI'],
-    va_bca: ['BCA'],
-    va_bri: ['BRI'],
-    va_bni: ['BNI'],
-    va_permata: ['PERMATA'],
-    va_bsi: ['BSI'],
-    // QRIS
-    qris: ['QRIS'],
-    // E-Wallets
-    gopay: ['GOPAY', 'QRIS'],
-    dana: ['DANA'],
-    ovo: ['OVO'],
-    shopeepay: ['SHOPEEPAY'],
-    // Retail Outlets
-    alfamart: ['ALFAMART'],
-    indomaret: ['INDOMARET'],
-  };
-
-  return methodMap[paymentMethod] || undefined;
-}
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req.headers);
@@ -142,6 +115,14 @@ export async function POST(req: NextRequest) {
   } = parseResult.data;
 
   const dbOnline = await isDatabaseOnline();
+  const allowInMemoryFallback = isInMemoryFallbackEnabled();
+
+  if (!dbOnline && !allowInMemoryFallback) {
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Layanan pesanan sedang tidak tersedia. Silakan coba kembali.' },
+      { status: 503 }
+    );
+  }
 
   // Retrieve Product
   let product: any = null;
@@ -158,7 +139,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!product) {
+  if (!product && allowInMemoryFallback) {
     product = fallbackStore.getProductById(product_id) || fallbackStore.getProductBySlug(product_id);
   }
 
@@ -320,11 +301,24 @@ export async function POST(req: NextRequest) {
         { status: 201 }
       );
     } catch (dbErr) {
-      console.warn('DB Transaction failed, falling back to memory store:', dbErr);
+      console.error('DB transaction failed while creating order:', dbErr);
+      if (!allowInMemoryFallback) {
+        return NextResponse.json(
+          { error: 'Service Unavailable', message: 'Pesanan belum dapat dibuat. Silakan coba kembali.' },
+          { status: 503 }
+        );
+      }
     }
   }
 
   // 7. Instant In-Memory Fallback Order Record
+  if (!allowInMemoryFallback) {
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Layanan pesanan sedang tidak tersedia. Silakan coba kembali.' },
+      { status: 503 }
+    );
+  }
+
   const memoryOrderRecord = {
     id: `ord-${Date.now()}`,
     orderCode,

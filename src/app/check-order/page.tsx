@@ -59,6 +59,10 @@ function CheckOrderContent() {
       if (!silent) setErrorMessage('Harap masukkan Kode Transaksi');
       return;
     }
+    if (!email.trim()) {
+      if (!silent) setErrorMessage('Harap masukkan email yang digunakan saat checkout');
+      return;
+    }
 
     if (!silent) setLoading(true);
 
@@ -68,7 +72,7 @@ function CheckOrderContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_code: code,
-          email: email.trim().toLowerCase() || undefined,
+          email: email.trim().toLowerCase(),
         }),
       });
 
@@ -101,7 +105,7 @@ function CheckOrderContent() {
     setIsPolling(false);
   };
 
-  // Start polling when redirected from Xendit payment
+  // Start polling when redirected from Midtrans payment
   const startPaymentPolling = () => {
     setIsPolling(true);
     setPollCount(0);
@@ -125,7 +129,7 @@ function CheckOrderContent() {
     if (prefilledCode) {
       handleLookup();
 
-      // If coming from Xendit payment redirect, start polling for delivery data
+      // If coming from Midtrans payment redirect, start polling for delivery data
       if (isFromPayment) {
         // Small delay to let the initial lookup complete
         setTimeout(() => {
@@ -171,7 +175,7 @@ function CheckOrderContent() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      {/* Payment Success Banner (shown when redirected from Xendit) */}
+      {/* Payment Success Banner (shown when redirected from Midtrans) */}
       {isFromPayment && isPaid && (
         <div className="p-5 rounded-none bg-emerald-950/70 border-2 border-emerald-500 shadow-2xl flex items-start gap-4 animate-fadeIn">
           <CheckCircle2 className="w-8 h-8 text-emerald-400 flex-shrink-0 mt-0.5" />
@@ -255,10 +259,11 @@ function CheckOrderContent() {
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1.5">
-              Email Pembeli (Opsional)
+              Email Pembeli *
             </label>
             <input
               type="email"
+              required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="nama@email.com"

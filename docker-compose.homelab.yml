@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.homelab
+    environment:
+      POSTGRES_DB: ecommerce_security_thesis
+      POSTGRES_USER: app_user
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d ecommerce_security_thesis"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION: ${NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION:-false}
+        NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY:?Set NEXT_PUBLIC_MIDTRANS_CLIENT_KEY in .env}
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.homelab
+    environment:
+      NODE_ENV: production
+      LOG_DIR: /app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # LAN-only staging access. Use a protected HTTPS proxy/tunnel before payment callbacks.
+      - "192.168.1.50:3000:3000"
+    volumes:
+      # Host-visible logs can be collected by a Wazuh Agent running on CasaOS.
+      - ./runtime-logs:/app/logs
+
+volumes:
+  postgres_data:

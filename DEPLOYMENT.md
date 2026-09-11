@@ -82,8 +82,11 @@ Isi `.env` dengan konfigurasi production:
 DATABASE_URL="postgresql://postgres:<RDS_PASSWORD>@<RDS_ENDPOINT>:5432/ecommerce_security_thesis?schema=public"
 APP_BASE_URL="https://store.yourdomain.com"
 ADMIN_JWT_SECRET="<GENERATE_RANDOM_SECRET_KEY_MIN_32_CHARS>"
-XENDIT_SECRET_KEY="<YOUR_XENDIT_SECRET_KEY>"
-XENDIT_WEBHOOK_TOKEN="<YOUR_XENDIT_WEBHOOK_TOKEN>"
+SECURITY_EVENT_RELAY_TOKEN="<GENERATE_A_DIFFERENT_RANDOM_SECRET_KEY_MIN_32_CHARS>"
+MIDTRANS_IS_PRODUCTION="false"
+NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION="false"
+MIDTRANS_SERVER_KEY="<YOUR_MIDTRANS_SANDBOX_SERVER_KEY>"
+NEXT_PUBLIC_MIDTRANS_CLIENT_KEY="<YOUR_MIDTRANS_SANDBOX_CLIENT_KEY>"
 LOG_DIR="/var/www/ecommerce/logs"
 ```
 
@@ -92,15 +95,14 @@ LOG_DIR="/var/www/ecommerce/logs"
 # Install dependencies
 npm install
 
-# Jalankan migrasi Prisma ke Amazon RDS
-npx prisma migrate dev --name init
-# atau untuk sinkronisasi langsung:
-npx prisma db push
+# Jalankan migrasi yang sudah ditinjau ke Amazon RDS
+npx prisma migrate deploy
 
 # Generate Prisma Client
 npx prisma generate
 
-# Seed initial admin & catalog data
+# Seed initial admin & catalog data. Isi SEED_ADMIN_EMAIL dan
+# SEED_ADMIN_PASSWORD terlebih dahulu; tidak ada kredensial bawaan.
 npm run seed
 ```
 

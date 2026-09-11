@@ -29,8 +29,9 @@ export function sanitizeForLogs(data: any): string {
     sanitized = sanitized.replace(/"password"\s*:\s*"[^"]*"/gi, '"password":"[REDACTED]"');
     sanitized = sanitized.replace(/password=[^&]+/gi, 'password=[REDACTED]');
     // Mask secret keys or tokens
-    sanitized = sanitized.replace(/(xnd_[a-zA-Z0-9_]+)/gi, '[REDACTED_XENDIT_KEY]');
-    sanitized = sanitized.replace(/"(token|secret|jwt|passwordHash)"\s*:\s*"[^"]*"/gi, '"$1":"[REDACTED]"');
+    sanitized = sanitized.replace(/(SB-Mid-(server|client)-)[A-Za-z0-9_-]+/gi, '$1[REDACTED]');
+    sanitized = sanitized.replace(/"(token|secret|jwt|passwordHash|signature|signature_key)"\s*:\s*"[^"]*"/gi, '"$1":"[REDACTED]"');
+    sanitized = sanitized.replace(/(signature(?:_key)?=)[^&\s]+/gi, '$1[REDACTED]');
     // Truncate length
     if (sanitized.length > 500) {
       sanitized = sanitized.substring(0, 500) + '...[TRUNCATED]';
@@ -39,7 +40,7 @@ export function sanitizeForLogs(data: any): string {
   }
   try {
     const cloned = JSON.parse(JSON.stringify(data));
-    const sensitiveKeys = ['password', 'passwordHash', 'token', 'secret', 'jwt', 'authorization', 'apiKey', 'creditCard'];
+    const sensitiveKeys = ['password', 'passwordHash', 'token', 'secret', 'jwt', 'authorization', 'apiKey', 'creditCard', 'signature', 'signatureKey'];
     const maskObj = (obj: any) => {
       if (!obj || typeof obj !== 'object') return;
       for (const k of Object.keys(obj)) {

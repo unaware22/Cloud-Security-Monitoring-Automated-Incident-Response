@@ -79,8 +79,13 @@ export default function OrderSuccessPage({
   const fetchAndVerifyOrder = async (isManual = false) => {
     if (isManual) setLoading(true);
 
-    const transactionStatus = searchParams.get('transaction_status') || undefined;
-    const statusCode = searchParams.get('status_code') || undefined;
+    const orderEmail = window.localStorage.getItem(`order_email_${orderCode}`)?.trim().toLowerCase();
+    if (!orderEmail) {
+      setPolling(false);
+      setLoading(false);
+      setErrorMsg('Untuk melindungi data pesanan, masukkan email checkout melalui halaman Cek Pesanan.');
+      return;
+    }
 
     try {
       const res = await fetch('/api/orders/verify-payment', {
@@ -88,8 +93,7 @@ export default function OrderSuccessPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_code: orderCode,
-          transaction_status: transactionStatus,
-          status_code: statusCode,
+          email: orderEmail,
         }),
       });
 

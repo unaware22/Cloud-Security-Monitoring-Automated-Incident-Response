@@ -42,7 +42,7 @@ model Order {
   orderStatus              String                     @default("created") @map("order_status") // created, waiting_payment, processing, completed, cancelled, expired
   paymentStatus            String                     @default("pending") @map("payment_status") // pending, pending_manual, paid, paid_manual, failed, expired, rejected
   deliveryStatus           String                     @default("pending") @map("delivery_status") // pending, processing, delivered, failed, resent
-  paymentMethod            String                     @map("payment_method") // xendit_invoice, manual_transfer, manual_qris
+  paymentMethod            String                     @map("payment_method") // Midtrans payment channel selected at checkout
   expiredAt                DateTime?                  @map("expired_at")
   paidAt                   DateTime?                  @map("paid_at")
   createdAt                DateTime                   @default(now()) @map("created_at")
@@ -72,7 +72,7 @@ model OrderItem {
 model PaymentTransaction {
   id                String   @id @default(uuid())
   orderId           String   @map("order_id")
-  provider          String   // xendit / manual
+  provider          String   // midtrans / manual
   providerInvoiceId String?  @map("provider_invoice_id")
   providerPaymentId String?  @map("provider_payment_id")
   paymentUrl        String?  @map("payment_url")
@@ -107,7 +107,7 @@ model ManualPaymentSubmission {
 
 model DigitalDelivery {
   id             String    @id @default(uuid())
-  orderId        String    @map("order_id")
+  orderId        String    @unique @map("order_id")
   deliveryEmail  String    @map("delivery_email")
   deliveryStatus String    @map("delivery_status") // pending, delivered, failed, resent
   deliveryData   String?   @map("delivery_data")
