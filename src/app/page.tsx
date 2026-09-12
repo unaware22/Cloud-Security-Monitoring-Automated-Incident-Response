@@ -292,7 +292,7 @@ export default function HomePage() {
         onMouseLeave={() => { setIsHeroPaused(false); setPausedCarousel(false); }}
       >
         {/* === Hero Artwork Canvas (Extended Downwards so FLASHSALE is Hidden Below the Fold) === */}
-        <div className="relative w-full h-[620px] sm:h-[680px] md:h-[760px] lg:h-[800px] xl:h-[800px] 2xl:h-[800px] min-h-[600px] overflow-hidden bg-[#0c1220]">
+        <div className="relative w-full aspect-video min-h-0 lg:aspect-auto lg:h-[800px] lg:min-h-[800px] overflow-hidden bg-[#0c1220]">
           {HERO_WORLDS.map((world, idx) => (
             <div
               key={world.id}
@@ -308,7 +308,7 @@ export default function HomePage() {
         </div>
 
         {/* === Overlapping Row: Action Box (Left) + 3 Thumbnails (Right) === */}
-        <div className="relative z-30 w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 -mt-28 sm:-mt-32 md:-mt-36 lg:-mt-44">
+        <div className="relative z-30 w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 mt-0 lg:-mt-44">
 
           {/* Desktop 2-Column Row (lg:grid) */}
           <div className="hidden lg:grid grid-cols-12 gap-8 items-end">
@@ -423,7 +423,7 @@ export default function HomePage() {
                     type="button"
                     aria-label={`Pilih Latar ${idx + 1}`}
                     className={`
-                      relative rounded-none overflow-hidden w-18 sm:w-20 aspect-square transition-all duration-150
+                      relative rounded-none overflow-hidden w-[72px] sm:w-20 aspect-square transition-all duration-150
                       border-2 select-none flex-shrink-0
                       ${isActive
                         ? 'border-[#69c944] ring-2 ring-[#69c944]/80 scale-105'
@@ -445,7 +445,7 @@ export default function HomePage() {
         </div>
 
         {/* === FLASHSALE TITLE & CAROUSEL SECTION === */}
-        <div className="w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 pt-16 sm:pt-20 md:pt-14 lg:pt-22 pb-20 sm:pb-24 md:pb-8 lg:pb-8 space-y-8">
+        <div className="w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 pt-12 sm:pt-16 md:pt-20 lg:pt-20 pb-20 sm:pb-24 md:pb-8 lg:pb-8 space-y-8">
 
           {/* FLASHSALE Title Centered in Minecraft Font (Matches DISCOVER OUR GAMES in screenshot) */}
           <div className="text-center">
