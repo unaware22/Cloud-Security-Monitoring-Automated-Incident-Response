@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION: ${NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION:-false}
+        NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY:?Set NEXT_PUBLIC_MIDTRANS_CLIENT_KEY in .env}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      LOG_DIR: /app/logs
+    ports:
+      # The Next.js container is private to this EC2 host. Nginx is the only
+      # process that should expose the application on port 80/443.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # A host-visible JSONL log directory for the Wazuh agent on this EC2.
+      - ./runtime-logs:/app/logs
