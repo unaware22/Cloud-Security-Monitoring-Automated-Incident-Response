@@ -6,6 +6,7 @@ import {
   LayoutGrid, Gem, User, Shirt, Layers, Coins,
   Gamepad2, Box, Fish, Flame, Sprout,
   Package, UserCheck, Zap, Loader2, ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
 import ProductCard from '@/components/product/ProductCard';
 import { ProductItem } from '@/lib/types';
@@ -167,7 +168,10 @@ export default function HomePage() {
   const [animated, setAnimated] = useState(true);
   const [pausedCarousel, setPausedCarousel] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isDraggingCarousel, setIsDraggingCarousel] = useState(false);
+  const [carouselDragOffset, setCarouselDragOffset] = useState(0);
   const autoRef = useRef<NodeJS.Timeout | null>(null);
+  const carouselDragStartX = useRef(0);
 
   // Responsive device detector
   useEffect(() => {
@@ -233,6 +237,45 @@ export default function HomePage() {
     setSelectedGame(HERO_WORLDS[index].targetGame);
   };
 
+  const moveCarousel = (direction: -1 | 1) => {
+    setAnimated(true);
+    setSlide((current) => current + direction);
+  };
+
+  const handleCarouselPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+    carouselDragStartX.current = event.clientX;
+    setIsDraggingCarousel(true);
+    setCarouselDragOffset(0);
+    setAnimated(false);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleCarouselPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingCarousel) return;
+
+    const offset = event.clientX - carouselDragStartX.current;
+    setCarouselDragOffset(Math.max(-240, Math.min(240, offset)));
+  };
+
+  const finishCarouselDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingCarousel) return;
+
+    const offset = event.clientX - carouselDragStartX.current;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    setIsDraggingCarousel(false);
+    setCarouselDragOffset(0);
+    setAnimated(true);
+
+    if (Math.abs(offset) >= 45) {
+      setSlide((current) => current + (offset < 0 ? 1 : -1));
+    }
+  };
+
   // Fetch product catalog from API (reads both data.data & data.products)
   useEffect(() => {
     (async () => {
@@ -292,7 +335,7 @@ export default function HomePage() {
         onMouseLeave={() => { setIsHeroPaused(false); setPausedCarousel(false); }}
       >
         {/* === Hero Artwork Canvas (Extended Downwards so FLASHSALE is Hidden Below the Fold) === */}
-        <div className="relative w-full aspect-video min-h-0 lg:aspect-auto lg:h-[800px] lg:min-h-[800px] overflow-hidden bg-[#0c1220]">
+        <div className="relative w-full h-[500px] sm:h-[600px] md:h-[680px] lg:h-[800px] overflow-hidden bg-[#0c1220]">
           {HERO_WORLDS.map((world, idx) => (
             <div
               key={world.id}
@@ -308,7 +351,7 @@ export default function HomePage() {
         </div>
 
         {/* === Overlapping Row: Action Box (Left) + 3 Thumbnails (Right) === */}
-        <div className="relative z-30 w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 mt-0 lg:-mt-44">
+        <div className="relative z-30 w-full max-w-[1580px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 -mt-20 sm:-mt-24 md:-mt-28 lg:-mt-44">
 
           {/* Desktop 2-Column Row (lg:grid) */}
           <div className="hidden lg:grid grid-cols-12 gap-8 items-end">
@@ -455,55 +498,85 @@ export default function HomePage() {
           </div>
 
           {/* Carousel Banner Track */}
-          <div className="w-full overflow-hidden">
+          <div className="relative w-full group/carousel">
             <div
-              className="flex"
-              style={{
-                width: `${CLONED.length * (100 / itemsPerView)}%`,
-                transform: `translateX(-${(slide / CLONED.length) * 100}%)`,
-                transition: animated ? 'transform 0.7s cubic-bezier(0.77,0,0.175,1)' : 'none',
-              }}
+              className={`w-full overflow-hidden select-none touch-pan-y ${isDraggingCarousel ? 'cursor-grabbing' : 'cursor-grab'}`}
+              onPointerDown={handleCarouselPointerDown}
+              onPointerMove={handleCarouselPointerMove}
+              onPointerUp={finishCarouselDrag}
+              onPointerCancel={finishCarouselDrag}
+              onDragStart={(event) => event.preventDefault()}
+              aria-label="Carousel flash sale. Geser ke kiri atau kanan untuk melihat promo lain."
             >
-              {CLONED.map((b, idx) => (
-                <div
-                  key={idx}
-                  className="flex-shrink-0 px-2 sm:px-3 py-2"
-                  style={{ width: `${100 / CLONED.length}%` }}
-                >
-                  {/* Card */}
-                  <div className={`relative h-[210px] sm:h-[250px] md:h-[280px] rounded-none sm:rounded-sm overflow-hidden ring-2 ${b.ring} shadow-2xl group cursor-pointer`}>
-                    <div
-                      className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                      style={{ backgroundImage: `url(${b.img})` }}
-                    />
+              <div
+                className="flex"
+                style={{
+                  width: `${CLONED.length * (100 / itemsPerView)}%`,
+                  transform: `translateX(calc(-${(slide / CLONED.length) * 100}% + ${carouselDragOffset}px))`,
+                  transition: animated && !isDraggingCarousel ? 'transform 0.7s cubic-bezier(0.77,0,0.175,1)' : 'none',
+                }}
+              >
+                {CLONED.map((b, idx) => (
+                  <div
+                    key={idx}
+                    className="flex-shrink-0 px-2 sm:px-3 py-2"
+                    style={{ width: `${100 / CLONED.length}%` }}
+                  >
+                    {/* Card */}
+                    <div className={`relative h-[210px] sm:h-[250px] md:h-[280px] rounded-none sm:rounded-sm overflow-hidden ring-2 ${b.ring} shadow-2xl group cursor-pointer`}>
+                      <div
+                        className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                        style={{ backgroundImage: `url(${b.img})` }}
+                      />
 
-                    {!b.imageOnly && (
-                      <>
-                        <div className={`absolute inset-0 bg-gradient-to-t ${b.overlay}`} />
-                        <div className="relative h-full p-5 sm:p-6 flex flex-col justify-between text-white">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-black/50 backdrop-blur-sm border border-white/10 ${b.tagColor}`}>
-                              {b.tag}
-                            </span>
-                            <span className="px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-sm border border-white/20 text-white">
-                              {b.badge}
-                            </span>
+                      {!b.imageOnly && (
+                        <>
+                          <div className={`absolute inset-0 bg-gradient-to-t ${b.overlay}`} />
+                          <div className="relative h-full p-5 sm:p-6 flex flex-col justify-between text-white">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-black/50 backdrop-blur-sm border border-white/10 ${b.tagColor}`}>
+                                {b.tag}
+                              </span>
+                              <span className="px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-sm border border-white/20 text-white">
+                                {b.badge}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <h3 className="text-base sm:text-lg md:text-xl font-black leading-tight drop-shadow-md">
+                                {b.title}
+                              </h3>
+                              <p className="text-xs sm:text-sm text-gray-300 font-medium font-config-text">
+                                {b.sub}
+                              </p>
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <h3 className="text-base sm:text-lg md:text-xl font-black leading-tight drop-shadow-md">
-                              {b.title}
-                            </h3>
-                            <p className="text-xs sm:text-sm text-gray-300 font-medium font-config-text">
-                              {b.sub}
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
+
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => moveCarousel(-1)}
+              aria-label="Flash sale sebelumnya"
+              className="absolute left-3 top-1/2 z-20 -translate-y-1/2 grid h-11 w-11 place-items-center bg-black/75 text-white border border-white/25 opacity-100 md:opacity-0 md:group-hover/carousel:opacity-100 hover:bg-[#367723] transition-all duration-200"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => moveCarousel(1)}
+              aria-label="Flash sale berikutnya"
+              className="absolute right-3 top-1/2 z-20 -translate-y-1/2 grid h-11 w-11 place-items-center bg-black/75 text-white border border-white/25 opacity-100 md:opacity-0 md:group-hover/carousel:opacity-100 hover:bg-[#367723] transition-all duration-200"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
           </div>
 
           {/* Carousel indicator dots */}
