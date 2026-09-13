@@ -6,6 +6,7 @@ import { isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 import { firstValidationMessage, ProductWriteSchema } from '@/lib/product-validation';
 import { withProductImageUrl } from '@/lib/product-image';
+import { recordAdminContentChange } from '@/lib/admin-security-event';
 import {
   getAllFallbackProducts,
   addFallbackProduct,
@@ -155,6 +156,19 @@ export async function POST(req: NextRequest) {
           },
         });
       } catch {}
+
+      await recordAdminContentChange({
+        action: 'PRODUCT_CREATE',
+        adminId: session.userId,
+        entityId: product.id,
+        ipAddress: ip,
+        userAgent,
+        method: 'POST',
+        endpoint: '/api/admin/products',
+        statusCode: 201,
+        summary: `product_name=${product.name}`,
+        requestId: req.headers.get('x-request-id') || undefined,
+      });
 
       invalidatePublicProductCatalog();
       return NextResponse.json(

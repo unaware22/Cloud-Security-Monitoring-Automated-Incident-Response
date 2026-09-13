@@ -28,6 +28,7 @@ declare global {
 type TurnstileWidgetProps = {
   siteKey: string;
   resetKey: number;
+  action?: string;
   onVerify: (token: string) => void;
   onExpire: () => void;
   onError: () => void;
@@ -36,6 +37,7 @@ type TurnstileWidgetProps = {
 export default function TurnstileWidget({
   siteKey,
   resetKey,
+  action = 'checkout',
   onVerify,
   onExpire,
   onError,
@@ -60,7 +62,7 @@ export default function TurnstileWidget({
       sitekey: siteKey,
       theme: 'dark',
       size: 'flexible',
-      action: 'checkout',
+      action,
       callback: (token) => callbacksRef.current.onVerify(token),
       'expired-callback': () => callbacksRef.current.onExpire(),
       'error-callback': () => callbacksRef.current.onError(),
@@ -72,7 +74,7 @@ export default function TurnstileWidget({
       }
       widgetIdRef.current = null;
     };
-  }, [scriptReady, siteKey, resetKey]);
+  }, [action, scriptReady, siteKey, resetKey]);
 
   if (!siteKey) return null;
 

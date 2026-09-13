@@ -157,7 +157,7 @@ async function runSecurityTests() {
     // 8. Admin Brute Force Simulation
     {
       name: '8. Admin Login Brute Force / Invalid Credential Handling',
-      expectedBehavior: '401 Unauthorized, admin_bruteforce_attempt logged',
+      expectedBehavior: '401 Unauthorized, or 403 when admin CAPTCHA is enabled',
       run: async () => {
         try {
           const res = await fetch(`${BASE_URL}/api/admin/login`, {
@@ -168,7 +168,7 @@ async function runSecurityTests() {
               password: 'WrongPasswordAttempt#999',
             }),
           });
-          return res.status === 401;
+          return res.status === 401 || res.status === 403;
         } catch {
           return false;
         }

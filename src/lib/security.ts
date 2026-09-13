@@ -115,18 +115,20 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 export function getClientIp(headers: Headers | Record<string, string | string[] | undefined>): string {
   let ip: string | null = null;
   if (headers instanceof Headers) {
-    ip = headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-      headers.get('x-real-ip') ||
+    const forwardedFor = headers.get('x-forwarded-for');
+    ip = headers.get('x-real-ip') ||
+      forwardedFor?.split(',').at(-1)?.trim() ||
       headers.get('cf-connecting-ip') ||
       null;
   } else {
-    const forwarded = headers['x-forwarded-for'];
-    if (typeof forwarded === 'string') {
-      ip = forwarded.split(',')[0].trim();
-    } else if (Array.isArray(forwarded) && forwarded[0]) {
-      ip = forwarded[0].split(',')[0].trim();
-    } else if (typeof headers['x-real-ip'] === 'string') {
+    if (typeof headers['x-real-ip'] === 'string') {
       ip = headers['x-real-ip'];
+    }
+    const forwarded = headers['x-forwarded-for'];
+    if (!ip && typeof forwarded === 'string') {
+      ip = forwarded.split(',').at(-1)?.trim() || null;
+    } else if (Array.isArray(forwarded) && forwarded[0]) {
+      ip = forwarded.at(-1)?.split(',').at(-1)?.trim() || null;
     }
   }
   return ip || '127.0.0.1';

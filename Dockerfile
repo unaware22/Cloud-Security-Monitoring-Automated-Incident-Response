@@ -50,7 +50,7 @@ ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
 # when PostgreSQL itself is healthy.
 RUN npx prisma generate && \
     mkdir -p /app/logs && \
-    chown -R nextjs:nodejs /app
+    chown -R nextjs:nodejs /app/logs /home/nextjs
 USER nextjs
 
 EXPOSE 3000

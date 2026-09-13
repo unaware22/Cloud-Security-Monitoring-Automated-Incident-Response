@@ -32,6 +32,12 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
     windowMs: 15 * 60 * 1000, // 15 minutes
     severity: 'critical',
   },
+  ADMIN_SECURITY: {
+    actionName: 'admin_security',
+    limit: 5,
+    windowMs: 15 * 60 * 1000,
+    severity: 'critical',
+  },
   CHECK_ORDER: {
     actionName: 'check_order',
     limit: 120,

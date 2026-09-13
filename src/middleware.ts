@@ -44,6 +44,9 @@ const XSS_PATTERNS = [
   /document\.cookie/i,
 ];
 
+const ADMIN_TOKEN_ISSUER = 'saladinshop';
+const ADMIN_TOKEN_AUDIENCE = 'saladinshop-admin';
+
 function getJwtSecret(): Uint8Array | null {
   const secret = process.env.ADMIN_JWT_SECRET;
   return secret && secret.length >= 32 ? new TextEncoder().encode(secret) : null;
@@ -56,9 +59,10 @@ function getSecurityRelayToken(): string | null {
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  const forwardedFor = req.headers.get('x-forwarded-for');
   const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
     req.headers.get('x-real-ip') ||
+    forwardedFor?.split(',').at(-1)?.trim() ||
     '127.0.0.1';
   const userAgent = req.headers.get('user-agent') || 'Unknown';
   const requestId = `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
@@ -165,7 +169,13 @@ export async function middleware(req: NextRequest) {
       try {
         const jwtSecret = getJwtSecret();
         if (!jwtSecret) throw new Error('ADMIN_JWT_SECRET is not configured');
-        await jwtVerify(token, jwtSecret);
+        const { payload } = await jwtVerify(token, jwtSecret, {
+          issuer: ADMIN_TOKEN_ISSUER,
+          audience: ADMIN_TOKEN_AUDIENCE,
+        });
+        if (typeof payload.sessionVersion !== 'number') {
+          throw new Error('Legacy or invalid admin session');
+        }
         isValid = true;
       } catch {
         isValid = false;

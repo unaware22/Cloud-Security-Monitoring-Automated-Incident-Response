@@ -12,6 +12,7 @@ import {
   Loader2,
   ArrowLeft,
 } from 'lucide-react';
+import TurnstileWidget from '@/components/security/TurnstileWidget';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -19,23 +20,45 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '';
+  const turnstileEnabled = Boolean(
+    turnstileSiteKey && !turnstileSiteKey.includes('REPLACE_ME')
+  );
+
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    setTurnstileResetKey((current) => current + 1);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+
+    if (turnstileEnabled && !turnstileToken) {
+      setErrorMessage('Selesaikan verifikasi keamanan terlebih dahulu.');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          turnstile_token: turnstileToken || undefined,
+        }),
       });
 
       const json = await res.json();
 
       if (!res.ok) {
         setErrorMessage(json.message || 'Email atau password admin salah');
+        resetTurnstile();
         setLoading(false);
         return;
       }
@@ -43,6 +66,7 @@ export default function AdminLoginPage() {
       router.push('/admin/dashboard');
     } catch {
       setErrorMessage('Terjadi gangguan jaringan');
+      resetTurnstile();
       setLoading(false);
     }
   };
@@ -110,9 +134,23 @@ export default function AdminLoginPage() {
               </div>
             </div>
 
+            {turnstileEnabled && (
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                action="admin_login"
+                resetKey={turnstileResetKey}
+                onVerify={setTurnstileToken}
+                onExpire={() => setTurnstileToken('')}
+                onError={() => {
+                  setTurnstileToken('');
+                  setErrorMessage('Verifikasi keamanan gagal dimuat. Silakan coba lagi.');
+                }}
+              />
+            )}
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (turnstileEnabled && !turnstileToken)}
               className="w-full py-3.5 rounded-none text-xs font-black text-white bg-[#367723] hover:bg-[#418e2a] border-b-4 border-[#1f4813] active:border-b-0 active:translate-y-1 shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wider select-none disabled:opacity-50"
             >
               {loading ? (

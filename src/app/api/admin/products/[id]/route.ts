@@ -6,6 +6,7 @@ import { isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 import { firstValidationMessage, ProductWriteSchema } from '@/lib/product-validation';
 import { withProductImageUrl } from '@/lib/product-image';
+import { recordAdminContentChange } from '@/lib/admin-security-event';
 import {
   deleteFallbackProduct,
   getFallbackProductById,
@@ -146,6 +147,18 @@ export async function PUT(
       console.warn('[Admin Products] Audit log write failed:', auditError);
     }
 
+    await recordAdminContentChange({
+      action: 'PRODUCT_UPDATE',
+      adminId: session.userId,
+      entityId: updated.id,
+      ipAddress: ip,
+      userAgent,
+      method: 'PUT',
+      endpoint: `/api/admin/products/${params.id}`,
+      summary: `product_name=${updated.name}`,
+      requestId: req.headers.get('x-request-id') || undefined,
+    });
+
     invalidatePublicProductCatalog();
     return NextResponse.json({
       success: true,
@@ -261,6 +274,18 @@ export async function PATCH(
       console.warn('[Admin Products] Audit log write failed:', auditError);
     }
 
+    await recordAdminContentChange({
+      action: 'PRODUCT_PATCH',
+      adminId: session.userId,
+      entityId: updated.id,
+      ipAddress: ip,
+      userAgent,
+      method: 'PATCH',
+      endpoint: `/api/admin/products/${params.id}`,
+      summary: `fields=${Object.keys(dataToUpdate).sort().join(',')}`,
+      requestId: req.headers.get('x-request-id') || undefined,
+    });
+
     invalidatePublicProductCatalog();
     return NextResponse.json({
       success: true,
@@ -338,6 +363,18 @@ export async function DELETE(
     } catch (auditError) {
       console.warn('[Admin Products] Audit log write failed:', auditError);
     }
+
+    await recordAdminContentChange({
+      action: 'PRODUCT_DELETE',
+      adminId: session.userId,
+      entityId: existing.id,
+      ipAddress: ip,
+      userAgent,
+      method: 'DELETE',
+      endpoint: `/api/admin/products/${params.id}`,
+      summary: `product_name=${existing.name}`,
+      requestId: req.headers.get('x-request-id') || undefined,
+    });
 
     const remaining = await prisma.product.findMany({
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],

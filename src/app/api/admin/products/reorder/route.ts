@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { getAdminSession } from '@/lib/auth';
 import { isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
+import { getClientIp } from '@/lib/security';
+import { recordAdminContentChange } from '@/lib/admin-security-event';
 import {
   reorderFallbackProduct,
   setFallbackProductOrder,
@@ -16,6 +18,10 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const ip = getClientIp(req.headers);
+  const userAgent = req.headers.get('user-agent') || 'Unknown';
+  const requestId = req.headers.get('x-request-id') || undefined;
 
   try {
     const body = await req.json();
@@ -40,6 +46,17 @@ export async function POST(req: NextRequest) {
           );
           const updatedDbProducts = await prisma.product.findMany({
             orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+          });
+          await recordAdminContentChange({
+            action: 'PRODUCT_REORDER',
+            adminId: session.userId,
+            entityId: 'bulk',
+            ipAddress: ip,
+            userAgent,
+            method: 'POST',
+            endpoint: '/api/admin/products/reorder',
+            summary: `product_count=${items.length}`,
+            requestId,
           });
           invalidatePublicProductCatalog();
           return NextResponse.json({
@@ -116,6 +133,17 @@ export async function POST(req: NextRequest) {
                 orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
               });
 
+              await recordAdminContentChange({
+                action: 'PRODUCT_REORDER',
+                adminId: session.userId,
+                entityId: String(product_id),
+                ipAddress: ip,
+                userAgent,
+                method: 'POST',
+                endpoint: '/api/admin/products/reorder',
+                summary: `direction=${direction}`,
+                requestId,
+              });
               invalidatePublicProductCatalog();
               return NextResponse.json({
                 success: true,
@@ -179,6 +207,17 @@ export async function POST(req: NextRequest) {
               orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
             });
 
+            await recordAdminContentChange({
+              action: 'PRODUCT_REORDER',
+              adminId: session.userId,
+              entityId: String(product_id),
+              ipAddress: ip,
+              userAgent,
+              method: 'POST',
+              endpoint: '/api/admin/products/reorder',
+              summary: `sort_order=${newOrder}`,
+              requestId,
+            });
             invalidatePublicProductCatalog();
             return NextResponse.json({
               success: true,

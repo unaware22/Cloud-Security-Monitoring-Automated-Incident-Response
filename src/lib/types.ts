@@ -80,6 +80,8 @@ export type SecuritySeverity = 'low' | 'medium' | 'high' | 'critical';
 
 export type SecurityEventType =
   | 'admin_bruteforce_attempt'
+  | 'admin_login_bot_attempt'
+  | 'admin_content_change'
   | 'sql_injection_attempt'
   | 'xss_attempt'
   | 'order_enumeration_attempt'
@@ -109,4 +111,5 @@ export interface AdminSessionPayload {
   userId: string;
   email: string;
   role: string;
+  sessionVersion: number;
 }

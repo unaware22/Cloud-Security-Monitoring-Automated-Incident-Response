@@ -8,13 +8,15 @@ import {
   detectSQLi,
 } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
-import { createAdminToken, COOKIE_NAME } from '@/lib/auth';
+import { createAdminToken, COOKIE_NAME, getSessionTtlSeconds } from '@/lib/auth';
+import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 
 export const dynamic = 'force-dynamic';
 
 const LoginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
+  turnstile_token: z.string().trim().min(1).max(2048).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -79,7 +81,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { email, password } = parseResult.data;
+  const { email, password, turnstile_token } = parseResult.data;
+
+  const turnstileConfiguration = getTurnstileConfigurationStatus();
+  if (turnstileConfiguration.misconfigured) {
+    console.error('[Admin Login] Turnstile site key and secret key must both be configured');
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Verifikasi keamanan admin belum dikonfigurasi dengan benar.' },
+      { status: 503 }
+    );
+  }
+
+  if (turnstileConfiguration.enabled) {
+    const verification = turnstile_token
+      ? await verifyTurnstileToken(turnstile_token, ip, 'admin_login')
+      : { success: false, errorCodes: ['missing-input'] };
+
+    if (!verification.success) {
+      await recordSecurityEvent({
+        eventType: 'admin_login_bot_attempt',
+        severity: 'high',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/admin/login',
+        userAgent,
+        payloadSnippet: `turnstile_errors=${verification.errorCodes.join(',') || 'unknown'}`,
+        statusCode: 403,
+        description: 'Admin login rejected by Cloudflare Turnstile verification',
+        requestId,
+      });
+
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Verifikasi keamanan gagal atau sudah kedaluwarsa.' },
+        { status: 403 }
+      );
+    }
+  }
 
   try {
     let admin = null;
@@ -161,6 +198,7 @@ export async function POST(req: NextRequest) {
         userId: admin.id,
         email: admin.email,
         role: admin.role,
+        sessionVersion: admin.sessionVersion,
       });
 
       const response = NextResponse.json({
@@ -185,7 +223,7 @@ export async function POST(req: NextRequest) {
           req.nextUrl.protocol === 'https:',
         sameSite: 'lax',
         path: '/',
-        maxAge: 60 * 60 * 24,
+        maxAge: getSessionTtlSeconds(),
       });
 
       return response;

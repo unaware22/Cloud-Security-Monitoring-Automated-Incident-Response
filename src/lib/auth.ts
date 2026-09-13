@@ -1,7 +1,18 @@
+import crypto from 'crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
 import { AdminSessionPayload } from './types';
+import { prisma } from './prisma';
+
+const ADMIN_TOKEN_ISSUER = 'saladinshop';
+const ADMIN_TOKEN_AUDIENCE = 'saladinshop-admin';
+
+function getSessionTtlSeconds(): number {
+  const configured = Number(process.env.ADMIN_SESSION_TTL_SECONDS || 3600);
+  if (!Number.isInteger(configured)) return 3600;
+  return Math.min(Math.max(configured, 300), 86400);
+}
 
 function getJwtSecret(): Uint8Array {
   const secret = process.env.ADMIN_JWT_SECRET;
@@ -23,8 +34,11 @@ const COOKIE_NAME = 'admin_session_token';
 export async function createAdminToken(payload: AdminSessionPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
+    .setIssuer(ADMIN_TOKEN_ISSUER)
+    .setAudience(ADMIN_TOKEN_AUDIENCE)
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime(`${getSessionTtlSeconds()}s`)
     .sign(getJwtSecret());
 }
 
@@ -33,11 +47,23 @@ export async function createAdminToken(payload: AdminSessionPayload): Promise<st
  */
 export async function verifyAdminToken(token: string): Promise<AdminSessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getJwtSecret());
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
+      issuer: ADMIN_TOKEN_ISSUER,
+      audience: ADMIN_TOKEN_AUDIENCE,
+    });
+    if (
+      typeof payload.userId !== 'string' ||
+      typeof payload.email !== 'string' ||
+      typeof payload.role !== 'string' ||
+      typeof payload.sessionVersion !== 'number'
+    ) {
+      return null;
+    }
     return {
-      userId: payload.userId as string,
-      email: payload.email as string,
-      role: payload.role as string,
+      userId: payload.userId,
+      email: payload.email,
+      role: payload.role,
+      sessionVersion: payload.sessionVersion,
     };
   } catch {
     return null;
@@ -69,7 +95,37 @@ export async function getAdminSession(req?: NextRequest): Promise<AdminSessionPa
   }
 
   if (!token) return null;
-  return verifyAdminToken(token);
+
+  const payload = await verifyAdminToken(token);
+  if (!payload) return null;
+
+  try {
+    const admin = await prisma.adminUser.findUnique({
+      where: { id: payload.userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+        sessionVersion: true,
+      },
+    });
+
+    if (
+      !admin ||
+      !admin.isActive ||
+      admin.email.toLowerCase() !== payload.email.toLowerCase() ||
+      admin.role !== payload.role ||
+      admin.sessionVersion !== payload.sessionVersion
+    ) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    // Administrative authorization must fail closed when RDS is unavailable.
+    return null;
+  }
 }
 
-export { COOKIE_NAME };
+export { COOKIE_NAME, getSessionTtlSeconds };

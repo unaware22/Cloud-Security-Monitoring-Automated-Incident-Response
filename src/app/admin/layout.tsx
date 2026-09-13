@@ -9,6 +9,7 @@ import {
   ShoppingBag,
   CreditCard,
   ShieldAlert,
+  ShieldCheck,
   FileText,
   LogOut,
   ExternalLink,
@@ -30,6 +31,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/payments', label: 'Verifikasi Pembayaran', icon: CreditCard },
     { href: '/admin/security-events', label: 'Security Events (Wazuh)', icon: ShieldAlert },
     { href: '/admin/audit-logs', label: 'Audit Logs', icon: FileText },
+    { href: '/admin/security', label: 'Keamanan Akun', icon: ShieldCheck },
   ];
 
   const handleLogout = async () => {

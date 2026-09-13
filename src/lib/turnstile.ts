@@ -37,7 +37,8 @@ export function getTurnstileConfigurationStatus(): {
  */
 export async function verifyTurnstileToken(
   token: string,
-  remoteIp?: string
+  remoteIp?: string,
+  expectedAction = 'checkout'
 ): Promise<TurnstileVerificationResult> {
   const secret = process.env.TURNSTILE_SECRET_KEY || '';
   if (!secret || !token) {
@@ -68,7 +69,7 @@ export async function verifyTurnstileToken(
       return { success: false, errorCodes };
     }
 
-    if (result.action && result.action !== 'checkout') {
+    if (result.action !== expectedAction) {
       return { success: false, errorCodes: [...errorCodes, 'action-mismatch'] };
     }
 
