@@ -12,6 +12,7 @@ import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { createMidtransSnapTransaction, calculatePaymentFee } from '@/lib/midtrans';
 import { fallbackStore } from '@/lib/products-store';
 import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
+import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,7 @@ const CheckoutSchema = z.object({
   skin_model: z.string().trim().optional(),
   skin_reference_image: z.string().optional(),
   custom_skin_details: z.any().optional(),
+  turnstile_token: z.string().trim().min(1).max(2048).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -64,7 +66,11 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Detect Attack Patterns in Raw Payload
-  const rawString = JSON.stringify(body);
+  const securityBody = {
+    ...body,
+    ...(body?.turnstile_token ? { turnstile_token: '[REDACTED]' } : {}),
+  };
+  const rawString = JSON.stringify(securityBody);
   if (detectSQLi(rawString) || detectXSS(rawString)) {
     const eventType = detectSQLi(rawString) ? 'sql_injection_attempt' : 'xss_attempt';
     await recordSecurityEvent({
@@ -112,7 +118,59 @@ export async function POST(req: NextRequest) {
     skin_model,
     skin_reference_image,
     custom_skin_details,
+    turnstile_token,
   } = parseResult.data;
+
+  // 4. Verify the single-use anti-bot token before calling Midtrans or writing an order.
+  const turnstileConfiguration = getTurnstileConfigurationStatus();
+  if (turnstileConfiguration.misconfigured) {
+    console.error('[Turnstile Configuration Error]: Site key and secret key must both be configured');
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Verifikasi keamanan checkout belum terkonfigurasi lengkap.' },
+      { status: 503 }
+    );
+  }
+
+  if (turnstileConfiguration.enabled) {
+    if (!turnstile_token) {
+      await recordSecurityEvent({
+        eventType: 'bot_order_attempt',
+        severity: 'medium',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/orders',
+        userAgent,
+        payloadSnippet: 'turnstile_token=missing',
+        statusCode: 400,
+        description: 'Checkout request was rejected because the Turnstile token was missing',
+        requestId,
+      });
+      return NextResponse.json(
+        { error: 'Bad Request', message: 'Verifikasi CAPTCHA wajib diselesaikan sebelum membuat pesanan.' },
+        { status: 400 }
+      );
+    }
+
+    const verification = await verifyTurnstileToken(turnstile_token, ip);
+    if (!verification.success) {
+      await recordSecurityEvent({
+        eventType: 'bot_order_attempt',
+        severity: 'medium',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/orders',
+        userAgent,
+        payloadSnippet: `turnstile_errors=${verification.errorCodes.join(',') || 'unknown'}`,
+        statusCode: 403,
+        description: 'Checkout request failed Cloudflare Turnstile verification',
+        requestId,
+      });
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Verifikasi CAPTCHA gagal atau kedaluwarsa. Silakan ulangi.' },
+        { status: 403 }
+      );
+    }
+  }
 
   const dbOnline = await isDatabaseOnline();
   const allowInMemoryFallback = isInMemoryFallbackEnabled();

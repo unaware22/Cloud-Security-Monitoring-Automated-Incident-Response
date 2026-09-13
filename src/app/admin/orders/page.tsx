@@ -21,10 +21,12 @@ import {
   Clock,
   Palette,
   ExternalLink,
+  Ban,
   Image as ImageIcon,
 } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatIDR, formatDate } from '@/lib/utils';
+import { canReviewPendingOrder } from '@/lib/order-review';
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -38,6 +40,10 @@ export default function AdminOrdersPage() {
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
   const [approvingOrderId, setApprovingOrderId] = useState<string | null>(null);
+  const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<{ id: string; orderCode: string } | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionError, setRejectionError] = useState('');
   const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Manual Custom Skin Delivery Form in Modal
@@ -166,6 +172,64 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const openRejectDialog = (orderId: string, orderCode: string) => {
+    setRejectTarget({ id: orderId, orderCode });
+    setRejectionReason('');
+    setRejectionError('');
+    setActionNotice(null);
+  };
+
+  const handleRejectOrder = async () => {
+    if (!rejectTarget) return;
+
+    setRejectingOrderId(rejectTarget.id);
+    setActionNotice(null);
+    setRejectionError('');
+    try {
+      const res = await fetch(`/api/admin/orders/${rejectTarget.id}/reject-manual-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: rejectionReason.trim() || undefined }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        setRejectionError(json.message || 'Gagal menolak pesanan.');
+        setActionNotice({ type: 'error', message: json.message || 'Gagal menolak pesanan.' });
+        return;
+      }
+
+      setActionNotice({
+        type: 'success',
+        message: `Pesanan ${rejectTarget.orderCode} berhasil ditolak dan dikunci dari pengesahan.`,
+      });
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === rejectTarget.id
+            ? { ...order, paymentStatus: 'rejected', orderStatus: 'cancelled', deliveryStatus: 'cancelled' }
+            : order
+        )
+      );
+      if (selectedOrder?.id === rejectTarget.id) {
+        setSelectedOrder({
+          ...selectedOrder,
+          paymentStatus: 'rejected',
+          orderStatus: 'cancelled',
+          deliveryStatus: 'cancelled',
+        });
+      }
+      setRejectTarget(null);
+      setRejectionReason('');
+      setRejectionError('');
+      fetchOrders();
+    } catch {
+      setRejectionError('Terjadi kesalahan jaringan saat menolak pesanan.');
+      setActionNotice({ type: 'error', message: 'Terjadi kesalahan jaringan saat menolak pesanan.' });
+    } finally {
+      setRejectingOrderId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -236,6 +300,8 @@ export default function AdminOrdersPage() {
           <option value="pending">Menunggu Bayar</option>
           <option value="pending_manual">Menunggu Verifikasi Manual</option>
           <option value="expired">Kedaluwarsa</option>
+          <option value="cancelled">Dibatalkan Pembeli</option>
+          <option value="rejected">Ditolak Admin</option>
         </select>
 
         <select
@@ -247,6 +313,7 @@ export default function AdminOrdersPage() {
           <option value="delivered">Terkirim</option>
           <option value="processing">Sedang Dikerjakan (Skin)</option>
           <option value="pending">Pending</option>
+          <option value="cancelled">Dibatalkan</option>
         </select>
       </div>
 
@@ -276,6 +343,7 @@ export default function AdminOrdersPage() {
                 {orders.map((order) => {
                   const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual';
                   const isPending = order.paymentStatus === 'pending' || order.paymentStatus === 'pending_manual';
+                  const canReview = canReviewPendingOrder(order);
                   const isSkinCustom =
                     order.customSkinDetails != null ||
                     order.orderItems?.[0]?.productNameSnapshot?.toLowerCase().includes('skin') ||
@@ -324,9 +392,9 @@ export default function AdminOrdersPage() {
                           {isPending && (
                             <button
                               onClick={() => handleApproveOrder(order.id, order.orderCode)}
-                              disabled={approvingOrderId === order.id}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all disabled:opacity-50"
-                              title="Sahkan Pembayaran Manual"
+                              disabled={!canReview || approvingOrderId === order.id || rejectingOrderId === order.id}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
+                              title={canReview ? 'Sahkan Pembayaran Manual' : 'Pesanan sudah dibatalkan atau tidak dapat diproses'}
                             >
                               {approvingOrderId === order.id ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -334,6 +402,17 @@ export default function AdminOrdersPage() {
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                               )}
                               <span>Sahkan</span>
+                            </button>
+                          )}
+                          {isPending && (
+                            <button
+                              onClick={() => openRejectDialog(order.id, order.orderCode)}
+                              disabled={!canReview || approvingOrderId === order.id || rejectingOrderId === order.id}
+                              className="px-2.5 py-1 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-700"
+                              title={canReview ? 'Tolak Pesanan' : 'Pesanan sudah dibatalkan atau tidak dapat diproses'}
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Tolak</span>
                             </button>
                           )}
                           <button
@@ -574,25 +653,42 @@ export default function AdminOrdersPage() {
               </div>
             </div>
 
-            {/* Approve Action in Modal if Pending */}
+            {/* Admin review actions if payment is pending */}
             {(selectedOrder.paymentStatus === 'pending' || selectedOrder.paymentStatus === 'pending_manual') && (
-              <button
-                onClick={() => handleApproveOrder(selectedOrder.id, selectedOrder.orderCode)}
-                disabled={approvingOrderId === selectedOrder.id}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
-              >
-                {approvingOrderId === selectedOrder.id ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Mengesahkan Pembayaran...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Sahkan Pembayaran Sekarang</span>
-                  </>
+              <div className="space-y-2">
+                {!canReviewPendingOrder(selectedOrder) && (
+                  <p className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-300">
+                    Pesanan sudah dibatalkan atau statusnya berubah. Aksi pengesahan dan penolakan dikunci.
+                  </p>
                 )}
-              </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    onClick={() => handleApproveOrder(selectedOrder.id, selectedOrder.orderCode)}
+                    disabled={!canReviewPendingOrder(selectedOrder) || approvingOrderId === selectedOrder.id || rejectingOrderId === selectedOrder.id}
+                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
+                  >
+                    {approvingOrderId === selectedOrder.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Mengesahkan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Sahkan Pembayaran</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => openRejectDialog(selectedOrder.id, selectedOrder.orderCode)}
+                    disabled={!canReviewPendingOrder(selectedOrder) || approvingOrderId === selectedOrder.id || rejectingOrderId === selectedOrder.id}
+                    className="w-full py-3 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-700"
+                  >
+                    <Ban className="w-4 h-4" />
+                    <span>Tolak Pesanan</span>
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Resend Action (only for non-custom instant orders) */}
@@ -606,6 +702,73 @@ export default function AdminOrdersPage() {
                 <span>Kirim Ulang Email Produk Digital</span>
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Reject confirmation modal */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-surface border border-rose-500/40 p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/15 text-rose-400">
+                <Ban className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-white">Tolak pesanan {rejectTarget.orderCode}?</h3>
+                <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                  Pesanan akan berstatus ditolak dan tidak bisa disahkan setelah tindakan ini.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="rejection-reason" className="block text-xs font-bold text-gray-300">
+                Alasan penolakan (opsional)
+              </label>
+              <textarea
+                id="rejection-reason"
+                rows={3}
+                maxLength={500}
+                value={rejectionReason}
+                onChange={(event) => setRejectionReason(event.target.value)}
+                placeholder="Contoh: data pembayaran tidak sesuai"
+                className="w-full rounded-xl bg-black/50 border border-surface-border px-3.5 py-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            {rejectionError && (
+              <p className="rounded-xl border border-rose-500/40 bg-rose-950/50 p-3 text-xs text-rose-300">
+                {rejectionError}
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectTarget(null);
+                  setRejectionError('');
+                }}
+                disabled={rejectingOrderId === rejectTarget.id}
+                className="py-2.5 rounded-xl border border-surface-border text-xs font-bold text-gray-300 hover:bg-surface-hover disabled:opacity-50"
+              >
+                Kembali
+              </button>
+              <button
+                type="button"
+                onClick={handleRejectOrder}
+                disabled={rejectingOrderId === rejectTarget.id}
+                className="py-2.5 rounded-xl bg-rose-700 hover:bg-rose-600 text-xs font-black text-white flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {rejectingOrderId === rejectTarget.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Ban className="w-4 h-4" />
+                )}
+                <span>{rejectingOrderId === rejectTarget.id ? 'Menolak...' : 'Ya, Tolak'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

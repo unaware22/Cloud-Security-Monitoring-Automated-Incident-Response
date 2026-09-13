@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatIDR, formatDate } from '@/lib/utils';
+import { canReviewPendingOrder } from '@/lib/order-review';
 
 export default function AdminPaymentsPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -157,6 +158,7 @@ export default function AdminPaymentsPage() {
         <div className="grid grid-cols-1 gap-6">
           {orders.map((order) => {
             const submission = order.manualPaymentSubmissions?.[0];
+            const canReview = canReviewPendingOrder(order);
 
             return (
               <div
@@ -247,8 +249,8 @@ export default function AdminPaymentsPage() {
                 <div className="flex flex-wrap items-center justify-end gap-3 pt-3 border-t border-surface-border">
                   <button
                     onClick={() => handleReject(order.id, order.orderCode)}
-                    disabled={processingId === order.id}
-                    className="px-4 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    disabled={!canReview || processingId === order.id}
+                    className="px-4 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <XCircle className="w-4 h-4" />
                     <span>Reject Payment</span>
@@ -256,8 +258,8 @@ export default function AdminPaymentsPage() {
 
                   <button
                     onClick={() => handleApprove(order.id, order.orderCode)}
-                    disabled={processingId === order.id}
-                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 transition-transform hover:scale-[1.01] disabled:opacity-50"
+                    disabled={!canReview || processingId === order.id}
+                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 transition-transform hover:scale-[1.01] disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {processingId === order.id ? (
                       <>

@@ -13,14 +13,17 @@ import {
   Loader2,
   RefreshCw,
   Check,
+  Ban,
 } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatIDR, formatDate } from '@/lib/utils';
+import { canReviewPendingOrder } from '@/lib/order-review';
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const fetchDashboard = async () => {
@@ -60,6 +63,32 @@ export default function AdminDashboardPage() {
       setActionNotice('Terjadi kesalahan jaringan');
     } finally {
       setApprovingId(null);
+    }
+  };
+
+  const handleReject = async (orderId: string, orderCode: string) => {
+    const reason = window.prompt(`Alasan penolakan pesanan ${orderCode} (opsional):`, 'Pesanan ditolak oleh administrator');
+    if (reason === null) return;
+
+    setRejectingId(orderId);
+    setActionNotice(null);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/reject-manual-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setActionNotice(`Pesanan ${orderCode} berhasil ditolak.`);
+        fetchDashboard();
+      } else {
+        setActionNotice(json.message || 'Gagal menolak pesanan');
+      }
+    } catch {
+      setActionNotice('Terjadi kesalahan jaringan');
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -184,7 +213,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
             <h3 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
               <ShoppingBag className="w-4 h-4 text-emerald-400" />
-              <span>Pesanan Terbaru &amp; Sahkan Pembayaran</span>
+              <span>Pesanan Terbaru &amp; Verifikasi Pembayaran</span>
             </h3>
             <Link href="/admin/orders" className="text-xs text-emerald-400 hover:underline flex items-center gap-0.5 font-bold">
               <span>Semua Pesanan</span>
@@ -206,6 +235,12 @@ export default function AdminDashboardPage() {
               <tbody className="divide-y divide-neutral-800/80">
                 {data?.recent_orders?.map((order: any) => {
                   const isPaid = order.payment_status === 'paid' || order.payment_status === 'paid_manual';
+                  const canReview = canReviewPendingOrder({
+                    paymentStatus: order.payment_status,
+                    orderStatus: order.order_status,
+                    deliveryStatus: order.delivery_status,
+                    paidAt: order.paid_at,
+                  });
                   return (
                     <tr key={order.id} className="hover:bg-neutral-800/40">
                       <td className="py-3 font-mono font-bold text-white">
@@ -226,18 +261,34 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3 text-right">
                         {!isPaid ? (
-                          <button
-                            onClick={() => handleApprove(order.id, order.order_code)}
-                            disabled={approvingId === order.id}
-                            className="px-3 py-1.5 rounded-none bg-[#367723] hover:bg-[#418e2a] border-b-2 border-[#1f4813] text-white font-bold text-[11px] shadow transition-all flex items-center gap-1 ml-auto uppercase tracking-wider"
-                          >
-                            {approvingId === order.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Check className="w-3 h-3" />
-                            )}
-                            <span>Sahkan</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleApprove(order.id, order.order_code)}
+                              disabled={!canReview || approvingId === order.id || rejectingId === order.id}
+                              className="px-2.5 py-1.5 rounded-none bg-[#367723] hover:bg-[#418e2a] border-b-2 border-[#1f4813] text-white font-bold text-[10px] shadow transition-all flex items-center gap-1 uppercase tracking-wider disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-[#367723]"
+                              title={canReview ? 'Sahkan pembayaran' : 'Pesanan sudah dibatalkan atau tidak dapat diproses'}
+                            >
+                              {approvingId === order.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                              <span>Sahkan</span>
+                            </button>
+                            <button
+                              onClick={() => handleReject(order.id, order.order_code)}
+                              disabled={!canReview || approvingId === order.id || rejectingId === order.id}
+                              className="px-2.5 py-1.5 rounded-none bg-rose-800 hover:bg-rose-700 border-b-2 border-rose-950 text-white font-bold text-[10px] shadow transition-all flex items-center gap-1 uppercase tracking-wider disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-rose-800"
+                              title={canReview ? 'Tolak pesanan' : 'Pesanan sudah dibatalkan atau tidak dapat diproses'}
+                            >
+                              {rejectingId === order.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Ban className="w-3 h-3" />
+                              )}
+                              <span>Tolak</span>
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-none border border-emerald-500/40 inline-block">
                             ✓ Terverifikasi

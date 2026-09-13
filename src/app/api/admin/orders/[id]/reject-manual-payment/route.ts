@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { getAdminSession } from '@/lib/auth';
 import { getClientIp } from '@/lib/security';
 import { isDatabaseOnline, inMemoryOrders, inMemoryAudits } from '@/lib/db-store';
+import { canReviewPendingOrder } from '@/lib/order-review';
+import { cancelMidtransTransaction, checkMidtransTransactionStatus } from '@/lib/midtrans';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +20,16 @@ export async function POST(
   const ip = getClientIp(req.headers);
   const userAgent = req.headers.get('user-agent') || 'Unknown';
   const body = await req.json().catch(() => ({}));
-  const reason = body.reason || 'Bukti transfer tidak valid / mutasi rekening tidak ditemukan';
+  const suppliedReason = String(body.reason || '').trim().slice(0, 500);
+  const reason = suppliedReason || 'Pesanan ditolak oleh administrator';
   const cleanId = decodeURIComponent(params.id || '').trim();
 
+  if (!cleanId) {
+    return NextResponse.json({ error: 'Bad Request', message: 'Order ID / Code is required' }, { status: 400 });
+  }
+
   const dbOnline = await isDatabaseOnline();
+  let dbOrderFound = false;
 
   if (dbOnline) {
     try {
@@ -42,6 +50,59 @@ export async function POST(
       });
 
       if (order) {
+        dbOrderFound = true;
+        if (!canReviewPendingOrder(order)) {
+          return NextResponse.json(
+            {
+              error: 'Conflict',
+              message: 'Pesanan tidak dapat ditolak karena sudah dibayar, dibatalkan, ditolak, atau diproses.',
+            },
+            { status: 409 }
+          );
+        }
+
+        const providerStatus = await checkMidtransTransactionStatus(order.orderCode);
+        const providerPaymentReceived =
+          providerStatus?.transaction_status === 'settlement' ||
+          (providerStatus?.transaction_status === 'capture' && providerStatus?.fraud_status === 'accept');
+
+        if (providerPaymentReceived) {
+          return NextResponse.json(
+            {
+              error: 'Conflict',
+              message: 'Pembayaran sudah diterima Midtrans. Pesanan tidak boleh ditolak; periksa proses refund.',
+            },
+            { status: 409 }
+          );
+        }
+
+        const providerAlreadyFinal = ['cancel', 'expire', 'deny'].includes(
+          providerStatus?.transaction_status || ''
+        );
+        if (!providerAlreadyFinal) {
+          try {
+            const providerCancellation = await cancelMidtransTransaction(order.orderCode);
+            if (!providerCancellation.cancelled && !providerCancellation.notFound) {
+              return NextResponse.json(
+                {
+                  error: 'Bad Gateway',
+                  message: 'Midtrans belum mengonfirmasi pembatalan. Pesanan belum diubah agar status tetap konsisten.',
+                },
+                { status: providerCancellation.statusCode === 412 ? 409 : 502 }
+              );
+            }
+          } catch (error) {
+            console.error('Midtrans admin rejection cancellation error:', error);
+            return NextResponse.json(
+              {
+                error: 'Bad Gateway',
+                message: 'Status pembatalan belum dapat dipastikan dari Midtrans. Pesanan belum diubah.',
+              },
+              { status: 502 }
+            );
+          }
+        }
+
         const oldStatus = order.paymentStatus;
         const now = new Date();
 
@@ -71,8 +132,16 @@ export async function POST(
             data: {
               paymentStatus: 'rejected',
               orderStatus: 'cancelled',
+              deliveryStatus: 'cancelled',
             },
           });
+
+          await tx.paymentTransaction
+            .updateMany({
+              where: { orderId: order.id },
+              data: { status: 'rejected' },
+            })
+            .catch(() => {});
 
           if (order.manualPaymentSubmissions && order.manualPaymentSubmissions.length > 0) {
             await tx.manualPaymentSubmission
@@ -111,6 +180,7 @@ export async function POST(
         if (memOrder) {
           memOrder.paymentStatus = 'rejected';
           memOrder.orderStatus = 'cancelled';
+          memOrder.deliveryStatus = 'cancelled';
         }
 
         return NextResponse.json({
@@ -125,6 +195,12 @@ export async function POST(
       }
     } catch (error) {
       console.error('Error rejecting manual payment:', error);
+      if (dbOrderFound) {
+        return NextResponse.json(
+          { error: 'Internal Server Error', message: 'Gagal memperbarui status pesanan di database.' },
+          { status: 500 }
+        );
+      }
     }
   }
 
@@ -140,8 +216,19 @@ export async function POST(
     return NextResponse.json({ error: 'Not Found', message: `Pesanan (${cleanId}) tidak ditemukan` }, { status: 404 });
   }
 
+  if (!canReviewPendingOrder(memOrder)) {
+    return NextResponse.json(
+      {
+        error: 'Conflict',
+        message: 'Pesanan tidak dapat ditolak karena sudah dibayar, dibatalkan, ditolak, atau diproses.',
+      },
+      { status: 409 }
+    );
+  }
+
   memOrder.paymentStatus = 'rejected';
   memOrder.orderStatus = 'cancelled';
+  memOrder.deliveryStatus = 'cancelled';
 
   inMemoryAudits.unshift({
     id: `audit-${Date.now()}`,

@@ -85,6 +85,7 @@ export type SecurityEventType =
   | 'order_enumeration_attempt'
   | 'checkout_abuse'
   | 'order_cancellation_abuse'
+  | 'bot_order_attempt'
   | 'invalid_payment_callback'
   | 'unauthorized_admin_access'
   | 'sensitive_path_scan'

@@ -5,6 +5,7 @@ import { getClientIp } from '@/lib/security';
 import { sendDigitalDelivery } from '@/lib/email';
 import { isDatabaseOnline, inMemoryOrders, inMemoryAudits } from '@/lib/db-store';
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
+import { canReviewPendingOrder } from '@/lib/order-review';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,9 +56,12 @@ export async function POST(
       if (order) {
         dbOrderFound = true;
 
-        if (order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual') {
+        if (!canReviewPendingOrder(order)) {
           return NextResponse.json(
-            { error: 'Conflict', message: 'Pesanan sudah disahkan sebelumnya' },
+            {
+              error: 'Conflict',
+              message: 'Pesanan tidak dapat disahkan karena sudah dibayar, dibatalkan, ditolak, atau diproses.',
+            },
             { status: 409 }
           );
         }
@@ -140,6 +144,13 @@ export async function POST(
               paidAt: now,
             },
           });
+
+          await tx.paymentTransaction
+            .updateMany({
+              where: { orderId: order.id },
+              data: { status: 'paid_manual' },
+            })
+            .catch((e) => console.warn('Payment transaction update warning:', e));
 
           await tx.digitalDelivery
             .create({
@@ -252,6 +263,16 @@ export async function POST(
         message: `Pesanan (${cleanId}) tidak ditemukan di sistem.`,
       },
       { status: 404 }
+    );
+  }
+
+  if (!canReviewPendingOrder(memoryOrder)) {
+    return NextResponse.json(
+      {
+        error: 'Conflict',
+        message: 'Pesanan tidak dapat disahkan karena sudah dibayar, dibatalkan, ditolak, atau diproses.',
+      },
+      { status: 409 }
     );
   }
 

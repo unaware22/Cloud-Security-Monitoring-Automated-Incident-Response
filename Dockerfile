@@ -7,8 +7,10 @@ FROM dependencies AS build
 WORKDIR /app
 ARG NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false
 ARG NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 ENV NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=$NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION
 ENV NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=$NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
 # Prisma detects the available OpenSSL ABI while generating its query engine.
 # Alpine must therefore have OpenSSL installed in the build stage as well as
 # in the final image; otherwise Prisma generates an OpenSSL 1.1 engine that
@@ -22,6 +24,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ARG NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false
 ARG NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 ENV NODE_ENV=production
 
 RUN apk add --no-cache openssl libc6-compat && \
@@ -39,6 +42,7 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
 ENV NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=$NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION
 ENV NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=$NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
 # Generate the Prisma Client again in the final Alpine runtime image.  The
 # client generated in a different stage can be missing the runtime-specific

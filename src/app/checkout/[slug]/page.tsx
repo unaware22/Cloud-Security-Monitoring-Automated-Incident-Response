@@ -22,6 +22,7 @@ import {
 import Script from 'next/script';
 import { formatIDR } from '@/lib/utils';
 import { ProductItem } from '@/lib/types';
+import TurnstileWidget from '@/components/security/TurnstileWidget';
 
 declare global {
   interface Window {
@@ -113,6 +114,8 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
 
   // Midtrans Live Watcher & Active Payment States
   const [activeOrder, setActiveOrder] = useState<any | null>(null);
@@ -274,6 +277,13 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const productSubtotal = product?.price || 0;
   const adminFee = Math.round(750 + productSubtotal * 0.007);
   const totalPrice = productSubtotal + adminFee;
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '';
+  const turnstileEnabled = Boolean(turnstileSiteKey && !turnstileSiteKey.includes('REPLACE_ME'));
+
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    setTurnstileResetKey((current) => current + 1);
+  };
 
   const handleFormValidation = (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,6 +314,10 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
     }
     if (!customerPhone.trim() || customerPhone.length < 8) {
       setErrorMessage('Nomor Telepon / WhatsApp wajib diisi');
+      return;
+    }
+    if (turnstileEnabled && !turnstileToken) {
+      setErrorMessage('Selesaikan verifikasi CAPTCHA sebelum melanjutkan pembayaran.');
       return;
     }
 
@@ -342,6 +356,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                 referenceImageUrl: referenceImage || null,
               }
             : undefined,
+          turnstile_token: turnstileToken || undefined,
         }),
       });
 
@@ -349,6 +364,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
       if (!res.ok) {
         setErrorMessage(json.message || 'Gagal memproses pesanan');
+        resetTurnstile();
         setSubmitting(false);
         return;
       }
@@ -451,11 +467,13 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
         window.location.href = orderData.payment_url;
       } else {
         setErrorMessage('URL pembayaran tidak tersedia. Silakan coba lagi.');
+        resetTurnstile();
         setSubmitting(false);
         setIsWaitingPayment(false);
       }
     } catch {
       setErrorMessage('Terjadi kesalahan jaringan saat checkout.');
+      resetTurnstile();
       setSubmitting(false);
       setIsWaitingPayment(false);
     }
@@ -1080,6 +1098,25 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                   </div>
                 </div>
               </div>
+
+              {turnstileEnabled && (
+                <TurnstileWidget
+                  siteKey={turnstileSiteKey}
+                  resetKey={turnstileResetKey}
+                  onVerify={(token) => {
+                    setTurnstileToken(token);
+                    setErrorMessage('');
+                  }}
+                  onExpire={() => {
+                    setTurnstileToken('');
+                    setErrorMessage('Verifikasi CAPTCHA kedaluwarsa. Silakan verifikasi ulang.');
+                  }}
+                  onError={() => {
+                    setTurnstileToken('');
+                    setErrorMessage('CAPTCHA gagal dimuat. Periksa koneksi lalu coba lagi.');
+                  }}
+                />
+              )}
 
               <button
                 type="submit"
