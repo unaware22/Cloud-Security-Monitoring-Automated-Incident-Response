@@ -14,15 +14,7 @@ export default async function HomePage() {
   const initialProducts = filterPublicProductCatalog(catalog, {
     game: 'minecraft',
     sort: 'popular',
-  }).map((product) => ({
-    ...product,
-    // Oversized legacy base64 images must not delay the first HTML response.
-    // The background API refresh can replace these after cards are visible.
-    imageUrl:
-      product.imageUrl?.startsWith('data:') && product.imageUrl.length > 200_000
-        ? null
-        : product.imageUrl,
-  }));
+  });
 
   return <HomePageClient initialProducts={initialProducts} />;
 }

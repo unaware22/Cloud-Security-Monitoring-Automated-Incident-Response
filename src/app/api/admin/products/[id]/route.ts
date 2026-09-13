@@ -5,6 +5,7 @@ import { getClientIp } from '@/lib/security';
 import { isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 import { firstValidationMessage, ProductWriteSchema } from '@/lib/product-validation';
+import { withProductImageUrl } from '@/lib/product-image';
 import {
   deleteFallbackProduct,
   getFallbackProductById,
@@ -44,7 +45,13 @@ export async function GET(
 
   try {
     const product = await prisma.product.findUnique({ where: { id: params.id } });
-    if (product) return NextResponse.json({ success: true, data: product, source: 'rds' });
+    if (product) {
+      return NextResponse.json({
+        success: true,
+        data: withProductImageUrl(product),
+        source: 'rds',
+      });
+    }
     return NextResponse.json({ error: 'Not Found', message: 'Produk tidak ditemukan' }, { status: 404 });
   } catch (error) {
     if (!isInMemoryFallbackEnabled()) return databaseError('dibaca', error);
@@ -52,7 +59,11 @@ export async function GET(
 
   const fallback = getFallbackProductById(params.id);
   if (fallback) {
-    return NextResponse.json({ success: true, data: fallback, source: 'development-fallback' });
+    return NextResponse.json({
+      success: true,
+      data: withProductImageUrl(fallback),
+      source: 'development-fallback',
+    });
   }
   return NextResponse.json({ error: 'Not Found', message: 'Produk tidak ditemukan' }, { status: 404 });
 }
@@ -139,7 +150,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: 'Produk berhasil diperbarui di RDS',
-      data: updated,
+      data: withProductImageUrl(updated),
       source: 'rds',
     });
   } catch (error) {
@@ -177,7 +188,7 @@ export async function PUT(
   if (updatedFallback) {
     return NextResponse.json({
       success: true,
-      data: updatedFallback,
+      data: withProductImageUrl(updatedFallback),
       source: 'development-fallback',
     });
   }
@@ -254,7 +265,7 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       message: 'Produk berhasil diperbarui di RDS',
-      data: updated,
+      data: withProductImageUrl(updated),
       source: 'rds',
     });
   } catch (error) {

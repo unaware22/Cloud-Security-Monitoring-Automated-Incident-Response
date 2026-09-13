@@ -5,6 +5,7 @@ import { getClientIp } from '@/lib/security';
 import { isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 import { firstValidationMessage, ProductWriteSchema } from '@/lib/product-validation';
+import { withProductImageUrl } from '@/lib/product-image';
 import {
   getAllFallbackProducts,
   addFallbackProduct,
@@ -22,12 +23,36 @@ export async function GET(req: NextRequest) {
   try {
     const products = await prisma.product.findMany({
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        price: true,
+        originalPrice: true,
+        discountPercent: true,
+        stock: true,
+        sortOrder: true,
+        productType: true,
+        deliveryContent: true,
+        game: true,
+        subCategory1: true,
+        subCategory2: true,
+        deliveryType: true,
+        deliveryCategory: true,
+        serviceTag: true,
+        soldCount: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
+    const productsWithImageUrls = products.map(withProductImageUrl);
 
     return NextResponse.json({
       success: true,
-      count: products.length,
-      data: products,
+      count: productsWithImageUrls.length,
+      data: productsWithImageUrls,
       source: 'rds',
     });
   } catch (error) {
@@ -43,7 +68,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const fallbackList = getAllFallbackProducts();
+  const fallbackList = getAllFallbackProducts().map(withProductImageUrl);
   return NextResponse.json({
     success: true,
     count: fallbackList.length,
@@ -132,7 +157,10 @@ export async function POST(req: NextRequest) {
       } catch {}
 
       invalidatePublicProductCatalog();
-      return NextResponse.json({ success: true, data: product }, { status: 201 });
+      return NextResponse.json(
+        { success: true, data: withProductImageUrl(product) },
+        { status: 201 }
+      );
     } catch (dbErr) {
       console.error('[Admin Products] RDS create failed:', dbErr);
       if (!isInMemoryFallbackEnabled()) {
@@ -176,7 +204,11 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { success: true, data: fallbackProd, source: 'development-fallback' },
+        {
+          success: true,
+          data: withProductImageUrl(fallbackProd),
+          source: 'development-fallback',
+        },
         { status: 201 }
       );
     }

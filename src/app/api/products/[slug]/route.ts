@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getClientIp, detectSQLi, recordSecurityEvent } from '@/lib/security';
 import { fallbackStore } from '@/lib/products-store';
-import { isDatabaseOnline } from '@/lib/db-store';
+import { withProductImageUrl } from '@/lib/product-image';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,13 +34,10 @@ export async function GET(
     );
   }
 
-  // Check DB online
-  const dbOnline = await isDatabaseOnline();
   let product: any = null;
 
-  if (dbOnline) {
-    try {
-      product = await prisma.product.findUnique({
+  try {
+    product = await prisma.product.findUnique({
         where: { slug },
         select: {
           id: true,
@@ -52,7 +49,6 @@ export async function GET(
           discountPercent: true,
           stock: true,
           productType: true,
-          imageUrl: true,
           game: true,
           subCategory1: true,
           subCategory2: true,
@@ -65,9 +61,8 @@ export async function GET(
           updatedAt: true,
         },
       });
-    } catch {
-      product = null;
-    }
+  } catch {
+    product = null;
   }
 
   // Instant In-Memory Fallback if DB offline or record not found in DB
@@ -85,7 +80,7 @@ export async function GET(
   return NextResponse.json(
     {
       success: true,
-      data: product,
+      data: withProductImageUrl(product),
     },
     {
       headers: {

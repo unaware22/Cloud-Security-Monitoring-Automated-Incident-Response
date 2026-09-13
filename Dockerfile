@@ -54,4 +54,4 @@ RUN npx prisma generate && \
 USER nextjs
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && exec ./node_modules/.bin/next start -H 0.0.0.0 -p 3000"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node prisma/optimize-product-images.mjs && exec ./node_modules/.bin/next start -H 0.0.0.0 -p 3000"]

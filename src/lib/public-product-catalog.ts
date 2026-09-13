@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { fallbackStore } from '@/lib/products-store';
 import { ProductItem } from '@/lib/types';
+import { getProductImageUrl } from '@/lib/product-image';
 
 type CatalogState = {
   items: ProductItem[] | null;
@@ -35,7 +36,7 @@ function toPublicProduct(product: any): ProductItem {
     stock: product.stock,
     sortOrder: product.sortOrder ?? 0,
     productType: product.productType,
-    imageUrl: product.imageUrl ?? null,
+    imageUrl: getProductImageUrl(product.id, product.updatedAt),
     game: product.game,
     subCategory1: product.subCategory1,
     subCategory2: product.subCategory2 ?? null,
@@ -77,7 +78,6 @@ function startDatabaseLoad(): Promise<ProductItem[] | null> {
         stock: true,
         sortOrder: true,
         productType: true,
-        imageUrl: true,
         game: true,
         subCategory1: true,
         subCategory2: true,

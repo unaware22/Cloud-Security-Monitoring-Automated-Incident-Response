@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
+    "optimize:product-images": "node prisma/optimize-product-images.mjs",
     "test:security": "tsx scripts/security-test-suite.ts"
   },
   "dependencies": {
