@@ -67,17 +67,17 @@ function useTypewriter(words: string[], isActive = true, speed = 75, pause = 220
 const HERO_WORLDS = [
   {
     id: 'gambar1',
-    bgImage: '/images/gambar1.jpg',
+    bgImage: '/images/gambar1-optimized.webp',
     targetGame: 'minecraft' as const,
   },
   {
     id: 'gambarnew',
-    bgImage: '/images/gambarnew.jpg',
+    bgImage: '/images/gambarnew-optimized.webp',
     targetGame: 'minecraft' as const,
   },
   {
     id: 'gambar4',
-    bgImage: '/images/gambar4.png',
+    bgImage: '/images/gambar4-optimized.webp',
     targetGame: 'roblox' as const,
   },
 ];
@@ -95,7 +95,7 @@ const BASE_BANNERS = [
     overlay: '',
     ring: 'ring-sky-500/30',
     tagColor: '',
-    img: '/images/kotak1.jpg',
+    img: '/images/kotak1-optimized.webp',
     imageOnly: true,
   },
   {
@@ -107,7 +107,7 @@ const BASE_BANNERS = [
     overlay: '',
     ring: 'ring-amber-500/30',
     tagColor: '',
-    img: '/images/kotak2.png',
+    img: '/images/kotak2-optimized.webp',
     imageOnly: true,
   },
   {
@@ -119,7 +119,7 @@ const BASE_BANNERS = [
     overlay: '',
     ring: 'ring-emerald-500/30',
     tagColor: '',
-    img: '/images/kotak3.jpg',
+    img: '/images/kotak3-optimized.webp',
     imageOnly: true,
   },
 ];
@@ -618,9 +618,11 @@ export default function HomePage() {
                 {/* Inner Artwork Image */}
                 <div className="absolute inset-[2.8%] overflow-hidden bg-[#07132a]">
                   <img
-                    src="/images/gambarborder.jpg"
+                    src="/images/gambarborder-optimized.webp"
                     alt="Minecraft Artwork"
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#07132a]/30 via-transparent to-transparent pointer-events-none" />
                 </div>

@@ -101,10 +101,13 @@ export function isInMemoryFallbackEnabled(): boolean {
  */
 export async function isDatabaseOnline(): Promise<boolean> {
   const now = Date.now();
-  // Cache connection state for 15 seconds to prevent repeated network timeout delays
+  // Healthy RDS connections rarely change. Cache success longer to avoid an
+  // extra SELECT 1 round-trip on frequently requested catalog endpoints, while
+  // retrying an unavailable database quickly.
+  const cacheTtlMs = globalForMemory.isDbReachable ? 60_000 : 5_000;
   if (
     globalForMemory.isDbReachable !== null &&
-    now - globalForMemory.lastDbCheck < 15000
+    now - globalForMemory.lastDbCheck < cacheTtlMs
   ) {
     return globalForMemory.isDbReachable;
   }

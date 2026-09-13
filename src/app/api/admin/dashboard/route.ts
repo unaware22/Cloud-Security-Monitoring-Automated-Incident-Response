@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     try {
       const [
         totalOrdersCount,
-        paidOrders,
+        paidRevenue,
         pendingManualCount,
         deliveredOrdersCount,
         activeProductsCount,
@@ -27,10 +27,10 @@ export async function GET(req: NextRequest) {
         securityEventsCount,
       ] = await Promise.all([
         prisma.order.count().catch(() => inMemoryOrders.length || 12),
-        prisma.order.findMany({
+        prisma.order.aggregate({
           where: { paymentStatus: { in: ['paid', 'paid_manual'] } },
-          select: { totalAmount: true },
-        }).catch(() => [{ totalAmount: 450000 }, { totalAmount: 150000 }]),
+          _sum: { totalAmount: true },
+        }).catch(() => ({ _sum: { totalAmount: 600000 } })),
         prisma.order.count({ where: { paymentStatus: 'pending_manual' } }).catch(() => 0),
         prisma.order.count({ where: { deliveryStatus: 'delivered' } }).catch(() => 10),
         prisma.product.count({ where: { isActive: true } }).catch(() => fallbackStore.getProducts({ isActive: true }).length),
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
         prisma.securityEvent.count().catch(() => inMemorySecurityEvents.length || 65),
       ]);
 
-      const totalRevenue = paidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+      const totalRevenue = paidRevenue._sum.totalAmount || 0;
 
       return NextResponse.json({
         success: true,

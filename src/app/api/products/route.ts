@@ -113,12 +113,19 @@ export async function GET(req: NextRequest) {
       });
 
       if (products && products.length > 0) {
-        return NextResponse.json({
-          success: true,
-          count: products.length,
-          data: products,
-          products: products,
-        });
+        return NextResponse.json(
+          {
+            success: true,
+            count: products.length,
+            data: products,
+            products: products,
+          },
+          {
+            headers: {
+              'Cache-Control': 'public, max-age=15, s-maxage=60, stale-while-revalidate=300',
+            },
+          }
+        );
       }
     } catch {
       // Fallback below
@@ -151,7 +158,7 @@ export async function GET(req: NextRequest) {
     },
     {
       headers: {
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+        'Cache-Control': 'public, max-age=15, s-maxage=60, stale-while-revalidate=300',
       },
     }
   );
