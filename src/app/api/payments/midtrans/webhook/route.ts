@@ -5,6 +5,7 @@ import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/l
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 import { sendDigitalDelivery, sendCustomSkinProcessingEmail } from '@/lib/email';
 import { getClientIp, recordSecurityEvent } from '@/lib/security';
+import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -186,6 +187,7 @@ export async function POST(req: NextRequest) {
                   deliveryContent: remainingContent,
                 },
               }).catch(() => {});
+              invalidatePublicProductCatalog();
             }
 
             await prisma.paymentTransaction.updateMany({

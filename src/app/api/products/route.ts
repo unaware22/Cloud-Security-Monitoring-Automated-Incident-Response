@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { getClientIp, detectSQLi, detectXSS, recordSecurityEvent } from '@/lib/security';
-import { fallbackStore } from '@/lib/products-store';
-import { isDatabaseOnline } from '@/lib/db-store';
+import {
+  filterPublicProductCatalog,
+  getPublicProductCatalog,
+} from '@/lib/public-product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,113 +42,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Fast offline check
-  const dbOnline = await isDatabaseOnline();
-
-  if (dbOnline) {
-    try {
-      const where: any = { isActive: true };
-
-      if (game && game !== 'all') {
-        where.game = game.toLowerCase();
-      }
-      if (subCategory1 && subCategory1 !== 'all') {
-        const sc1 = subCategory1.toLowerCase();
-        if (sc1 === 'fish-it' || sc1 === 'fisch') {
-          where.subCategory1 = { in: ['fish-it', 'fisch', 'fishit'] };
-        } else if (sc1 === 'blox-fruit' || sc1 === 'bloxfruits') {
-          where.subCategory1 = { in: ['blox-fruit', 'bloxfruits', 'bloxfruit'] };
-        } else if (sc1 === 'grow-a-garden-2' || sc1 === 'growagirl' || sc1 === 'grow-a-garden') {
-          where.subCategory1 = { in: ['grow-a-garden-2', 'growagirl', 'grow-a-garden', 'growagarden2'] };
-        } else {
-          where.subCategory1 = sc1;
-        }
-      }
-      if (subCategory2 && subCategory2 !== 'all') {
-        const sc2 = subCategory2.toLowerCase();
-        if (sc2 === 'item' || sc2 === 'items') {
-          where.subCategory2 = { in: ['item', 'items'] };
-        } else {
-          where.subCategory2 = sc2;
-        }
-      }
-      if (search && search.trim()) {
-        where.OR = [
-          { name: { contains: search.trim(), mode: 'insensitive' } },
-          { description: { contains: search.trim(), mode: 'insensitive' } },
-        ];
-      }
-
-      let orderBy: any = [{ sortOrder: 'asc' }, { createdAt: 'desc' }];
-      if (sort === 'price_asc') {
-        orderBy = { price: 'asc' };
-      } else if (sort === 'price_desc') {
-        orderBy = { price: 'desc' };
-      } else if (sort === 'popular') {
-        orderBy = [{ sortOrder: 'asc' }, { stock: 'desc' }];
-      }
-
-      const products = await prisma.product.findMany({
-        where,
-        orderBy,
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          description: true,
-          price: true,
-          stock: true,
-          sortOrder: true,
-          productType: true,
-          imageUrl: true,
-          game: true,
-          subCategory1: true,
-          subCategory2: true,
-          deliveryType: true,
-          serviceTag: true,
-          soldCount: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
-
-      if (products && products.length > 0) {
-        return NextResponse.json(
-          {
-            success: true,
-            count: products.length,
-            data: products,
-            products: products,
-          },
-          {
-            headers: {
-              'Cache-Control': 'public, max-age=15, s-maxage=60, stale-while-revalidate=300',
-            },
-          }
-        );
-      }
-    } catch {
-      // Fallback below
-    }
-  }
-
-  // Instant In-Memory Fallback (0ms latency)
-  let list = fallbackStore.getProducts({
-    game: game ? String(game) : undefined,
-    subCategory1: subCategory1 ? String(subCategory1) : undefined,
-    subCategory2: subCategory2 ? String(subCategory2) : undefined,
-    isActive: true,
+  // One small RDS query warms a server-side cache for the whole catalog.
+  // Filtering is then performed in memory, so changing tabs does not trigger
+  // another database round-trip.
+  const catalog = await getPublicProductCatalog();
+  const list = filterPublicProductCatalog(catalog, {
+    game,
+    subCategory1,
+    subCategory2,
+    search,
+    sort,
   });
-
-  if (search && search.trim()) {
-    const s = search.trim().toLowerCase();
-    list = list.filter(
-      (p) =>
-        p.name.toLowerCase().includes(s) ||
-        (p.description && p.description.toLowerCase().includes(s))
-    );
-  }
 
   return NextResponse.json(
     {
@@ -158,7 +63,7 @@ export async function GET(req: NextRequest) {
     },
     {
       headers: {
-        'Cache-Control': 'public, max-age=15, s-maxage=60, stale-while-revalidate=300',
+        'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=120',
       },
     }
   );

@@ -6,6 +6,7 @@ import { sendDigitalDelivery } from '@/lib/email';
 import { isDatabaseOnline, inMemoryOrders, inMemoryAudits } from '@/lib/db-store';
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 import { canReviewPendingOrder } from '@/lib/order-review';
+import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +123,7 @@ export async function POST(
                   },
                 })
                 .catch(() => {});
+              invalidatePublicProductCatalog();
             }
           } else {
             dispatchedContent =

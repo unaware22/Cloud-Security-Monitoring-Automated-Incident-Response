@@ -112,6 +112,63 @@ function serializeAdminItemsToString(
     .join('\n');
 }
 
+const MAX_IMAGE_INPUT_BYTES = 5 * 1024 * 1024;
+const TARGET_IMAGE_BYTES = 180 * 1024;
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('Gambar gagal dibaca'));
+    reader.onerror = () => reject(new Error('Gambar gagal dibaca'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function compressProductImage(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('File harus berupa gambar');
+  if (file.size > MAX_IMAGE_INPUT_BYTES) throw new Error('Ukuran gambar maksimal 5MB');
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = document.createElement('img');
+    image.src = objectUrl;
+    await image.decode();
+
+    const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+    let scale = Math.min(1, 1200 / Math.max(1, longestSide));
+    let quality = 0.82;
+    let lastBlob: Blob | null = null;
+
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Browser tidak mendukung kompresi gambar');
+
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      lastBlob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/webp', quality)
+      );
+      if (!lastBlob) throw new Error('Gambar gagal dikompresi');
+      if (lastBlob.size <= TARGET_IMAGE_BYTES) return blobToDataUrl(lastBlob);
+
+      scale *= 0.82;
+      quality = Math.max(0.5, quality - 0.06);
+    }
+
+    if (!lastBlob || lastBlob.size > 650 * 1024) {
+      throw new Error('Gambar masih terlalu besar setelah dikompresi');
+    }
+    return blobToDataUrl(lastBlob);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +184,7 @@ export default function AdminProductsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [imageProcessing, setImageProcessing] = useState(false);
   const [formError, setFormError] = useState('');
 
   // Form Fields
@@ -155,6 +213,7 @@ export default function AdminProductsPage() {
     },
   ]);
   const [imageUrl, setImageUrl] = useState('');
+  const initialImageUrlRef = useRef('');
   const [isActive, setIsActive] = useState(true);
 
   // Security Masking State for Digital Goods Credentials
@@ -185,18 +244,20 @@ export default function AdminProductsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const presetDiscounts = [0, 10, 20, 30, 40, 50, 60, 70];
 
-  const fetchProducts = async () => {
-    setLoading(true);
+  const fetchProducts = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
-      const res = await fetch('/api/admin/products');
-      const json = await res.json();
+      const res = await fetch('/api/admin/products', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
       if (json.success) {
         setProducts(json.data);
+      } else {
+        throw new Error(json.message || `Katalog gagal dimuat (HTTP ${res.status})`);
       }
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -206,6 +267,7 @@ export default function AdminProductsPage() {
 
   const openAddModal = () => {
     setEditingProduct(null);
+    setImageProcessing(false);
     setName('');
     setSlug('');
     setPrice(199000);
@@ -231,6 +293,7 @@ export default function AdminProductsPage() {
       },
     ]);
     setImageUrl('');
+    initialImageUrlRef.current = '';
     setIsActive(true);
     setFormError('');
     setRevealedItems({});
@@ -239,6 +302,7 @@ export default function AdminProductsPage() {
 
   const openEditModal = (prod: any) => {
     setEditingProduct(prod);
+    setImageProcessing(false);
     setName(prod.name);
     setSlug(prod.slug);
     setPrice(prod.price);
@@ -268,6 +332,7 @@ export default function AdminProductsPage() {
     setDeliveryCategory(cat);
     setDeliveryItems(parseDeliveryContentToAdminItems(prod.deliveryContent || '', cat));
     setImageUrl(prod.imageUrl || '');
+    initialImageUrlRef.current = prod.imageUrl || '';
     setIsActive(prod.isActive);
     setFormError('');
     setRevealedItems({});
@@ -286,22 +351,20 @@ export default function AdminProductsPage() {
     }
   };
 
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      setFormError('Ukuran gambar maksimal 5MB');
-      return;
+    setImageProcessing(true);
+    setFormError('');
+    try {
+      setImageUrl(await compressProductImage(file));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Gambar gagal diproses');
+    } finally {
+      setImageProcessing(false);
+      e.target.value = '';
     }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImageUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleToggleActive = async (id: string, currentActive: boolean) => {
@@ -440,7 +503,7 @@ export default function AdminProductsPage() {
 
     const serializedDelivery = serializeAdminItemsToString(deliveryItems, deliveryCategory);
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       name: name.trim(),
       slug: slug.trim(),
       description: 'OFFICIAL STORE',
@@ -458,9 +521,15 @@ export default function AdminProductsPage() {
       delivery_type: deliveryType,
       delivery_category: deliveryCategory,
       delivery_content: serializedDelivery,
-      image_url: imageUrl.trim(),
       is_active: isActive,
     };
+
+    // An unchanged legacy base64 image can be several megabytes. Omitting it
+    // prevents a simple price/stock edit from being rejected by Nginx's body
+    // size limit. Newly selected images are compressed before reaching here.
+    if (!editingProduct || imageUrl !== initialImageUrlRef.current) {
+      payload.image_url = imageUrl.trim();
+    }
 
     try {
       let res;
@@ -478,15 +547,23 @@ export default function AdminProductsPage() {
         });
       }
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setFormError(json.message || 'Gagal menyimpan data produk');
-        setFormSubmitting(false);
+        const detailMessage = Array.isArray(json.details) ? json.details[0]?.message : '';
+        setFormError(json.message || detailMessage || `Gagal menyimpan produk (HTTP ${res.status})`);
         return;
       }
 
+      if (json.data) {
+        setProducts((current) => {
+          const next = editingProduct
+            ? current.map((product) => (product.id === json.data.id ? json.data : product))
+            : [...current, json.data];
+          return next.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+        });
+      }
       setIsModalOpen(false);
-      fetchProducts();
+      void fetchProducts(false);
     } catch {
       setFormError('Terjadi kesalahan jaringan');
     } finally {
@@ -872,7 +949,9 @@ export default function AdminProductsPage() {
                     >
                       <Upload className="w-6 h-6 text-emerald-400" />
                       <span className="font-bold text-xs">Pilih / Upload Gambar dari Device</span>
-                      <span className="text-[10px] text-gray-500">PNG, JPG, WEBP (Max 5MB)</span>
+                      <span className="text-[10px] text-gray-500">
+                        {imageProcessing ? 'Mengompresi gambar...' : 'PNG, JPG, WEBP (Max 5MB)'}
+                      </span>
                     </button>
                   )}
 
@@ -1557,11 +1636,17 @@ export default function AdminProductsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={formSubmitting}
+                    disabled={formSubmitting || imageProcessing}
                     className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition-all disabled:opacity-50"
                   >
-                    {formSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                    <span>{formSubmitting ? 'Menyimpan...' : 'Simpan Produk'}</span>
+                    {(formSubmitting || imageProcessing) && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <span>
+                      {imageProcessing
+                        ? 'Memproses gambar...'
+                        : formSubmitting
+                        ? 'Menyimpan...'
+                        : 'Simpan Produk'}
+                    </span>
                   </button>
                 </div>
               </div>

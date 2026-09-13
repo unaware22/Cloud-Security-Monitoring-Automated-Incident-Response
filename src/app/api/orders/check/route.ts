@@ -5,6 +5,7 @@ import { getClientIp, detectSQLi, recordSecurityEvent } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
 import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
+import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -193,6 +194,7 @@ export async function POST(req: NextRequest) {
                   },
                 })
                 .catch(() => {});
+              invalidatePublicProductCatalog();
             }
 
             await prisma.digitalDelivery.create({

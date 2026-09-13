@@ -4,6 +4,7 @@ import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 import { sendDigitalDelivery, sendCustomSkinProcessingEmail } from '@/lib/email';
 import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
+import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -184,6 +185,7 @@ export async function POST(req: NextRequest) {
                   },
                 })
                 .catch(() => {});
+              invalidatePublicProductCatalog();
             }
 
             // Update payment transaction

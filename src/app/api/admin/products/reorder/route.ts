@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAdminSession } from '@/lib/auth';
-import { isDatabaseOnline } from '@/lib/db-store';
+import { isInMemoryFallbackEnabled } from '@/lib/db-store';
+import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 import {
   reorderFallbackProduct,
   setFallbackProductOrder,
@@ -20,7 +21,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { product_id, direction, sort_order, items } = body;
 
-    const dbOnline = await isDatabaseOnline();
+    // Product mutations must attempt RDS directly. The short health-check
+    // timeout is useful for public read fallbacks, but can misclassify a cold
+    // RDS connection and make an admin write appear to target temporary data.
+    const dbOnline = true;
 
     // 1. Bulk reorder items
     if (Array.isArray(items) && items.length > 0) {
@@ -37,19 +41,27 @@ export async function POST(req: NextRequest) {
           const updatedDbProducts = await prisma.product.findMany({
             orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
           });
+          invalidatePublicProductCatalog();
           return NextResponse.json({
             success: true,
             message: 'Urutan produk berhasil diperbarui',
             data: updatedDbProducts,
           });
         } catch (err) {
-          console.warn('[Reorder API] DB error during bulk reorder:', err);
+          console.error('[Reorder API] RDS bulk reorder failed:', err);
+          if (!isInMemoryFallbackEnabled()) {
+            return NextResponse.json(
+              { error: 'Database Error', message: 'Urutan gagal disimpan ke RDS' },
+              { status: 500 }
+            );
+          }
         }
       }
 
       items.forEach((item: { id: string; sort_order: number }) => {
         setFallbackProductOrder(item.id, Number(item.sort_order));
       });
+      invalidatePublicProductCatalog();
 
       return NextResponse.json({
         success: true,
@@ -70,9 +82,22 @@ export async function POST(req: NextRequest) {
             (p) => p.id === product_id || p.slug === product_id
           );
 
-          if (currentIndex !== -1) {
-            const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-            if (targetIndex >= 0 && targetIndex < allProds.length) {
+          if (currentIndex === -1) {
+            return NextResponse.json(
+              { error: 'Not Found', message: 'Produk tidak ditemukan di RDS' },
+              { status: 404 }
+            );
+          }
+
+          const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+          if (targetIndex < 0 || targetIndex >= allProds.length) {
+            return NextResponse.json({
+              success: true,
+              message: 'Produk sudah berada di posisi paling ujung',
+              data: allProds,
+            });
+          }
+
               // Move item in array
               const [movedItem] = allProds.splice(currentIndex, 1);
               allProds.splice(targetIndex, 0, movedItem);
@@ -91,19 +116,25 @@ export async function POST(req: NextRequest) {
                 orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
               });
 
+              invalidatePublicProductCatalog();
               return NextResponse.json({
                 success: true,
                 message: `Produk berhasil dipindahkan ke ${direction === 'up' ? 'atas' : 'bawah'}`,
                 data: updatedDbProducts,
               });
-            }
-          }
         } catch (dbErr) {
-          console.warn('[Reorder API] DB swap error, fallback in-memory:', dbErr);
+          console.error('[Reorder API] RDS swap failed:', dbErr);
+          if (!isInMemoryFallbackEnabled()) {
+            return NextResponse.json(
+              { error: 'Database Error', message: 'Urutan gagal disimpan ke RDS' },
+              { status: 500 }
+            );
+          }
         }
       }
 
       const updatedList = reorderFallbackProduct(product_id, direction);
+      invalidatePublicProductCatalog();
 
       return NextResponse.json({
         success: true,
@@ -124,7 +155,13 @@ export async function POST(req: NextRequest) {
           const currentIndex = allProds.findIndex(
             (p) => p.id === product_id || p.slug === product_id
           );
-          if (currentIndex !== -1) {
+          if (currentIndex === -1) {
+            return NextResponse.json(
+              { error: 'Not Found', message: 'Produk tidak ditemukan di RDS' },
+              { status: 404 }
+            );
+          }
+
             const [movedItem] = allProds.splice(currentIndex, 1);
             const insertIdx = Math.max(0, Math.min(newOrder - 1, allProds.length));
             allProds.splice(insertIdx, 0, movedItem);
@@ -142,18 +179,25 @@ export async function POST(req: NextRequest) {
               orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
             });
 
+            invalidatePublicProductCatalog();
             return NextResponse.json({
               success: true,
               message: 'Nomor urutan produk berhasil diubah',
               data: updatedDbProducts,
             });
-          }
         } catch (err) {
-          console.warn('[Reorder API] DB error updating single product order:', err);
+          console.error('[Reorder API] RDS single reorder failed:', err);
+          if (!isInMemoryFallbackEnabled()) {
+            return NextResponse.json(
+              { error: 'Database Error', message: 'Urutan gagal disimpan ke RDS' },
+              { status: 500 }
+            );
+          }
         }
       }
 
       const updatedList = setFallbackProductOrder(product_id, newOrder);
+      invalidatePublicProductCatalog();
 
       return NextResponse.json({
         success: true,
