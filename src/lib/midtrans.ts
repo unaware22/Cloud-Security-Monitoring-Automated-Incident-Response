@@ -20,6 +20,14 @@ export interface SnapTransactionResponse {
   orderId: string;
 }
 
+export interface MidtransCancelResult {
+  cancelled: boolean;
+  notFound: boolean;
+  statusCode: number;
+  message: string;
+  transactionStatus?: string;
+}
+
 export interface MidtransStatusResponse {
   status_code: string;
   status_message: string;
@@ -128,6 +136,10 @@ export async function createMidtransSnapTransaction(
   const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
   const { snapUrl } = getMidtransUrls(serverKey);
 
+  if (!serverKey || serverKey.includes('REPLACE_ME')) {
+    throw new Error('MIDTRANS_SERVER_KEY is not configured');
+  }
+
   const authHeader = `Basic ${Buffer.from(`${serverKey}:`).toString('base64')}`;
 
   const quantity = params.quantity || 1;
@@ -188,39 +200,78 @@ export async function createMidtransSnapTransaction(
     };
   }
 
+  const res = await fetch(snapUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
 
-  try {
-    const res = await fetch(snapUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: authHeader,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error('[Midtrans Snap Error]:', res.status, errorText);
-      throw new Error(`Midtrans API responded with status ${res.status}: ${errorText}`);
-    }
-
-    const data = await res.json();
-    return {
-      token: data.token,
-      redirectUrl: data.redirect_url,
-      orderId: params.orderId,
-    };
-  } catch (error: any) {
-    console.error('[Midtrans createSnapTransaction Exception]:', error);
-    // Return fallback URL in case of network or configuration issue
-    return {
-      token: `mock-token-${Date.now()}`,
-      redirectUrl: `${baseUrl}/order/success/${params.orderId}?payment_mock=true`,
-      orderId: params.orderId,
-    };
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('[Midtrans Snap Error]:', res.status, errorText);
+    throw new Error(`Midtrans API responded with status ${res.status}`);
   }
+
+  const data = await res.json();
+  if (!data.token || !data.redirect_url) {
+    throw new Error('Midtrans API returned an incomplete Snap response');
+  }
+
+  return {
+    token: data.token,
+    redirectUrl: data.redirect_url,
+    orderId: params.orderId,
+  };
+}
+
+/**
+ * Cancels an unsettled Midtrans transaction. A missing transaction is safe for
+ * a locally-created order whose Snap token has never been used by the buyer.
+ */
+export async function cancelMidtransTransaction(
+  orderId: string
+): Promise<MidtransCancelResult> {
+  const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
+  const { apiUrl } = getMidtransUrls(serverKey);
+
+  if (!serverKey || serverKey.includes('REPLACE_ME')) {
+    throw new Error('MIDTRANS_SERVER_KEY is not configured');
+  }
+
+  const authHeader = `Basic ${Buffer.from(`${serverKey}:`).toString('base64')}`;
+  const res = await fetch(`${apiUrl}/${encodeURIComponent(orderId)}/cancel`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: authHeader,
+    },
+    cache: 'no-store',
+  });
+
+  let data: any = {};
+  try {
+    data = await res.json();
+  } catch {
+    data = {};
+  }
+
+  const providerStatusCode = Number(data.status_code || res.status);
+  const message = String(data.status_message || 'Midtrans cancellation request failed');
+
+  return {
+    cancelled:
+      res.ok &&
+      (data.transaction_status === 'cancel' || providerStatusCode === 200),
+    notFound: res.status === 404 || providerStatusCode === 404,
+    statusCode: providerStatusCode,
+    message,
+    transactionStatus: data.transaction_status,
+  };
 }
 
 /**

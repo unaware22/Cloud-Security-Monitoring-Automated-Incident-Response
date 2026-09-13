@@ -60,6 +60,7 @@ export type PaymentStatus =
   | 'paid_manual'
   | 'failed'
   | 'expired'
+  | 'cancelled'
   | 'rejected';
 
 export type DeliveryStatus =
@@ -67,6 +68,7 @@ export type DeliveryStatus =
   | 'processing'
   | 'delivered'
   | 'failed'
+  | 'cancelled'
   | 'resent';
 
 export type PaymentMethod =
@@ -82,6 +84,7 @@ export type SecurityEventType =
   | 'xss_attempt'
   | 'order_enumeration_attempt'
   | 'checkout_abuse'
+  | 'order_cancellation_abuse'
   | 'invalid_payment_callback'
   | 'unauthorized_admin_access'
   | 'sensitive_path_scan'

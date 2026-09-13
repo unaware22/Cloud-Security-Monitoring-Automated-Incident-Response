@@ -224,8 +224,13 @@ export async function POST(req: NextRequest) {
     providerInvoiceId = snapData.token;
   } catch (invErr) {
     console.error('Midtrans Snap creation error:', invErr);
-    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
-    paymentUrl = `${baseUrl}/check-order?order_code=${orderCode}&status=error`;
+    return NextResponse.json(
+      {
+        error: 'Bad Gateway',
+        message: 'Gateway pembayaran Midtrans belum dapat membuat transaksi. Silakan coba kembali.',
+      },
+      { status: 502 }
+    );
   }
 
   // 6. If DB Online, execute PostgreSQL transaction

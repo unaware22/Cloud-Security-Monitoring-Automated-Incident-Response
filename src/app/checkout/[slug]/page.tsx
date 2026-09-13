@@ -112,10 +112,14 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Midtrans Live Watcher & Active Payment States
   const [activeOrder, setActiveOrder] = useState<any | null>(null);
   const [isWaitingPayment, setIsWaitingPayment] = useState(false);
+  const [showCancelOrderConfirm, setShowCancelOrderConfirm] = useState(false);
+  const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [cancelOrderError, setCancelOrderError] = useState('');
   const activePollerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Confirmation Dialog State
@@ -274,6 +278,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const handleFormValidation = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setSuccessMessage('');
 
     if (!product) return;
 
@@ -456,6 +461,44 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
     }
   };
 
+  const handleCancelActiveOrder = async () => {
+    if (!activeOrder?.order_code || !customerEmail.trim()) return;
+
+    setCancellingOrder(true);
+    setCancelOrderError('');
+
+    try {
+      const res = await fetch('/api/orders/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_code: activeOrder.order_code,
+          email: customerEmail.trim().toLowerCase(),
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        setCancelOrderError(json.message || 'Pesanan belum dapat dibatalkan.');
+        return;
+      }
+
+      if (activePollerRef.current) {
+        clearInterval(activePollerRef.current);
+        activePollerRef.current = null;
+      }
+      setShowCancelOrderConfirm(false);
+      setIsWaitingPayment(false);
+      setActiveOrder(null);
+      setSubmitting(false);
+      setSuccessMessage(`Pesanan ${json.data.order_code} berhasil dibatalkan.`);
+    } catch {
+      setCancelOrderError('Terjadi gangguan jaringan saat membatalkan pesanan.');
+    } finally {
+      setCancellingOrder(false);
+    }
+  };
+
   if (loadingProduct) {
     return (
       <div className="min-h-screen bg-[#111111] flex flex-col items-center justify-center gap-3 text-neutral-400">
@@ -532,6 +575,13 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
           <div className="p-4 rounded-none bg-rose-950/70 border border-rose-600/60 text-xs text-rose-200 flex items-center gap-2.5 font-medium shadow-md">
             <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
             <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="p-4 rounded-none bg-emerald-950/70 border border-emerald-600/60 text-xs text-emerald-200 flex items-center gap-2.5 font-medium shadow-md">
+            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <span>{successMessage}</span>
           </div>
         )}
 
@@ -1280,6 +1330,52 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               >
                 Cek Status Pesanan Saya
               </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCancelOrderConfirm(true);
+                  setCancelOrderError('');
+                }}
+                className="w-full py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-700 text-rose-200 font-bold text-xs uppercase tracking-wider transition-colors"
+              >
+                Batalkan Pesanan
+              </button>
+
+              {showCancelOrderConfirm && (
+                <div className="mt-2 p-3 rounded-xl bg-[#111111] border border-rose-700/70 text-left space-y-3">
+                  <p className="text-xs text-rose-100 leading-relaxed">
+                    Yakin ingin membatalkan pesanan ini? Pesanan yang sudah dibayar tidak dapat dibatalkan dari halaman ini.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCancelActiveOrder}
+                      disabled={cancellingOrder}
+                      className="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold text-[11px] uppercase"
+                    >
+                      {cancellingOrder ? 'Memproses...' : 'Ya, Batalkan'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCancelOrderConfirm(false);
+                        setCancelOrderError('');
+                      }}
+                      disabled={cancellingOrder}
+                      className="py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-60 text-neutral-200 font-bold text-[11px] uppercase"
+                    >
+                      Kembali
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {cancelOrderError && (
+                <p className="text-left text-xs text-rose-300 flex items-start gap-2 mt-1">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{cancelOrderError}</span>
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -1293,9 +1389,12 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
             : 'https://app.sandbox.midtrans.com/snap/snap.js'
         }
         data-client-key={
-          process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || 'Mid-client-J4MaBkgPGtLKV3H0'
+          process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ''
         }
         strategy="afterInteractive"
+        onError={() => {
+          setErrorMessage('SDK pembayaran Midtrans gagal dimuat. Silakan muat ulang halaman atau hubungi admin.');
+        }}
       />
     </div>
   );

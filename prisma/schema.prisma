@@ -40,8 +40,8 @@ model Order {
   customerPhone            String?                    @map("customer_phone")
   totalAmount              Int                        @map("total_amount")
   orderStatus              String                     @default("created") @map("order_status") // created, waiting_payment, processing, completed, cancelled, expired
-  paymentStatus            String                     @default("pending") @map("payment_status") // pending, pending_manual, paid, paid_manual, failed, expired, rejected
-  deliveryStatus           String                     @default("pending") @map("delivery_status") // pending, processing, delivered, failed, resent
+  paymentStatus            String                     @default("pending") @map("payment_status") // pending, pending_manual, paid, paid_manual, failed, expired, cancelled, rejected
+  deliveryStatus           String                     @default("pending") @map("delivery_status") // pending, processing, delivered, failed, cancelled, resent
   paymentMethod            String                     @map("payment_method") // Midtrans payment channel selected at checkout
   expiredAt                DateTime?                  @map("expired_at")
   paidAt                   DateTime?                  @map("paid_at")
@@ -77,7 +77,7 @@ model PaymentTransaction {
   providerPaymentId String?  @map("provider_payment_id")
   paymentUrl        String?  @map("payment_url")
   amount            Int
-  status            String   // pending, paid, expired, failed
+  status            String   // pending, paid, expired, failed, cancelled
   rawPayload        String?  @map("raw_payload")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")

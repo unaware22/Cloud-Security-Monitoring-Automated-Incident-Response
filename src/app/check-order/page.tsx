@@ -40,6 +40,9 @@ function CheckOrderContent() {
   const [errorMessage, setErrorMessage] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(true);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   // Polling state for post-payment redirect
   const [isPolling, setIsPolling] = useState(false);
@@ -105,6 +108,38 @@ function CheckOrderContent() {
     setIsPolling(false);
   };
 
+  const handleCancelOrder = async () => {
+    if (!orderResult?.order_code || !email.trim()) return;
+
+    setCancellingOrder(true);
+    setCancelError('');
+
+    try {
+      const res = await fetch('/api/orders/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_code: orderResult.order_code,
+          email: email.trim().toLowerCase(),
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        setCancelError(json.message || 'Pesanan belum dapat dibatalkan.');
+        return;
+      }
+
+      stopPolling();
+      setOrderResult((current: any) => ({ ...current, ...json.data }));
+      setShowCancelConfirm(false);
+    } catch {
+      setCancelError('Terjadi gangguan jaringan saat membatalkan pesanan.');
+    } finally {
+      setCancellingOrder(false);
+    }
+  };
+
   // Start polling when redirected from Midtrans payment
   const startPaymentPolling = () => {
     setIsPolling(true);
@@ -155,6 +190,16 @@ function CheckOrderContent() {
     orderResult?.payment_status === 'paid_manual' ||
     orderResult?.paymentStatus === 'paid' ||
     orderResult?.paymentStatus === 'paid_manual';
+
+  const paymentStatus = orderResult?.payment_status || orderResult?.paymentStatus;
+  const orderStatus = orderResult?.order_status || orderResult?.orderStatus;
+  const isCancelled = paymentStatus === 'cancelled' || orderStatus === 'cancelled';
+  const canCancel =
+    Boolean(orderResult) &&
+    !isPaid &&
+    !isCancelled &&
+    ['pending', 'pending_manual', 'failed', 'expired'].includes(paymentStatus) &&
+    ['created', 'waiting_payment', 'expired'].includes(orderStatus);
 
   // Parse delivery content into structured boxes (supporting multi-line / multi-unit accounts)
   const rawDelivery =
@@ -676,16 +721,71 @@ function CheckOrderContent() {
               <Loader2 className="w-5 h-5 animate-spin text-amber-400 flex-shrink-0" />
               <span>Menunggu data akun digital dari sistem... Halaman akan otomatis diperbarui.</span>
             </div>
+          ) : isCancelled ? (
+            <div className="p-4 rounded-none bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-neutral-400 flex-shrink-0" />
+              <span>Pesanan ini telah dibatalkan dan tidak dapat dibayar kembali.</span>
+            </div>
           ) : !isPaid ? (
-            <div className="p-4 rounded-none bg-amber-950/60 border border-amber-600/40 text-amber-300 text-xs flex items-center justify-between gap-3">
-              <span>Pesanan ini belum lunas atau sedang menunggu konfirmasi pembayaran.</span>
-              {orderResult.payment_url && (
-                <a
-                  href={orderResult.payment_url}
-                  className="px-4 py-2 rounded-none text-xs font-bold text-[#111111] bg-[#ffc825] hover:bg-[#ffcf3d] border-b-2 border-[#b87e00] whitespace-nowrap uppercase"
-                >
-                  Bayar Sekarang &rarr;
-                </a>
+            <div className="p-4 rounded-none bg-amber-950/60 border border-amber-600/40 text-amber-300 text-xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <span>Pesanan ini belum lunas atau sedang menunggu konfirmasi pembayaran.</span>
+                <div className="flex flex-wrap gap-2">
+                  {orderResult.payment_url && (
+                    <a
+                      href={orderResult.payment_url}
+                      className="px-4 py-2 rounded-none text-xs font-bold text-[#111111] bg-[#ffc825] hover:bg-[#ffcf3d] border-b-2 border-[#b87e00] whitespace-nowrap uppercase"
+                    >
+                      Bayar Sekarang &rarr;
+                    </a>
+                  )}
+                  {canCancel && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCancelConfirm(true);
+                        setCancelError('');
+                      }}
+                      className="px-4 py-2 rounded-none text-xs font-bold text-rose-200 bg-rose-950/70 hover:bg-rose-900 border border-rose-600 whitespace-nowrap uppercase"
+                    >
+                      Batalkan Pesanan
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {showCancelConfirm && canCancel && (
+                <div className="p-3 bg-[#181818] border border-rose-700/60 text-rose-100 space-y-3">
+                  <p>Yakin ingin membatalkan pesanan ini? Tindakan ini tidak dapat dibatalkan.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCancelOrder}
+                      disabled={cancellingOrder}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold uppercase"
+                    >
+                      {cancellingOrder ? 'Membatalkan...' : 'Ya, Batalkan'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCancelConfirm(false);
+                        setCancelError('');
+                      }}
+                      disabled={cancellingOrder}
+                      className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-60 text-neutral-200 font-bold uppercase"
+                    >
+                      Tidak
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {cancelError && (
+                <p className="text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{cancelError}</span>
+                </p>
               )}
             </div>
           ) : null}

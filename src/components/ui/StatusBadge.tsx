@@ -40,6 +40,11 @@ export default function StatusBadge({ status = 'pending', type = 'payment', clas
         label = normalized === 'expired' ? 'Kedaluwarsa' : 'Gagal';
         colorClass = 'bg-red-500/10 text-red-400 border-red-500/30';
         break;
+      case 'cancelled':
+      case 'canceled':
+        label = 'Dibatalkan';
+        colorClass = 'bg-neutral-500/15 text-neutral-300 border-neutral-500/40';
+        break;
     }
   } else if (type === 'delivery') {
     switch (normalized) {
@@ -58,6 +63,11 @@ export default function StatusBadge({ status = 'pending', type = 'payment', clas
       case 'failed':
         label = 'Gagal Kirim';
         colorClass = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+        break;
+      case 'cancelled':
+      case 'canceled':
+        label = 'Dibatalkan';
+        colorClass = 'bg-neutral-500/15 text-neutral-300 border-neutral-500/40';
         break;
       case 'resent':
         label = 'Dikirim Ulang';

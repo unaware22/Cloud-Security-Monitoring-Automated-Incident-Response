@@ -44,6 +44,12 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
     windowMs: 60 * 1000, // 1 minute
     severity: 'medium',
   },
+  CANCEL_ORDER: {
+    actionName: 'cancel_order',
+    limit: 6,
+    windowMs: 60 * 1000, // 1 minute
+    severity: 'medium',
+  },
   WEBHOOK: {
     actionName: 'webhook',
     limit: 30,
@@ -90,6 +96,8 @@ export async function checkRateLimit(
           ? 'order_enumeration_attempt'
           : config.actionName === 'checkout'
           ? 'checkout_abuse'
+          : config.actionName === 'cancel_order'
+          ? 'order_cancellation_abuse'
           : 'rate_limit_exceeded';
 
       await recordSecurityEvent({
