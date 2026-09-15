@@ -12,6 +12,22 @@ export type TurnstileVerificationResult = {
   errorCodes: string[];
 };
 
+function getExpectedHostnames(): Set<string> {
+  const configuredHostnames = [
+    process.env.TURNSTILE_EXPECTED_HOSTNAMES,
+    process.env.TURNSTILE_EXPECTED_HOSTNAME,
+  ]
+    .filter(Boolean)
+    .join(',');
+
+  return new Set(
+    configuredHostnames
+      .split(',')
+      .map((hostname) => hostname.trim().toLowerCase().replace(/\.$/, ''))
+      .filter(Boolean)
+  );
+}
+
 function hasConfiguredValue(value: string): boolean {
   return Boolean(value && !value.includes('REPLACE_ME'));
 }
@@ -73,8 +89,12 @@ export async function verifyTurnstileToken(
       return { success: false, errorCodes: [...errorCodes, 'action-mismatch'] };
     }
 
-    const expectedHostname = (process.env.TURNSTILE_EXPECTED_HOSTNAME || '').trim().toLowerCase();
-    if (expectedHostname && result.hostname?.toLowerCase() !== expectedHostname) {
+    const expectedHostnames = getExpectedHostnames();
+    const verifiedHostname = (result.hostname || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.$/, '');
+    if (expectedHostnames.size > 0 && !expectedHostnames.has(verifiedHostname)) {
       return { success: false, errorCodes: [...errorCodes, 'hostname-mismatch'] };
     }
 
