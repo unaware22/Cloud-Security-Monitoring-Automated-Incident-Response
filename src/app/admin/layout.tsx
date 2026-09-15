@@ -13,6 +13,7 @@ import {
   FileText,
   LogOut,
   ExternalLink,
+  Ban,
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/orders', label: 'Semua Pesanan', icon: ShoppingBag },
     { href: '/admin/payments', label: 'Verifikasi Pembayaran', icon: CreditCard },
     { href: '/admin/security-events', label: 'Security Events (Wazuh)', icon: ShieldAlert },
+    { href: '/admin/ip-control', label: 'IP Response', icon: Ban },
     { href: '/admin/audit-logs', label: 'Audit Logs', icon: FileText },
     { href: '/admin/security', label: 'Keamanan Akun', icon: ShieldCheck },
   ];

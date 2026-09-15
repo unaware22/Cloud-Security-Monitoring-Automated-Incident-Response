@@ -83,12 +83,20 @@ DATABASE_URL="postgresql://postgres:<RDS_PASSWORD>@<RDS_ENDPOINT>:5432/ecommerce
 APP_BASE_URL="https://store.yourdomain.com"
 ADMIN_JWT_SECRET="<GENERATE_RANDOM_SECRET_KEY_MIN_32_CHARS>"
 SECURITY_EVENT_RELAY_TOKEN="<GENERATE_A_DIFFERENT_RANDOM_SECRET_KEY_MIN_32_CHARS>"
+N8N_IP_CONTROL_WEBHOOK_URL="https://<N8N_TAILSCALE_HOSTNAME>/webhook/saladinshop-ip-control"
+N8N_IP_CONTROL_WEBHOOK_TOKEN="<MATCH_THE_N8N_X_ADMIN_CONTROL_TOKEN_VALUE>"
+SECURITY_AUTOMATION_TOKEN="<GENERATE_ANOTHER_RANDOM_SECRET_KEY_MIN_32_CHARS>"
 MIDTRANS_IS_PRODUCTION="false"
 NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION="false"
 MIDTRANS_SERVER_KEY="<YOUR_MIDTRANS_SANDBOX_SERVER_KEY>"
 NEXT_PUBLIC_MIDTRANS_CLIENT_KEY="<YOUR_MIDTRANS_SANDBOX_CLIENT_KEY>"
 LOG_DIR="/var/www/ecommerce/logs"
 ```
+
+`N8N_IP_CONTROL_WEBHOOK_TOKEN` dan `SECURITY_AUTOMATION_TOKEN` adalah secret
+server-side. Jangan menggunakan awalan `NEXT_PUBLIC_` dan jangan menaruh nilainya
+di node frontend. EC2 aplikasi harus dapat menjangkau hostname n8n tersebut
+melalui Tailscale.
 
 ### 3.4. Database Migration & Seeding
 ```bash
@@ -105,6 +113,9 @@ npx prisma generate
 # SEED_ADMIN_PASSWORD terlebih dahulu; tidak ada kredensial bawaan.
 npm run seed
 ```
+
+Migrasi `ip_control_actions` menyimpan status containment dan riwayat block/unblock
+yang ditampilkan pada menu **Admin > IP Response**.
 
 ### 3.5. Jalankan Aplikasi dengan PM2
 ```bash
