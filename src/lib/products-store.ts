@@ -15,7 +15,7 @@ export interface FallbackProduct {
   subCategory1: string;
   subCategory2?: string | null;
   deliveryType: 'automatic' | 'manual';
-  deliveryCategory?: 'account' | 'redeem_code' | 'roblox';
+  deliveryCategory?: 'account' | 'redeem_code' | 'roblox' | 'jasa';
   deliveryContent: string;
   serviceTag?: string;
   soldCount?: string;
@@ -300,6 +300,8 @@ export const fallbackStore = {
           if (sc1 === 'fish-it' || sc1 === 'fisch') return pSub1 === 'fish-it' || pSub1 === 'fisch' || pSub1 === 'fishit';
           if (sc1 === 'blox-fruit' || sc1 === 'bloxfruits') return pSub1 === 'blox-fruit' || pSub1 === 'bloxfruits' || pSub1 === 'bloxfruit';
           if (sc1 === 'grow-a-garden-2' || sc1 === 'growagirl' || sc1 === 'grow-a-garden') return pSub1 === 'grow-a-garden-2' || pSub1 === 'growagirl' || pSub1 === 'grow-a-garden' || pSub1 === 'growagarden2';
+          if (sc1 === 'steal-an-egg' || sc1 === 'stealanegg') return pSub1 === 'steal-an-egg' || pSub1 === 'stealanegg' || pSub1 === 'steal an egg';
+          if (sc1 === 'dungeon-quest' || sc1 === 'dungeonquest') return pSub1 === 'dungeon-quest' || pSub1 === 'dungeonquest' || pSub1 === 'dungeon quest';
           return pSub1 === sc1;
         });
       }

@@ -113,7 +113,13 @@ export default function ProductCard({ product }: ProductCardProps) {
           {/* Service Tag + Rating & Terjual Row (Single Compact Row) */}
           <div className="flex items-center gap-2 text-[11px] text-neutral-400 pt-0.5">
             {/* Tag Badge (Compact) */}
-            {tagType === 'pembuatan-cepat' ? (
+            {tagType === 'proses-cepat' ? (
+              <img
+                src="/images/tag-proses-cepat.png"
+                alt="Proses Cepat"
+                className="h-3.5 w-auto object-contain flex-shrink-0"
+              />
+            ) : tagType === 'pembuatan-cepat' ? (
               <img
                 src="/images/tag-pembuatan-cepat.png"
                 alt="Pembuatan Cepat"

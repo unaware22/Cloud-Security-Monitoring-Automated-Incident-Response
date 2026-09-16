@@ -63,6 +63,26 @@ export const GAME_CATEGORIES: GameConfig[] = [
           { id: 'joki', name: 'Joki' },
         ],
       },
+      {
+        id: 'steal-an-egg',
+        name: 'Steal an Egg',
+        childSubcategories: [
+          { id: 'all', name: 'Semua' },
+          { id: 'akun', name: 'Akun' },
+          { id: 'item', name: 'Item' },
+          { id: 'joki', name: 'Joki' },
+        ],
+      },
+      {
+        id: 'dungeon-quest',
+        name: 'Dungeon Quest',
+        childSubcategories: [
+          { id: 'all', name: 'Semua' },
+          { id: 'akun', name: 'Akun' },
+          { id: 'item', name: 'Item' },
+          { id: 'joki', name: 'Joki' },
+        ],
+      },
     ],
   },
 ];

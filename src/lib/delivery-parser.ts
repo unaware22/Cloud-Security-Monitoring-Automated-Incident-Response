@@ -1,11 +1,12 @@
 /**
- * Shared Digital Delivery Parser & Types for 3 Standard Categories:
+ * Shared Digital Delivery Parser & Types for 4 Standard Categories:
  * 1. 'account'     -> Email, Password, Catatan
  * 2. 'redeem_code' -> Kode Redeem, Catatan
  * 3. 'roblox'      -> Username Roblox Admin (Add Friend), Link World Private Server, Catatan
+ * 4. 'jasa'        -> Chat Admin setelah bayar (format: kode pesanan, judul, harga)
  */
 
-export type DeliveryCategory = 'account' | 'redeem_code' | 'roblox';
+export type DeliveryCategory = 'account' | 'redeem_code' | 'roblox' | 'jasa';
 
 export interface ParsedDeliveryItem {
   category: DeliveryCategory;
@@ -95,6 +96,9 @@ export function parseDeliveryLine(
       otherNotes.push(`Link Penukaran: ${url}`);
     } else if (/^https?:\/\/(www\.)?roblox\.com/i.test(part)) {
       privateServerUrl = part.trim();
+    } else if (/^(jasa|chat admin|hubungi admin)$/i.test(part.trim())) {
+      // Marker for jasa category
+      continue;
     } else {
       const cleanNote = part
         .replace(/^(catatan|keterangan|ket|info|detail|note|notes)\s*:\s*/i, '')
@@ -108,7 +112,9 @@ export function parseDeliveryLine(
   // Determine Category automatically if not forced
   let category: DeliveryCategory = forceCategory || 'account';
   if (!forceCategory) {
-    if (
+    if (/^(jasa|chat admin|hubungi admin)/i.test(line.trim())) {
+      category = 'jasa';
+    } else if (
       robloxUsername ||
       privateServerUrl ||
       /roblox\.com/i.test(line) ||
@@ -121,6 +127,14 @@ export function parseDeliveryLine(
     } else if (email || password) {
       category = 'account';
     }
+  }
+
+  if (category === 'jasa') {
+    return {
+      category: 'jasa',
+      notes: notes || 'Silakan hubungi admin via WhatsApp/Telegram dengan menyertakan kode pesanan, judul pesanan, dan harga pesanan Anda.',
+      raw: line,
+    };
   }
 
   if (category === 'roblox') {

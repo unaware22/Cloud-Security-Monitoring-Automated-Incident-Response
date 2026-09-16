@@ -140,6 +140,12 @@ function normalizeSubCategory1(value: string): string[] {
   if (value === 'grow-a-garden-2' || value === 'growagirl' || value === 'grow-a-garden') {
     return ['grow-a-garden-2', 'growagirl', 'grow-a-garden', 'growagarden2'];
   }
+  if (value === 'steal-an-egg' || value === 'stealanegg') {
+    return ['steal-an-egg', 'stealanegg', 'steal an egg'];
+  }
+  if (value === 'dungeon-quest' || value === 'dungeonquest') {
+    return ['dungeon-quest', 'dungeonquest', 'dungeon quest'];
+  }
   return [value];
 }
 

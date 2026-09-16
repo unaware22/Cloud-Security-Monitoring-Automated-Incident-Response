@@ -7,6 +7,8 @@ import {
   Gamepad2, Box, Fish, Flame, Sprout,
   Package, UserCheck, Zap, Loader2, ChevronRight,
   ChevronLeft,
+  Egg,
+  Swords,
 } from 'lucide-react';
 import ProductCard from '@/components/product/ProductCard';
 import { ProductItem } from '@/lib/types';
@@ -359,6 +361,8 @@ export default function HomePageClient({ initialProducts = [] }: HomePageClientP
     { id: 'fish-it', label: 'Fish it', Icon: Fish },
     { id: 'blox-fruit', label: 'Blox Fruit', Icon: Flame },
     { id: 'grow-a-garden-2', label: 'Grow a Garden 2', Icon: Sprout },
+    { id: 'steal-an-egg', label: 'Steal an Egg', Icon: Egg },
+    { id: 'dungeon-quest', label: 'Dungeon Quest', Icon: Swords },
   ];
 
   const rbSubs = [

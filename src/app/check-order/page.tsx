@@ -21,6 +21,8 @@ import {
   Eye,
   EyeOff,
   Sparkles,
+  MessageSquare,
+  Check,
 } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatIDR, formatDate } from '@/lib/utils';
@@ -700,6 +702,97 @@ function CheckOrderContent() {
                             <Info className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
                             <div className="leading-relaxed">
                               <span className="font-semibold text-neutral-200">Petunjuk Trade: </span>
+                              <span>{item.notes}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ================= CATEGORY 4: JASA (Chat Admin setelah bayar) ================= */}
+                    {item.category === 'jasa' && (
+                      <div className="space-y-4 p-4 rounded-none bg-black/60 border border-orange-500/50 shadow-lg">
+                        {parsedAccounts.length > 1 && (
+                          <div className="flex items-center justify-end pb-1 border-b border-orange-950">
+                            <span className="text-[10px] text-neutral-400 font-mono">Item #{accIdx + 1}</span>
+                          </div>
+                        )}
+
+                        {/* Header Instruksi */}
+                        <div className="flex items-center gap-2 text-orange-300 font-bold text-xs uppercase tracking-wider">
+                          <MessageSquare className="w-4 h-4 text-orange-400" />
+                          <span>Instruksi Layanan Jasa (Hubungi Admin)</span>
+                        </div>
+
+                        <p className="text-xs text-neutral-300 leading-relaxed">
+                          Pembayaran Anda telah berhasil! Untuk melanjutkan pengerjaan pesanan jasa, silakan hubungi admin dan kirimkan format data pesanan berikut:
+                        </p>
+
+                        {/* Format Pesanan Box */}
+                        <div className="p-3.5 bg-black/80 border border-orange-500/40 space-y-2.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-orange-400 border-b border-neutral-800 pb-2">
+                            <span>FORMAT PESANAN UNTUK CHAT ADMIN:</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                copyDeliveryData(
+                                  `Halo Admin, saya sudah bayar pesanan jasa:\n- Kode Pesanan: ${orderResult.order_code}\n- Judul Pesanan: ${orderResult.product_name || '-'}\n- Harga Pesanan: ${formatIDR(orderResult.total_amount)}`,
+                                  `format-jasa-${accIdx}`
+                                )
+                              }
+                              className="px-2.5 py-1 rounded bg-orange-950/70 hover:bg-orange-900 border border-orange-500/40 text-orange-300 text-[10px] font-semibold flex items-center gap-1.5 transition-all"
+                            >
+                              {copiedKey === `format-jasa-${accIdx}` ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                  <span className="text-emerald-400">Format Tersalin</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>Salin Format Chat</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="font-mono text-xs space-y-1.5 bg-black/70 p-3 border border-neutral-800 rounded select-all text-neutral-200">
+                            <p>
+                              <span className="text-neutral-400">Kode Pesanan: </span>
+                              <span className="text-orange-300 font-bold">{orderResult.order_code}</span>
+                            </p>
+                            <p>
+                              <span className="text-neutral-400">Judul Pesanan: </span>
+                              <span className="text-white font-bold">{orderResult.product_name || '-'}</span>
+                            </p>
+                            <p>
+                              <span className="text-neutral-400">Harga Pesanan: </span>
+                              <span className="text-emerald-400 font-bold">{formatIDR(orderResult.total_amount)}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Tombol Langsung Chat Admin WhatsApp */}
+                        <div>
+                          <a
+                            href={`https://wa.me/6281234567890?text=${encodeURIComponent(
+                              `Halo Admin, saya sudah bayar pesanan jasa:\n- Kode Pesanan: ${orderResult.order_code}\n- Judul Pesanan: ${orderResult.product_name || '-'}\n- Harga Pesanan: ${formatIDR(orderResult.total_amount)}`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-3 px-4 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-[#25D366]/30 uppercase tracking-wider"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                            <span>Chat Admin via WhatsApp Sekarang</span>
+                          </a>
+                        </div>
+
+                        {/* Catatan / Panduan Tambahan dari Admin */}
+                        {item.notes && (
+                          <div className="p-3 bg-[#111111] border border-neutral-800 text-xs text-neutral-300 flex items-start gap-2.5">
+                            <Info className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+                            <div className="leading-relaxed">
+                              <span className="font-semibold text-neutral-200">Catatan Admin: </span>
                               <span>{item.notes}</span>
                             </div>
                           </div>

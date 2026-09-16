@@ -14,14 +14,14 @@ export const ProductWriteSchema = z.object({
   original_price: z.number().int().positive().optional().nullable(),
   stock: z.number().int().min(0),
   sort_order: z.number().int().min(0).optional(),
-  service_tag: z.enum(['proses-instant', 'pembuatan-cepat']).default('proses-instant'),
+  service_tag: z.enum(['proses-instant', 'pembuatan-cepat', 'proses-cepat']).default('proses-instant'),
   sold_count: z.string().trim().max(50).optional().default('19rb+ Terjual'),
   product_type: z.string().trim().min(1).max(50).default('digital'),
   game: z.enum(['minecraft', 'roblox']),
   sub_category_1: z.string().trim().min(1).max(80),
   sub_category_2: z.string().trim().max(80).nullable().optional(),
   delivery_type: z.enum(['automatic', 'manual']).default('automatic'),
-  delivery_category: z.enum(['account', 'redeem_code', 'roblox']).nullable().optional(),
+  delivery_category: z.enum(['account', 'redeem_code', 'roblox', 'jasa']).nullable().optional(),
   delivery_content: z
     .string()
     .min(1, 'Data pengiriman produk digital wajib diisi')

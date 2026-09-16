@@ -1,6 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+
+const PRESET_ROBLOX_CATEGORIES = [
+  { value: 'blox-fruit', label: 'Blox Fruit' },
+  { value: 'fish-it', label: 'Fish it' },
+  { value: 'grow-a-garden-2', label: 'Grow a Garden 2' },
+  { value: 'steal-an-egg', label: 'Steal an Egg' },
+  { value: 'dungeon-quest', label: 'Dungeon Quest' },
+];
 import {
   Package,
   Plus,
@@ -105,6 +113,9 @@ function serializeAdminItemsToString(
         if (item.robloxUsername.trim()) parts.push(`Username Roblox Admin: ${item.robloxUsername.trim()}`);
         if (item.privateServerUrl.trim()) parts.push(`Link World Private: ${item.privateServerUrl.trim()}`);
         if (item.keterangan.trim()) parts.push(`Catatan: ${item.keterangan.trim()}`);
+      } else if (category === 'jasa') {
+        parts.push('jasa');
+        if (item.keterangan.trim()) parts.push(`Catatan: ${item.keterangan.trim()}`);
       }
       return parts.join(' | ');
     })
@@ -194,11 +205,31 @@ export default function AdminProductsPage() {
   const [discountPercent, setDiscountPercent] = useState<number>(30);
   const [stock, setStock] = useState<number>(4);
   const [sortOrder, setSortOrder] = useState<number>(1);
-  const [serviceTag, setServiceTag] = useState<'proses-instant' | 'pembuatan-cepat'>('proses-instant');
+  const [serviceTag, setServiceTag] = useState<'proses-instant' | 'pembuatan-cepat' | 'proses-cepat'>('proses-instant');
   const [soldCount, setSoldCount] = useState<string>('19rb+ Terjual');
   const [game, setGame] = useState<'minecraft' | 'roblox'>('minecraft');
   const [subCategory1, setSubCategory1] = useState('akun');
   const [subCategory2, setSubCategory2] = useState<string>('items');
+  const [isCustomRobloxCat, setIsCustomRobloxCat] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
+
+  const dynamicRobloxCategories = useMemo(() => {
+    const map = new Map<string, string>();
+    PRESET_ROBLOX_CATEGORIES.forEach((c) => map.set(c.value, c.label));
+    products
+      .filter((p) => p.game === 'roblox' && p.subCategory1)
+      .forEach((p) => {
+        const val = String(p.subCategory1).toLowerCase().trim();
+        if (!map.has(val)) {
+          const label = val
+            .split('-')
+            .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ');
+          map.set(val, label);
+        }
+      });
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [products]);
   const [deliveryType, setDeliveryType] = useState<'automatic' | 'manual'>('automatic');
   const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>('account');
   const [deliveryItems, setDeliveryItems] = useState<AdminDeliveryItem[]>([
@@ -279,6 +310,8 @@ export default function AdminProductsPage() {
     setGame('minecraft');
     setSubCategory1('akun');
     setSubCategory2('item');
+    setIsCustomRobloxCat(false);
+    setCustomCategoryInput('');
     setDeliveryType('automatic');
     setDeliveryCategory('account');
     setDeliveryItems([
@@ -309,16 +342,26 @@ export default function AdminProductsPage() {
     setDiscountPercent(prod.discountPercent !== undefined && prod.discountPercent !== null ? prod.discountPercent : 30);
     setStock(prod.stock);
     setSortOrder(prod.sortOrder ?? 1);
-    setServiceTag(prod.serviceTag === 'pembuatan-cepat' ? 'pembuatan-cepat' : 'proses-instant');
+    setServiceTag(
+      prod.serviceTag === 'proses-cepat'
+        ? 'proses-cepat'
+        : prod.serviceTag === 'pembuatan-cepat'
+        ? 'pembuatan-cepat'
+        : 'proses-instant'
+    );
     setSoldCount(prod.soldCount || '19rb+ Terjual');
-    setGame(prod.game);
-    setSubCategory1(prod.subCategory1);
+    setGame(prod.game === 'roblox' ? 'roblox' : 'minecraft');
+    setSubCategory1(prod.subCategory1 || (prod.game === 'roblox' ? 'blox-fruit' : 'akun'));
     setSubCategory2(prod.subCategory2 === 'items' ? 'item' : (prod.subCategory2 || 'item'));
+    setIsCustomRobloxCat(false);
+    setCustomCategoryInput('');
     setDeliveryType(prod.deliveryType || 'automatic');
 
     let cat: DeliveryCategory = prod.deliveryCategory;
     if (!cat) {
-      if (prod.game === 'roblox' || /roblox/i.test(prod.deliveryContent || '')) {
+      if (prod.game === 'jasa' || /^(jasa|chat admin|hubungi admin)/i.test(prod.deliveryContent || '')) {
+        cat = 'jasa';
+      } else if (prod.game === 'roblox' || /roblox/i.test(prod.deliveryContent || '')) {
         cat = 'roblox';
       } else if (
         /kode|redeem|voucher|minecoin/i.test(prod.deliveryContent || '') ||
@@ -458,6 +501,8 @@ export default function AdminProductsPage() {
         ? 'Full Access Migration di https://account.mojang.com'
         : deliveryCategory === 'redeem_code'
         ? 'Tukarkan di https://minecraft.net/redeem/minecoins'
+        : deliveryCategory === 'jasa'
+        ? 'Silakan hubungi admin setelah pembayaran dengan menyertakan kode pesanan, judul pesanan, dan harga pesanan.'
         : 'Silakan add username Roblox di atas lalu join private server untuk trade.';
 
     const updated = [
@@ -742,7 +787,11 @@ export default function AdminProductsPage() {
                               <span className="text-gray-600">•</span>
                               <span className="text-[10px] text-amber-400 font-bold">{prod.soldCount || '19rb+ Terjual'}</span>
                               <span className="text-gray-600">•</span>
-                              {prod.serviceTag === 'pembuatan-cepat' ? (
+                              {prod.serviceTag === 'proses-cepat' ? (
+                                <span className="text-[10px] text-orange-300 font-semibold flex items-center gap-0.5">
+                                  ⚡ Proses Cepat
+                                </span>
+                              ) : prod.serviceTag === 'pembuatan-cepat' ? (
                                 <span className="text-[10px] text-purple-300 font-semibold flex items-center gap-0.5">
                                   🚀 Pembuatan Cepat
                                 </span>
@@ -1060,13 +1109,15 @@ export default function AdminProductsPage() {
                     <select
                       value={game}
                       onChange={(e) => {
-                        const newGame = e.target.value as any;
+                        const newGame = e.target.value as 'minecraft' | 'roblox';
                         setGame(newGame);
                         if (newGame === 'minecraft') {
                           setSubCategory1('akun');
-                        } else {
+                          setIsCustomRobloxCat(false);
+                        } else if (newGame === 'roblox') {
                           setSubCategory1('blox-fruit');
                           setSubCategory2('item');
+                          setIsCustomRobloxCat(false);
                         }
                       }}
                       className="w-full px-3 py-2 rounded-xl bg-surface border border-surface-border text-white focus:outline-none focus:border-emerald-500 font-bold"
@@ -1077,7 +1128,23 @@ export default function AdminProductsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-gray-400 mb-1 font-medium">Kategori Game *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-gray-400 font-medium">
+                        {game === 'roblox' ? 'Kategori Game Roblox *' : 'Kategori Game *'}
+                      </label>
+                      {game === 'roblox' && isCustomRobloxCat && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomRobloxCat(false);
+                            setSubCategory1('blox-fruit');
+                          }}
+                          className="text-[10px] text-gray-400 hover:text-white"
+                        >
+                          Pilih dari list
+                        </button>
+                      )}
+                    </div>
                     {game === 'minecraft' ? (
                       <select
                         value={subCategory1}
@@ -1090,15 +1157,53 @@ export default function AdminProductsPage() {
                         <option value="realms">Realms</option>
                         <option value="minecoins">Minecoins</option>
                       </select>
+                    ) : isCustomRobloxCat ? (
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          placeholder="Nama game (cth: Dungeon Quest / Steal an Egg)"
+                          value={customCategoryInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomCategoryInput(val);
+                            const slugified = val
+                              .toLowerCase()
+                              .trim()
+                              .replace(/[^a-z0-9]+/g, '-')
+                              .replace(/^-|-$/g, '');
+                            setSubCategory1(slugified || val);
+                          }}
+                          className="w-full px-3 py-2 rounded-xl bg-surface border border-surface-border text-white text-xs focus:outline-none focus:border-emerald-500 font-medium"
+                          autoFocus
+                        />
+                        <div className="text-[10px] text-gray-500">
+                          Slug: <span className="font-mono text-emerald-400 font-bold">{subCategory1 || '-'}</span>
+                        </div>
+                      </div>
                     ) : (
                       <select
                         value={subCategory1}
-                        onChange={(e) => setSubCategory1(e.target.value)}
+                        onChange={(e) => {
+                          if (e.target.value === '__add_new__') {
+                            setIsCustomRobloxCat(true);
+                            setCustomCategoryInput('');
+                          } else {
+                            setSubCategory1(e.target.value);
+                          }
+                        }}
                         className="w-full px-3 py-2 rounded-xl bg-surface border border-surface-border text-white focus:outline-none focus:border-emerald-500"
                       >
-                        <option value="blox-fruit">Blox Fruit</option>
-                        <option value="fish-it">Fish it</option>
-                        <option value="grow-a-garden-2">Grow a Garden 2</option>
+                        {dynamicRobloxCategories.map((cat) => (
+                          <option key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </option>
+                        ))}
+                        {!dynamicRobloxCategories.some((c) => c.value === subCategory1) && subCategory1 && (
+                          <option value={subCategory1}>{subCategory1}</option>
+                        )}
+                        <option value="__add_new__" className="text-emerald-400 font-bold">
+                          + Tambah Kategori Baru...
+                        </option>
                       </select>
                     )}
                   </div>
@@ -1114,6 +1219,7 @@ export default function AdminProductsPage() {
                         <option value="akun">Akun</option>
                         <option value="item">Item</option>
                         <option value="joki">Joki</option>
+                        <option value="jasa">Jasa</option>
                       </select>
                     </div>
                   )}
@@ -1147,7 +1253,7 @@ export default function AdminProductsPage() {
                   {/* Pilihan Tag Layanan */}
                   <div className="space-y-2">
                     <label className="block text-gray-300 font-semibold text-xs">Pilih Tag Layanan *</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => setServiceTag('proses-instant')}
@@ -1182,6 +1288,24 @@ export default function AdminProductsPage() {
                         />
                         <span className="text-[11px] font-bold">Pembuatan Cepat</span>
                         <span className="text-[9px] text-gray-400">Custom skins / jasa</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setServiceTag('proses-cepat')}
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 text-center transition-all ${
+                          serviceTag === 'proses-cepat'
+                            ? 'bg-orange-950/70 border-orange-400 text-white shadow-lg ring-2 ring-orange-500/40'
+                            : 'bg-surface hover:bg-surface-hover border-surface-border text-gray-400'
+                        }`}
+                      >
+                        <img
+                          src="/images/tag-proses-cepat.png"
+                          alt="Proses Cepat"
+                          className="h-4 w-auto object-contain"
+                        />
+                        <span className="text-[11px] font-bold">Proses Cepat</span>
+                        <span className="text-[9px] text-gray-400">Diproses cepat oleh admin</span>
                       </button>
                     </div>
                   </div>
@@ -1255,10 +1379,10 @@ export default function AdminProductsPage() {
                   </div>
                 </div>
 
-                {/* 3 Categories Selection Tabs */}
+                {/* 4 Categories Selection Tabs */}
                 <div className="space-y-2">
                   <label className="block text-gray-300 font-semibold text-xs">Pilih Kategori Delivery *</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <button
                       type="button"
                       onClick={() => setDeliveryCategory('account')}
@@ -1299,6 +1423,20 @@ export default function AdminProductsPage() {
                       <span className="text-base">🧱</span>
                       <span className="text-xs font-bold">Kategori Roblox</span>
                       <span className="text-[9px] text-gray-400">Add User, Private Link, Note</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryCategory('jasa')}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all ${
+                        deliveryCategory === 'jasa'
+                          ? 'bg-orange-950/80 border-orange-400 text-white shadow-lg ring-2 ring-orange-500/40'
+                          : 'bg-surface hover:bg-surface-hover border-surface-border text-gray-400'
+                      }`}
+                    >
+                      <span className="text-base">💬</span>
+                      <span className="text-xs font-bold">Kategori Jasa</span>
+                      <span className="text-[9px] text-gray-400">Chat Admin, Format Pesanan</span>
                     </button>
                   </div>
                 </div>
@@ -1346,7 +1484,9 @@ export default function AdminProductsPage() {
                               ? `Data Akun #${index + 1}`
                               : deliveryCategory === 'redeem_code'
                               ? `Data Kode Redeem #${index + 1}`
-                              : `Data Item Roblox #${index + 1}`}
+                              : deliveryCategory === 'roblox'
+                              ? `Data Item Roblox #${index + 1}`
+                              : `Data Layanan Jasa #${index + 1}`}
                           </span>
                           <span
                             className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-normal flex items-center gap-1 ${
@@ -1599,6 +1739,38 @@ export default function AdminProductsPage() {
                               onChange={(e) => handleDeliveryItemChange(item.id, 'keterangan', e.target.value)}
                               placeholder="Silakan add username Roblox di atas lalu join ke server."
                               className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-gray-300 text-xs focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* FIELD RENDERING: CATEGORY 4 (JASA) */}
+                      {deliveryCategory === 'jasa' && (
+                        <div className="space-y-3">
+                          <div className="p-3 rounded-lg bg-orange-950/30 border border-orange-500/30 text-xs space-y-1">
+                            <p className="text-orange-300 font-bold flex items-center gap-1.5">
+                              <Info className="w-3.5 h-3.5 text-orange-400" />
+                              <span>Instruksi Layanan Jasa</span>
+                            </p>
+                            <p className="text-gray-300 text-[11px] leading-relaxed">
+                              Setelah pembayaran berhasil diverifikasi, customer akan diarahkan untuk menghubungi admin dengan format data pesanan:
+                              <span className="font-mono text-orange-200 bg-black/50 px-1.5 py-0.5 rounded mx-1">Kode Pesanan</span>,
+                              <span className="font-mono text-orange-200 bg-black/50 px-1.5 py-0.5 rounded mx-1">Judul Pesanan</span>, dan
+                              <span className="font-mono text-orange-200 bg-black/50 px-1.5 py-0.5 rounded mx-1">Harga Pesanan</span>.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                              <Info className="w-3 h-3 text-orange-400" />
+                              <span>Catatan Tambahan / Kontak Admin (Opsional)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={item.keterangan}
+                              onChange={(e) => handleDeliveryItemChange(item.id, 'keterangan', e.target.value)}
+                              placeholder="Contoh: Hubungi admin via WhatsApp 0812xxxx atau klik link wa.me/..."
+                              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-gray-300 text-xs focus:outline-none focus:border-orange-500"
                             />
                           </div>
                         </div>

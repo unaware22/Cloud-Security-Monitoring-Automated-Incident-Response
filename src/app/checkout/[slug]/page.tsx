@@ -655,7 +655,18 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
             {/* Service Tag Badge Info */}
             <div className="p-3 bg-[#111111] border border-neutral-800 flex items-center gap-2.5">
-              {isCustomSkinProduct ? (
+              {product.serviceTag === 'proses-cepat' ? (
+                <>
+                  <img
+                    src="/images/tag-proses-cepat.png"
+                    alt="Proses Cepat"
+                    className="h-4 w-auto object-contain flex-shrink-0"
+                  />
+                  <span className="text-[11px] font-semibold text-orange-300">
+                    Layanan Proses Cepat (Diproses Cepat oleh Admin)
+                  </span>
+                </>
+              ) : isCustomSkinProduct ? (
                 <>
                   <img
                     src="/images/tag-pembuatan-cepat.png"
