@@ -658,9 +658,9 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               {product.serviceTag === 'proses-cepat' ? (
                 <>
                   <img
-                    src="/images/tag-proses-cepat.png"
+                    src="/images/tag-proses-cepat-v5.png"
                     alt="Proses Cepat"
-                    className="h-4 w-auto object-contain flex-shrink-0"
+                    className="h-7 sm:h-8 w-auto object-contain flex-shrink-0"
                   />
                   <span className="text-[11px] font-semibold text-orange-300">
                     Layanan Proses Cepat (Diproses Cepat oleh Admin)

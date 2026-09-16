@@ -115,21 +115,21 @@ export default function ProductCard({ product }: ProductCardProps) {
             {/* Tag Badge (Compact) */}
             {tagType === 'proses-cepat' ? (
               <img
-                src="/images/tag-proses-cepat.png"
+                src="/images/tag-proses-cepat-v5.png"
                 alt="Proses Cepat"
-                className="h-3.5 w-auto object-contain flex-shrink-0"
+                className="h-6 sm:h-[26px] w-auto object-contain flex-shrink-0"
               />
             ) : tagType === 'pembuatan-cepat' ? (
               <img
                 src="/images/tag-pembuatan-cepat.png"
                 alt="Pembuatan Cepat"
-                className="h-3.5 w-auto object-contain flex-shrink-0"
+                className="h-3.5 sm:h-4 w-auto object-contain flex-shrink-0"
               />
             ) : (
               <img
                 src="/images/tag-proses-instant.png"
                 alt="Proses Instant"
-                className="h-3.5 w-auto object-contain flex-shrink-0"
+                className="h-3.5 sm:h-4 w-auto object-contain flex-shrink-0"
               />
             )}
 

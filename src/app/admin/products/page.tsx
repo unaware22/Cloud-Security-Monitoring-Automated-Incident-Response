@@ -788,17 +788,23 @@ export default function AdminProductsPage() {
                               <span className="text-[10px] text-amber-400 font-bold">{prod.soldCount || '19rb+ Terjual'}</span>
                               <span className="text-gray-600">•</span>
                               {prod.serviceTag === 'proses-cepat' ? (
-                                <span className="text-[10px] text-orange-300 font-semibold flex items-center gap-0.5">
-                                  ⚡ Proses Cepat
-                                </span>
+                                <img
+                                  src="/images/tag-proses-cepat-v5.png"
+                                  alt="Proses Cepat"
+                                  className="h-5 sm:h-6 w-auto object-contain inline-block"
+                                />
                               ) : prod.serviceTag === 'pembuatan-cepat' ? (
-                                <span className="text-[10px] text-purple-300 font-semibold flex items-center gap-0.5">
-                                  🚀 Pembuatan Cepat
-                                </span>
+                                <img
+                                  src="/images/tag-pembuatan-cepat.png"
+                                  alt="Pembuatan Cepat"
+                                  className="h-3.5 w-auto object-contain inline-block"
+                                />
                               ) : (
-                                <span className="text-[10px] text-cyan-300 font-semibold flex items-center gap-0.5">
-                                  ⚡ Proses Instant
-                                </span>
+                                <img
+                                  src="/images/tag-proses-instant.png"
+                                  alt="Proses Instant"
+                                  className="h-3.5 w-auto object-contain inline-block"
+                                />
                               )}
                             </div>
                           </div>
@@ -1300,9 +1306,9 @@ export default function AdminProductsPage() {
                         }`}
                       >
                         <img
-                          src="/images/tag-proses-cepat.png"
+                          src="/images/tag-proses-cepat-v5.png"
                           alt="Proses Cepat"
-                          className="h-4 w-auto object-contain"
+                          className="h-8 w-auto object-contain"
                         />
                         <span className="text-[11px] font-bold">Proses Cepat</span>
                         <span className="text-[9px] text-gray-400">Diproses cepat oleh admin</span>
