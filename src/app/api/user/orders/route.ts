@@ -60,7 +60,22 @@ export async function GET(req: NextRequest) {
     });
 
     const formattedOrders = orders.map((order) => {
-      const isPaid = ['paid', 'paid_manual', 'settlement', 'capture'].includes(order.paymentStatus);
+      let paymentStatus = order.paymentStatus;
+      let orderStatus = order.orderStatus;
+
+      // Auto-cancel if unpaid after 15 minutes (expiredAt)
+      if (paymentStatus === 'pending' && order.expiredAt && new Date() > order.expiredAt) {
+        paymentStatus = 'expired';
+        orderStatus = 'cancelled';
+        prisma.order
+          .update({
+            where: { id: order.id },
+            data: { paymentStatus: 'expired', orderStatus: 'cancelled' },
+          })
+          .catch(() => {});
+      }
+
+      const isPaid = ['paid', 'paid_manual', 'settlement', 'capture'].includes(paymentStatus);
 
       // Map individual items with their snapshots and product relations
       const items = order.orderItems.map((item) => {
@@ -144,8 +159,8 @@ export async function GET(req: NextRequest) {
         discountAmount,
         adminFee,
         voucherCode: order.voucherCode,
-        orderStatus: order.orderStatus,
-        paymentStatus: order.paymentStatus,
+        orderStatus,
+        paymentStatus,
         deliveryStatus: order.deliveryStatus,
         paymentMethod: order.paymentMethod,
         createdAt: order.createdAt,

@@ -176,6 +176,10 @@ export async function createMidtransSnapTransaction(
       phone: params.customerPhone || undefined,
     },
     item_details: itemDetails,
+    expiry: {
+      unit: 'minute',
+      duration: 15,
+    },
     callbacks: {
       finish: `${baseUrl}/order/success/${params.orderId}`,
       unfinish: `${baseUrl}/order/success/${params.orderId}`,

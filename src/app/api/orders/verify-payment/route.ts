@@ -298,6 +298,18 @@ export async function POST(req: NextRequest) {
       });
 
       if (order) {
+        if (order.paymentStatus === 'pending' && order.expiredAt && new Date() > order.expiredAt) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: 'expired',
+              orderStatus: 'cancelled',
+            },
+          }).catch(() => {});
+          order.paymentStatus = 'expired';
+          order.orderStatus = 'cancelled';
+        }
+
         const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual';
         let deliveryContent: string | null = null;
 

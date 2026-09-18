@@ -319,7 +319,8 @@ export async function POST(req: NextRequest) {
   const adminFee = feeData.totalFee;
 
   const orderCode = generateOrderCode();
-  const expiredAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 Hours
+  const ORDER_EXPIRY_MINUTES = 15;
+  const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MINUTES * 60 * 1000); // 15 Minutes
   const initialPaymentStatus = 'pending';
 
   // 5. Create Midtrans Snap Transaction
