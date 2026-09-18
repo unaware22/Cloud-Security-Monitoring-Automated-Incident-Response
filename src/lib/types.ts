@@ -92,7 +92,13 @@ export type SecurityEventType =
   | 'unauthorized_admin_access'
   | 'sensitive_path_scan'
   | 'rate_limit_exceeded'
-  | 'direct_rds_access_test';
+  | 'direct_rds_access_test'
+  | 'user_bruteforce_attempt'
+  | 'user_login_bot_attempt'
+  | 'user_registration_bot_attempt'
+  | 'user_password_reset_abuse'
+  | 'unauthorized_order_access'
+  | 'voucher_abuse_attempt';
 
 export interface SecurityEventLog {
   event_type: SecurityEventType | string;
@@ -112,4 +118,20 @@ export interface AdminSessionPayload {
   email: string;
   role: string;
   sessionVersion: number;
+}
+
+export interface CustomerSessionPayload {
+  userId: string;
+  email: string;
+  name: string;
+  role: 'customer';
+  sessionVersion: number;
+}
+
+export interface GoogleUserPayload {
+  sub: string;
+  email: string;
+  emailVerified: boolean;
+  name: string;
+  picture?: string;
 }

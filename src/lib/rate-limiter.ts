@@ -74,6 +74,36 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
     windowMs: 60 * 1000, // 1 minute
     severity: 'low',
   },
+  USER_LOGIN: {
+    actionName: 'user_login',
+    limit: 5,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    severity: 'high',
+  },
+  USER_REGISTER: {
+    actionName: 'user_register',
+    limit: 5,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    severity: 'medium',
+  },
+  FORGOT_PASSWORD: {
+    actionName: 'forgot_password',
+    limit: 3,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    severity: 'high',
+  },
+  CHANGE_PASSWORD: {
+    actionName: 'change_password',
+    limit: 5,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    severity: 'high',
+  },
+  APPLY_VOUCHER: {
+    actionName: 'apply_voucher',
+    limit: 20,
+    windowMs: 60 * 1000, // 1 minute
+    severity: 'medium',
+  },
 };
 
 export async function checkRateLimit(
@@ -104,6 +134,14 @@ export async function checkRateLimit(
       const eventType =
         config.actionName === 'admin_login'
           ? 'admin_bruteforce_attempt'
+          : config.actionName === 'user_login'
+          ? 'user_bruteforce_attempt'
+          : config.actionName === 'user_register'
+          ? 'user_registration_bot_attempt'
+          : config.actionName === 'forgot_password'
+          ? 'user_password_reset_abuse'
+          : config.actionName === 'apply_voucher'
+          ? 'voucher_abuse_attempt'
           : config.actionName === 'check_order'
           ? 'order_enumeration_attempt'
           : config.actionName === 'checkout'

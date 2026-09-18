@@ -636,3 +636,130 @@ export async function sendCustomSkinDeliveredEmail(params: {
     return { success: false };
   }
 }
+
+/**
+ * Sends customer email verification link
+ */
+export async function sendEmailVerificationLink(params: {
+  email: string;
+  name: string;
+  token: string;
+}): Promise<{ success: boolean; messageId?: string }> {
+  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+  const verifyUrl = `${baseUrl}/verify-email?token=${encodeURIComponent(params.token)}`;
+
+  try {
+    const emailResult = await dispatchEmail({
+      to: params.email,
+      subject: '[SALADINSHOP] Verifikasi Alamat Email Akun Anda',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>SALADINSHOP - Verifikasi Email</title>
+        </head>
+        <body style="margin: 0; padding: 24px 12px; background-color: #0d0d0d; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #ffffff;">
+          <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 560px; margin: 0 auto; background-color: #121214; border-radius: 12px; border: 1px solid #222226; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+            <tr>
+              <td style="padding: 32px 28px 24px 28px; text-align: center;">
+                <h1 style="color: #ffc825; font-size: 22px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; margin: 0 0 16px 0; font-family: Arial, sans-serif;">
+                  SALADINSHOP
+                </h1>
+                <h2 style="color: #22c55e; font-size: 20px; font-weight: 800; margin: 0 0 12px 0;">
+                  Verifikasi Email Akun Anda
+                </h2>
+                <p style="color: #cccccc; font-size: 13px; line-height: 1.6; margin: 0 0 24px 0;">
+                  Halo <strong style="color: #ffffff;">${params.name}</strong>, terima kasih telah mendaftar di SALADINSHOP. Klik tombol di bawah untuk memverifikasi alamat email Anda:
+                </p>
+
+                <div style="margin: 28px 0;">
+                  <a href="${verifyUrl}" target="_blank" style="display: inline-block; background-color: #367723; color: #ffffff; text-decoration: none; padding: 12px 28px; font-size: 14px; font-weight: bold; border-radius: 4px; border-bottom: 4px solid #1f4813; text-transform: uppercase; letter-spacing: 1px;">
+                    Verifikasi Akun Sekarang &rarr;
+                  </a>
+                </div>
+
+                <p style="color: #737373; font-size: 11px; line-height: 1.5; margin: 24px 0 0 0;">
+                  Tautan ini hanya berlaku selama 5 menit demi keamanan akun Anda. Jika kedaluwarsa, silakan minta tautan verifikasi baru. Jika Anda tidak merasa mendaftar di SALADINSHOP, silakan abaikan email ini.
+                </p>
+
+                ${SOCIAL_MEDIA_FOOTER_HTML}
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    });
+
+    return { success: emailResult.success, messageId: emailResult.messageId };
+  } catch (error) {
+    console.error('Failed to send verification email:', error);
+    return { success: false };
+  }
+}
+
+/**
+ * Sends customer password reset link
+ */
+export async function sendPasswordResetLink(params: {
+  email: string;
+  name: string;
+  token: string;
+}): Promise<{ success: boolean; messageId?: string }> {
+  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+  const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(params.token)}`;
+
+  try {
+    const emailResult = await dispatchEmail({
+      to: params.email,
+      subject: '[SALADINSHOP] Permintaan Reset Kata Sandi',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>SALADINSHOP - Reset Kata Sandi</title>
+        </head>
+        <body style="margin: 0; padding: 24px 12px; background-color: #0d0d0d; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #ffffff;">
+          <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 560px; margin: 0 auto; background-color: #121214; border-radius: 12px; border: 1px solid #222226; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+            <tr>
+              <td style="padding: 32px 28px 24px 28px; text-align: center;">
+                <h1 style="color: #ffc825; font-size: 22px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; margin: 0 0 16px 0; font-family: Arial, sans-serif;">
+                  SALADINSHOP
+                </h1>
+                <h2 style="color: #eab308; font-size: 20px; font-weight: 800; margin: 0 0 12px 0;">
+                  Atur Ulang Kata Sandi
+                </h2>
+                <p style="color: #cccccc; font-size: 13px; line-height: 1.6; margin: 0 0 24px 0;">
+                  Halo <strong style="color: #ffffff;">${params.name}</strong>, kami menerima permintaan untuk mereset kata sandi akun SALADINSHOP Anda. Klik tombol di bawah ini untuk membuat kata sandi baru:
+                </p>
+
+                <div style="margin: 28px 0;">
+                  <a href="${resetUrl}" target="_blank" style="display: inline-block; background-color: #eab308; color: #000000; text-decoration: none; padding: 12px 28px; font-size: 14px; font-weight: bold; border-radius: 4px; border-bottom: 4px solid #a16207; text-transform: uppercase; letter-spacing: 1px;">
+                    Reset Kata Sandi &rarr;
+                  </a>
+                </div>
+
+                <p style="color: #737373; font-size: 11px; line-height: 1.5; margin: 24px 0 0 0;">
+                  Tautan ini berlaku selama 1 jam. Jika Anda tidak meminta reset kata sandi, abaikan email ini. Akun Anda tetap aman.
+                </p>
+
+                ${SOCIAL_MEDIA_FOOTER_HTML}
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    });
+
+    return { success: emailResult.success, messageId: emailResult.messageId };
+  } catch (error) {
+    console.error('Failed to send password reset email:', error);
+    return { success: false };
+  }
+}
+

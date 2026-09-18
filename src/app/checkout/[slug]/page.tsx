@@ -18,6 +18,7 @@ import {
   FileText,
   Info,
   Star,
+  Ticket,
 } from 'lucide-react';
 import Script from 'next/script';
 import { formatIDR } from '@/lib/utils';
@@ -100,6 +101,13 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerNotes, setCustomerNotes] = useState('');
 
+  // Customer Auth & Voucher States
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
+  const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; discountAmount: number } | null>(null);
+  const [voucherLoading, setVoucherLoading] = useState(false);
+  const [voucherError, setVoucherError] = useState('');
+
   // Selected Payment Method ID (defaults to 'qris')
   const [selectedMethodId, setSelectedMethodId] = useState<string>('qris');
 
@@ -156,6 +164,20 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
     }
     loadProduct();
   }, [slug]);
+
+  // Load customer profile if logged in to prefill form
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.user) {
+          setCurrentUser(data.user);
+          setCustomerName((prev) => prev || data.user.name);
+          setCustomerEmail((prev) => prev || data.user.email);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const toggleSection = (sectionKey: string) => {
     setOpenSections((prev) => ({
@@ -275,14 +297,57 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
   const selectedMethod = PAYMENT_METHODS.find((m) => m.id === selectedMethodId) || PAYMENT_METHODS[0];
   const productSubtotal = product?.price || 0;
-  const adminFee = Math.round(750 + productSubtotal * 0.007);
-  const totalPrice = productSubtotal + adminFee;
+  const discountAmount = appliedVoucher ? appliedVoucher.discountAmount : 0;
+  const discountedSubtotal = Math.max(0, productSubtotal - discountAmount);
+  const adminFee = Math.round(750 + discountedSubtotal * 0.007);
+  const totalPrice = discountedSubtotal + adminFee;
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '';
   const turnstileEnabled = Boolean(turnstileSiteKey && !turnstileSiteKey.includes('REPLACE_ME'));
 
   const resetTurnstile = () => {
     setTurnstileToken('');
     setTurnstileResetKey((current) => current + 1);
+  };
+
+  // Handle Voucher Application
+  const handleApplyVoucher = async () => {
+    if (!voucherCodeInput.trim()) return;
+    setVoucherLoading(true);
+    setVoucherError('');
+
+    try {
+      const res = await fetch('/api/vouchers/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voucher_code: voucherCodeInput.trim(),
+          subtotal: productSubtotal,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setVoucherError(data.message || 'Voucher tidak valid');
+        setVoucherLoading(false);
+        return;
+      }
+
+      setAppliedVoucher({
+        code: data.data.voucher_code,
+        discountAmount: data.data.discount_amount,
+      });
+      setVoucherCodeInput('');
+      setVoucherLoading(false);
+    } catch {
+      setVoucherError('Gagal memvalidasi voucher');
+      setVoucherLoading(false);
+    }
+  };
+
+  const handleRemoveVoucher = () => {
+    setAppliedVoucher(null);
+    setVoucherError('');
   };
 
   const handleFormValidation = (e: React.FormEvent) => {
@@ -356,6 +421,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                 referenceImageUrl: referenceImage || null,
               }
             : undefined,
+          voucher_code: appliedVoucher ? appliedVoucher.code : undefined,
           turnstile_token: turnstileToken || undefined,
         }),
       });
@@ -1087,15 +1153,96 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               })}
             </div>
 
-            {/* ================= STEP 4: RINGKASAN TOTAL & TOMBOL BELI ================= */}
+            {/* ================= STEP 4: VOUCHER & RINGKASAN TOTAL ================= */}
             <div className="bg-[#181818] border border-neutral-700/80 rounded-none shadow-2xl p-6 space-y-4">
+              {/* Voucher Section */}
+              <div className="pb-4 border-b border-neutral-800 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Ticket className="w-4 h-4 text-amber-400" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+                    VOUCHER DISKON
+                  </h4>
+                </div>
+
+                {!currentUser ? (
+                  <div className="p-3 bg-amber-950/30 border border-amber-600/40 text-xs text-amber-200 flex items-center justify-between gap-3">
+                    <p className="text-[11px] leading-relaxed">
+                      Punya voucher <strong>HEMAT5K</strong>? Masuk ke akun Anda untuk mendapatkan potongan Rp 5.000!
+                    </p>
+                    <Link
+                      href={`/login?redirect=${encodeURIComponent(`/checkout/${slug}`)}`}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-[10px] uppercase tracking-wider flex-shrink-0"
+                    >
+                      MASUK
+                    </Link>
+                  </div>
+                ) : appliedVoucher ? (
+                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/50 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+                      <div>
+                        <span className="font-mono font-black text-xs text-emerald-300">
+                          {appliedVoucher.code}
+                        </span>
+                        <span className="text-[11px] text-neutral-400 ml-2">
+                          (Potongan {formatIDR(appliedVoucher.discountAmount)})
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveVoucher}
+                      className="text-[11px] font-bold text-rose-400 hover:text-rose-300 uppercase underline"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={voucherCodeInput}
+                        onChange={(e) => {
+                          setVoucherCodeInput(e.target.value.toUpperCase());
+                          setVoucherError('');
+                        }}
+                        placeholder="Masukkan kode voucher (e.g. HEMAT5K)"
+                        className="flex-1 px-3 py-2 bg-[#111111] border border-neutral-700 text-white text-xs font-mono uppercase focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyVoucher}
+                        disabled={voucherLoading || !voucherCodeInput.trim()}
+                        className="px-4 py-2 bg-[#367723] hover:bg-[#418e2a] text-white text-xs font-black uppercase tracking-wider border-b-2 border-[#1f4813] disabled:opacity-50"
+                      >
+                        {voucherLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'TERAPKAN'}
+                      </button>
+                    </div>
+                    {voucherError && (
+                      <p className="text-[11px] text-rose-400">{voucherError}</p>
+                    )}
+                    <p className="text-[10px] text-neutral-500">
+                      Gunakan kode <strong>HEMAT5K</strong> untuk potongan Rp 5.000 (Min. subtotal Rp 30.000).
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Price Breakdown */}
               <div className="space-y-2 text-xs pb-3 border-b border-neutral-800">
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-400">Harga Produk:</span>
                   <span className="font-mono text-neutral-200">{formatIDR(productSubtotal)}</span>
                 </div>
+                {discountAmount > 0 && (
+                  <div className="flex items-center justify-between text-amber-400">
+                    <span>Diskon Voucher ({appliedVoucher?.code}):</span>
+                    <span className="font-mono font-bold">-{formatIDR(discountAmount)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-400">Biaya Layanan (Rp 750 + 0.7%):</span>
+                  <span className="text-neutral-400">Biaya Layanan:</span>
                   <span className="font-mono text-amber-400 font-semibold">+{formatIDR(adminFee)}</span>
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t border-neutral-800/80">
@@ -1202,6 +1349,13 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                 <strong className="text-white font-bold">Harga Produk:</strong>{' '}
                 <span className="text-neutral-200 font-mono">{formatIDR(productSubtotal)}</span>
               </p>
+
+              {discountAmount > 0 && (
+                <p>
+                  <strong className="text-amber-400 font-bold">Potongan Voucher:</strong>{' '}
+                  <span className="text-amber-400 font-mono font-bold">-{formatIDR(discountAmount)} ({appliedVoucher?.code})</span>
+                </p>
+              )}
 
               <p>
                 <strong className="text-white font-bold">Biaya Layanan:</strong>{' '}

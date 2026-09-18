@@ -13,6 +13,7 @@ import { createMidtransSnapTransaction, calculatePaymentFee } from '@/lib/midtra
 import { fallbackStore } from '@/lib/products-store';
 import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
+import { getCustomerSession } from '@/lib/user-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,7 @@ const CheckoutSchema = z.object({
   customer_email: z.string().trim().email('Format email tidak valid').max(150),
   customer_phone: z.string().trim().min(8, 'Nomor telepon tidak valid').max(20),
   payment_method: z.string().default('va_mandiri'),
+  voucher_code: z.string().trim().max(50).optional(),
   notes: z.string().trim().max(1000).optional(),
   skin_description: z.string().trim().optional(),
   skin_size: z.string().trim().optional(),
@@ -86,6 +88,7 @@ export async function POST(req: NextRequest) {
       requestId,
     });
 
+
     return NextResponse.json(
       { error: 'Bad Request', message: 'Invalid or prohibited characters detected' },
       { status: 400 }
@@ -112,6 +115,7 @@ export async function POST(req: NextRequest) {
     customer_email,
     customer_phone,
     payment_method,
+    voucher_code,
     notes,
     skin_description,
     skin_size,
@@ -251,7 +255,66 @@ export async function POST(req: NextRequest) {
   }
 
   const productSubtotal = product.price * quantity;
-  const feeData = calculatePaymentFee(productSubtotal);
+
+  // Customer Session & Voucher Application
+  const customerSession = await getCustomerSession(req);
+  let appliedVoucher: any = null;
+  let discountAmount = 0;
+  const requestedVoucherCode = voucher_code?.trim().toUpperCase();
+
+  if (requestedVoucherCode) {
+    if (!customerSession) {
+      return NextResponse.json(
+        {
+          error: 'Forbidden',
+          message: `Voucher ${requestedVoucherCode} khusus untuk akun yang telah login. Silakan login terlebih dahulu untuk klaim diskon.`,
+        },
+        { status: 403 }
+      );
+    }
+
+    if (dbOnline) {
+      const voucher = await prisma.voucher.findUnique({
+        where: { code: requestedVoucherCode },
+      });
+
+      const now = new Date();
+      if (!voucher || !voucher.isActive || now < voucher.startDate || now > voucher.endDate) {
+        return NextResponse.json(
+          { error: 'Bad Request', message: 'Kode voucher tidak valid atau telah kedaluwarsa.' },
+          { status: 400 }
+        );
+      }
+
+      if (productSubtotal < voucher.minSubtotal) {
+        return NextResponse.json(
+          {
+            error: 'Bad Request',
+            message: `Minimal subtotal produk untuk voucher ${voucher.code} adalah Rp${voucher.minSubtotal.toLocaleString('id-ID')}.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (voucher.singleUsePerAccount) {
+        const used = await prisma.voucherUsage.findFirst({
+          where: { voucherId: voucher.id, userId: customerSession.userId },
+        });
+        if (used) {
+          return NextResponse.json(
+            { error: 'Bad Request', message: `Voucher ${voucher.code} sudah pernah Anda gunakan sebelumnya.` },
+            { status: 400 }
+          );
+        }
+      }
+
+      appliedVoucher = voucher;
+      discountAmount = voucher.discountAmount;
+    }
+  }
+
+  const discountedProductSubtotal = Math.max(0, productSubtotal - discountAmount);
+  const feeData = calculatePaymentFee(discountedProductSubtotal);
   const totalAmount = feeData.totalWithFee;
   const adminFee = feeData.totalFee;
 
@@ -267,7 +330,7 @@ export async function POST(req: NextRequest) {
     const snapData = await createMidtransSnapTransaction({
       orderId: orderCode,
       grossAmount: totalAmount,
-      productPrice: productSubtotal,
+      productPrice: discountedProductSubtotal,
       feeAmount: adminFee,
       customerName: customer_name,
       customerEmail: customer_email,
@@ -302,6 +365,9 @@ export async function POST(req: NextRequest) {
             customerEmail: customer_email,
             customerPhone: customer_phone,
             totalAmount,
+            userId: customerSession?.userId || null,
+            voucherCode: appliedVoucher?.code || null,
+            discountAmount,
             orderStatus: 'waiting_payment',
             paymentStatus: initialPaymentStatus,
             deliveryStatus: 'pending',
@@ -309,6 +375,16 @@ export async function POST(req: NextRequest) {
             expiredAt,
           },
         });
+
+        if (appliedVoucher && customerSession) {
+          await tx.voucherUsage.create({
+            data: {
+              voucherId: appliedVoucher.id,
+              userId: customerSession.userId,
+              orderId: order.id,
+            },
+          });
+        }
 
         await tx.orderItem.create({
           data: {
@@ -333,6 +409,8 @@ export async function POST(req: NextRequest) {
               payment_method,
               provider_invoice_id: providerInvoiceId,
               product_subtotal: productSubtotal,
+              discount_amount: discountAmount,
+              voucher_code: appliedVoucher?.code || null,
               admin_fee: adminFee,
               customer_notes: combinedNotes || null,
               custom_skin_details: customSkinPayload || null,

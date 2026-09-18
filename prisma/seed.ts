@@ -244,6 +244,31 @@ async function main() {
     }
   }
 
+  // 3. Seed Phase 1 Voucher (HEMAT5K)
+  const voucherCode = 'HEMAT5K';
+  const existingVoucher = await prisma.voucher.findUnique({
+    where: { code: voucherCode },
+  });
+
+  if (!existingVoucher) {
+    const voucher = await prisma.voucher.create({
+      data: {
+        code: voucherCode,
+        name: 'Voucher Hemat Rp5.000',
+        discountAmount: 5000,
+        minSubtotal: 30000,
+        startDate: new Date('2026-01-01T00:00:00Z'),
+        endDate: new Date('2028-12-31T23:59:59Z'),
+        isActive: true,
+        requiresAuth: true,
+        singleUsePerAccount: true,
+      },
+    });
+    console.log(`[Seed] Voucher created: ${voucher.code} - Potongan Rp${voucher.discountAmount.toLocaleString('id-ID')} (Min. Belanja Rp${voucher.minSubtotal.toLocaleString('id-ID')})`);
+  } else {
+    console.log(`[Seed] Voucher already exists: ${voucherCode}`);
+  }
+
   console.log('--- SALADINSHOP Database Seeding Completed Successfully ---');
 }
 

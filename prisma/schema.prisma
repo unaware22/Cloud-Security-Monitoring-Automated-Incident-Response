@@ -47,6 +47,9 @@ model Order {
   paymentStatus            String                    @default("pending") @map("payment_status") // pending, pending_manual, paid, paid_manual, failed, expired, cancelled, rejected
   deliveryStatus           String                    @default("pending") @map("delivery_status") // pending, processing, delivered, failed, cancelled, resent
   paymentMethod            String                    @map("payment_method") // Midtrans payment channel selected at checkout
+  userId                   String?                   @map("user_id")
+  voucherCode              String?                   @map("voucher_code")
+  discountAmount           Int                       @default(0) @map("discount_amount")
   expiredAt                DateTime?                 @map("expired_at")
   paidAt                   DateTime?                 @map("paid_at")
   createdAt                DateTime                  @default(now()) @map("created_at")
@@ -55,10 +58,13 @@ model Order {
   paymentTransactions      PaymentTransaction[]
   manualPaymentSubmissions ManualPaymentSubmission[]
   digitalDeliveries        DigitalDelivery[]
+  user                     User?                     @relation(fields: [userId], references: [id])
+  voucherUsage             VoucherUsage?
 
   @@index([createdAt])
   @@index([paymentStatus])
   @@index([deliveryStatus])
+  @@index([userId])
   @@map("orders")
 }
 
@@ -149,6 +155,7 @@ model AdminUser {
 model AuditLog {
   id         String     @id @default(uuid())
   adminId    String?    @map("admin_id")
+  userId     String?    @map("user_id")
   action     String
   entityType String?    @map("entity_type")
   entityId   String?    @map("entity_id")
@@ -158,9 +165,11 @@ model AuditLog {
   userAgent  String?    @map("user_agent")
   createdAt  DateTime   @default(now()) @map("created_at")
   admin      AdminUser? @relation(fields: [adminId], references: [id])
+  user       User?      @relation(fields: [userId], references: [id])
 
   @@index([createdAt])
   @@index([action, entityType])
+  @@index([userId])
   @@map("audit_logs")
 }
 
@@ -203,4 +212,85 @@ model IpControlAction {
   @@index([status, createdAt])
   @@index([createdAt])
   @@map("ip_control_actions")
+}
+
+model User {
+  id                     String                   @id @default(uuid())
+  name                   String
+  email                  String                   @unique
+  passwordHash           String?                  @map("password_hash")
+  avatarUrl              String?                  @map("avatar_url")
+  role                   String                   @default("customer")
+  isEmailVerified        Boolean                  @default(false) @map("is_email_verified")
+  emailVerifiedAt        DateTime?                @map("email_verified_at")
+  sessionVersion         Int                      @default(0) @map("session_version")
+  googleId               String?                  @unique @map("google_id")
+  authProvider           String                   @default("local") @map("auth_provider") // 'local' | 'google' | 'both'
+  lastLoginAt            DateTime?                @map("last_login_at")
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  orders                 Order[]
+  voucherUsages          VoucherUsage[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens    PasswordResetToken[]
+  auditLogs              AuditLog[]
+
+  @@map("users")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Voucher {
+  id                  String         @id @default(uuid())
+  code                String         @unique
+  name                String
+  discountAmount      Int            @map("discount_amount")
+  minSubtotal         Int            @map("min_subtotal")
+  startDate           DateTime       @map("start_date")
+  endDate             DateTime       @map("end_date")
+  isActive            Boolean        @default(true) @map("is_active")
+  requiresAuth        Boolean        @default(true) @map("requires_auth")
+  singleUsePerAccount Boolean        @default(true) @map("single_use_per_account")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  usages              VoucherUsage[]
+
+  @@map("vouchers")
+}
+
+model VoucherUsage {
+  id        String   @id @default(uuid())
+  voucherId String   @map("voucher_id")
+  userId    String   @map("user_id")
+  orderId   String   @unique @map("order_id")
+  usedAt    DateTime @default(now()) @map("used_at")
+  voucher   Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, voucherId])
+  @@map("voucher_usages")
 }
