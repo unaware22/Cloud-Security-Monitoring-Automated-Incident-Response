@@ -119,9 +119,9 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
     !process.env.SMTP_PASS.includes('placeholder');
 
   if (isSmtpConfigured) {
-    const cleanUser = process.env.SMTP_USER?.replace(/^["']|["']$/g, '').trim() || '';
-    // Strip both outer quotes and all internal spaces (Google App Passwords are shown with spaces like 'xxxx xxxx xxxx xxxx')
-    const cleanPass = process.env.SMTP_PASS?.replace(/^["']|["']$/g, '').replace(/\s+/g, '') || '';
+    const cleanUser = process.env.SMTP_USER?.replace(/^[\s"']+|[\s"']+$/g, '').trim() || '';
+    // Strip all quotes, spaces, carriage returns, and newlines (Docker Compose preserves quotes from .env literally)
+    const cleanPass = process.env.SMTP_PASS?.replace(/^[\s"']+|[\s"']+$/g, '').replace(/[\s"'\r\n]/g, '') || '';
 
     const configuredPort = Number(process.env.SMTP_PORT) || 587;
     const configuredHost = process.env.SMTP_HOST || 'smtp.gmail.com';
