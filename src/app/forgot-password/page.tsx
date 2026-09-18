@@ -142,7 +142,7 @@ export default function ForgotPasswordPage() {
                 <TurnstileWidget
                   siteKey={turnstileSiteKey}
                   resetKey={turnstileResetKey}
-                  action="forgot-password"
+                  action="forgot_password"
                   onVerify={(tok) => setTurnstileToken(tok)}
                   onExpire={() => setTurnstileToken('')}
                   onError={() => setTurnstileToken('')}

@@ -191,7 +191,7 @@ function ResetPasswordForm() {
                 <TurnstileWidget
                   siteKey={turnstileSiteKey}
                   resetKey={turnstileResetKey}
-                  action="reset-password"
+                  action="reset_password"
                   onVerify={(tok) => setTurnstileToken(tok)}
                   onExpire={() => setTurnstileToken('')}
                   onError={() => setTurnstileToken('')}

@@ -408,7 +408,7 @@ function LoginForm() {
               <TurnstileWidget
                 siteKey={turnstileSiteKey}
                 resetKey={turnstileResetKey}
-                action="user-login"
+                action="login"
                 onVerify={(tok) => setTurnstileToken(tok)}
                 onExpire={() => setTurnstileToken('')}
                 onError={() => setTurnstileToken('')}

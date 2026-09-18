@@ -376,7 +376,7 @@ function RegisterForm() {
                 <TurnstileWidget
                   siteKey={turnstileSiteKey}
                   resetKey={turnstileResetKey}
-                  action="user-register"
+                  action="register"
                   onVerify={(tok) => setTurnstileToken(tok)}
                   onExpire={() => setTurnstileToken('')}
                   onError={() => setTurnstileToken('')}
