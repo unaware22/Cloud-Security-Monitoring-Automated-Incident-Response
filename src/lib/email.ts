@@ -102,7 +102,15 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
   const defaultFrom =
     process.env.SMTP_FROM ||
     `SALADINSHOP <${process.env.SMTP_USER || 'official@saladinshop.com'}>`;
-  const from = payload.from || defaultFrom;
+  let from = payload.from || defaultFrom;
+
+  // If using Gmail, the envelope sender must match the authenticated Gmail address to avoid 550/553 relay rejection.
+  const smtpUser = process.env.SMTP_USER?.trim() || '';
+  if (smtpUser.includes('@gmail.com') && from.includes('<')) {
+    const brandMatch = from.match(/^(.*?)\s*<.*?>$/);
+    const brandName = brandMatch?.[1]?.trim() || 'SALADINSHOP';
+    from = `${brandName} <${smtpUser}>`;
+  }
 
   const isSmtpConfigured =
     process.env.SMTP_USER &&
@@ -111,64 +119,74 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
     !process.env.SMTP_PASS.includes('placeholder');
 
   if (isSmtpConfigured) {
-    try {
-      const isGmail =
-        process.env.SMTP_HOST?.includes('gmail') ||
-        process.env.SMTP_USER?.includes('@gmail.com');
+    const configuredPort = Number(process.env.SMTP_PORT) || 587;
+    const configuredHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const portsToTry = configuredPort === 587 ? [587, 465] : [465, 587];
 
-      const transporter = isGmail
-        ? nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASS,
-            },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000,
-          })
-        : nodemailer.createTransport({
-            host: process.env.SMTP_HOST || 'smtp.gmail.com',
-            port: Number(process.env.SMTP_PORT) || 465,
-            secure: Number(process.env.SMTP_PORT) === 465,
-            auth: {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASS,
-            },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000,
-          });
+    for (const port of portsToTry) {
+      try {
+        const secure = port === 465;
+        const transporter = nodemailer.createTransport({
+          host: configuredHost,
+          port,
+          secure,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS?.trim(),
+          },
+          tls: {
+            rejectUnauthorized: true,
+            minVersion: 'TLSv1.2',
+          },
+          connectionTimeout: 12000,
+          greetingTimeout: 10000,
+          socketTimeout: 15000,
+        });
 
-      // Automatically BCC the store admin/owner on all customer dispatches
-      const bccAdmin =
-        process.env.SMTP_USER &&
-        process.env.SMTP_USER.includes('@') &&
-        process.env.SMTP_USER.toLowerCase() !== payload.to.toLowerCase()
-          ? process.env.SMTP_USER
-          : undefined;
+        // Automatically BCC the store admin/owner on all customer dispatches
+        const bccAdmin =
+          process.env.SMTP_USER &&
+          process.env.SMTP_USER.includes('@') &&
+          process.env.SMTP_USER.toLowerCase() !== payload.to.toLowerCase()
+            ? process.env.SMTP_USER
+            : undefined;
 
-      const info = await transporter.sendMail({
-        from,
-        to: payload.to,
-        bcc: bccAdmin,
-        replyTo: process.env.SMTP_USER || from,
-        subject: payload.subject,
-        html: payload.html,
-        headers: {
-          'X-Auto-Response-Suppress': 'OOF, AutoReply',
-          'Precedence': 'bulk',
-        },
-      });
+        const info = await transporter.sendMail({
+          from,
+          to: payload.to,
+          bcc: bccAdmin,
+          replyTo: process.env.SMTP_USER || from,
+          subject: payload.subject,
+          html: payload.html,
+          headers: {
+            'X-Auto-Response-Suppress': 'OOF, AutoReply',
+            'Precedence': 'bulk',
+          },
+        });
 
-      console.log(`[GMAIL SMTP SUCCESS] Sent email to ${payload.to}${bccAdmin ? ` (BCC: ${bccAdmin})` : ''} | Message ID: ${info.messageId}`);
-      return {
-        success: true,
-        messageId: info.messageId,
-        provider: 'smtp',
-      };
-    } catch (smtpErr: any) {
-      console.error('Gmail SMTP email error:', smtpErr);
+        console.log(
+          `[SMTP SUCCESS] Sent email to ${payload.to}${bccAdmin ? ` (BCC: ${bccAdmin})` : ''} via port ${port} | Message ID: ${info.messageId}`
+        );
+        return {
+          success: true,
+          messageId: info.messageId,
+          provider: 'smtp',
+        };
+      } catch (smtpErr: any) {
+        console.error(`[SMTP ERROR on port ${port}]:`, {
+          message: smtpErr?.message,
+          code: smtpErr?.code,
+          response: smtpErr?.response,
+          responseCode: smtpErr?.responseCode,
+          command: smtpErr?.command,
+        });
+
+        // If the error is authentication failure (535), don't bother retrying other ports
+        if (smtpErr?.responseCode === 535 || smtpErr?.message?.includes('BadCredentials') || smtpErr?.message?.includes('Username and Password not accepted')) {
+          console.error('[SMTP AUTHENTICATION FAILED] Password Aplikasi Gmail salah atau belum diaktifkan.');
+          break;
+        }
+      }
     }
   }
 
