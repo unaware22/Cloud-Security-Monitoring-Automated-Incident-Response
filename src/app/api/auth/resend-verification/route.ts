@@ -13,21 +13,6 @@ export async function POST(req: NextRequest) {
   const userAgent = req.headers.get('user-agent') || 'Unknown';
   const requestId = req.headers.get('x-request-id') || `req-${Date.now()}`;
 
-  // 1. Rate Limit
-  const rateLimitResult = await checkRateLimit(ip, RATE_LIMIT_RULES.FORGOT_PASSWORD, {
-    endpoint: '/api/auth/resend-verification',
-    method: 'POST',
-    userAgent,
-    requestId,
-  });
-
-  if (!rateLimitResult.allowed) {
-    return NextResponse.json(
-      { error: 'Too Many Requests', message: 'Harap tunggu beberapa saat sebelum meminta pengiriman ulang email.' },
-      { status: 429 }
-    );
-  }
-
   // Check authenticated session or request body email
   const session = await getCustomerSession(req);
   let targetEmail = session?.email;
@@ -43,6 +28,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'Bad Request', message: 'Email tidak ditemukan.' },
       { status: 400 }
+    );
+  }
+
+  // 1. Rate Limit: Max 5x, then 10 minute cooldown
+  const rateLimitKey = `${ip}:${targetEmail}`;
+  const rateLimitResult = await checkRateLimit(rateLimitKey, RATE_LIMIT_RULES.RESEND_VERIFICATION, {
+    endpoint: '/api/auth/resend-verification',
+    method: 'POST',
+    userAgent,
+    requestId,
+  });
+
+  if (!rateLimitResult.allowed) {
+    const minutesLeft = Math.max(1, Math.ceil((rateLimitResult.resetTime - Date.now()) / 60000));
+    return NextResponse.json(
+      {
+        error: 'Too Many Requests',
+        message: `Batas permintaan kode/tautan verifikasi tercapai (maksimal 5x). Demi keamanan dari serangan spam, silakan tunggu jeda ${minutesLeft} menit.`,
+      },
+      { status: 429 }
     );
   }
 

@@ -88,9 +88,15 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
   },
   FORGOT_PASSWORD: {
     actionName: 'forgot_password',
-    limit: 3,
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    severity: 'high',
+    limit: 5,
+    windowMs: 10 * 60 * 1000, // 10 minutes
+    severity: 'medium',
+  },
+  RESEND_VERIFICATION: {
+    actionName: 'resend_verification',
+    limit: 5,
+    windowMs: 10 * 60 * 1000, // 10 minutes cooldown
+    severity: 'medium',
   },
   CHANGE_PASSWORD: {
     actionName: 'change_password',

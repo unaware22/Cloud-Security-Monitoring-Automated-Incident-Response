@@ -119,6 +119,10 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
     !process.env.SMTP_PASS.includes('placeholder');
 
   if (isSmtpConfigured) {
+    const cleanUser = process.env.SMTP_USER?.replace(/^["']|["']$/g, '').trim() || '';
+    // Strip both outer quotes and all internal spaces (Google App Passwords are shown with spaces like 'xxxx xxxx xxxx xxxx')
+    const cleanPass = process.env.SMTP_PASS?.replace(/^["']|["']$/g, '').replace(/\s+/g, '') || '';
+
     const configuredPort = Number(process.env.SMTP_PORT) || 587;
     const configuredHost = process.env.SMTP_HOST || 'smtp.gmail.com';
     const portsToTry = configuredPort === 587 ? [587, 465] : [465, 587];
@@ -131,8 +135,8 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
           port,
           secure,
           auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS?.trim(),
+            user: cleanUser,
+            pass: cleanPass,
           },
           tls: {
             rejectUnauthorized: true,
@@ -145,17 +149,17 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
 
         // Automatically BCC the store admin/owner on all customer dispatches
         const bccAdmin =
-          process.env.SMTP_USER &&
-          process.env.SMTP_USER.includes('@') &&
-          process.env.SMTP_USER.toLowerCase() !== payload.to.toLowerCase()
-            ? process.env.SMTP_USER
+          cleanUser &&
+          cleanUser.includes('@') &&
+          cleanUser.toLowerCase() !== payload.to.toLowerCase()
+            ? cleanUser
             : undefined;
 
         const info = await transporter.sendMail({
           from,
           to: payload.to,
           bcc: bccAdmin,
-          replyTo: process.env.SMTP_USER || from,
+          replyTo: cleanUser || from,
           subject: payload.subject,
           html: payload.html,
           headers: {
@@ -182,8 +186,14 @@ async function dispatchEmail(payload: EmailPayload): Promise<{
         });
 
         // If the error is authentication failure (535), don't bother retrying other ports
-        if (smtpErr?.responseCode === 535 || smtpErr?.message?.includes('BadCredentials') || smtpErr?.message?.includes('Username and Password not accepted')) {
-          console.error('[SMTP AUTHENTICATION FAILED] Password Aplikasi Gmail salah atau belum diaktifkan.');
+        if (
+          smtpErr?.responseCode === 535 ||
+          smtpErr?.message?.includes('BadCredentials') ||
+          smtpErr?.message?.includes('Username and Password not accepted')
+        ) {
+          console.error(
+            `[SMTP AUTHENTICATION FAILED] User: ${cleanUser} | Panjang password yang dibaca: ${cleanPass.length} karakter. Google mewajibkan Sandi Aplikasi (App Password) 16 karakter tanpa spasi dari https://myaccount.google.com/apppasswords (bukan password login biasa Gmail).`
+          );
           break;
         }
       }
