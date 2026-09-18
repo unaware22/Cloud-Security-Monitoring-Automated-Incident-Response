@@ -33,7 +33,28 @@ export default function GoogleSignInButton({
 }: GoogleSignInButtonProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scriptLoaded, setScriptLoaded] = useState(false);
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  const initialClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  const [clientId, setClientId] = useState<string>(initialClientId);
+  const [isCheckingConfig, setIsCheckingConfig] = useState(
+    !initialClientId || initialClientId.includes('REPLACE_ME')
+  );
+
+  useEffect(() => {
+    if (!initialClientId || initialClientId.includes('REPLACE_ME')) {
+      fetch('/api/auth/config')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.googleClientId) {
+            setClientId(data.googleClientId);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setIsCheckingConfig(false);
+        });
+    }
+  }, [initialClientId]);
+
   const isConfigured = Boolean(clientId && !clientId.includes('REPLACE_ME'));
 
   useEffect(() => {
@@ -71,6 +92,15 @@ export default function GoogleSignInButton({
       onError?.(err?.message || 'Gagal memuat Google Sign-In');
     }
   }, [scriptLoaded, isConfigured, clientId, text, disabled, onSuccess, onError]);
+
+  if (isCheckingConfig) {
+    return (
+      <div className="w-full flex items-center justify-center p-3 text-neutral-500 text-xs gap-2">
+        <Loader2 className="w-4 h-4 animate-spin text-neutral-400" />
+        <span>Memuat opsi login Google...</span>
+      </div>
+    );
+  }
 
   if (!isConfigured) {
     return (
