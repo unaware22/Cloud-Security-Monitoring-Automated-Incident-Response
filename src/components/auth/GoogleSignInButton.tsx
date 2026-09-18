@@ -39,6 +39,16 @@ export default function GoogleSignInButton({
     !initialClientId || initialClientId.includes('REPLACE_ME')
   );
 
+  // Store callbacks in refs to avoid triggering re-renders of the Google button
+  // when parent components re-render on keystrokes in form fields
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+    onErrorRef.current = onError;
+  });
+
   useEffect(() => {
     if (!initialClientId || initialClientId.includes('REPLACE_ME')) {
       fetch('/api/auth/config')
@@ -63,39 +73,46 @@ export default function GoogleSignInButton({
     }
   }, []);
 
+  // Render button only when Google script is ready and client ID is present.
+  // We deliberately do NOT include onSuccess, onError, or disabled in dependencies
+  // so typing in the form will never clear innerHTML and recreate the iframe.
   useEffect(() => {
-    if (!scriptLoaded || !containerRef.current || !isConfigured || disabled) return;
+    if (!scriptLoaded || !containerRef.current || !isConfigured) return;
+    if (!window.google?.accounts?.id) return;
 
     try {
-      window.google?.accounts.id.initialize({
+      window.google.accounts.id.initialize({
         client_id: clientId,
         callback: (response: any) => {
           if (response?.credential) {
-            onSuccess(response.credential);
+            onSuccessRef.current(response.credential);
           } else {
-            onError?.('Gagal mendapatkan kredensial Google.');
+            onErrorRef.current?.('Gagal mendapatkan kredensial Google.');
           }
         },
       });
 
-      // Clear container and render button
       containerRef.current.innerHTML = '';
-      window.google?.accounts.id.renderButton(containerRef.current, {
+
+      const containerWidth = containerRef.current.clientWidth || 360;
+      const targetWidth = Math.min(Math.max(containerWidth, 240), 380);
+
+      window.google.accounts.id.renderButton(containerRef.current, {
         theme: 'filled_black',
         size: 'large',
         shape: 'rectangular',
         text,
-        width: 380,
+        width: targetWidth,
         locale: 'id',
       });
     } catch (err: any) {
-      onError?.(err?.message || 'Gagal memuat Google Sign-In');
+      onErrorRef.current?.(err?.message || 'Gagal memuat Google Sign-In');
     }
-  }, [scriptLoaded, isConfigured, clientId, text, disabled, onSuccess, onError]);
+  }, [scriptLoaded, isConfigured, clientId, text]);
 
   if (isCheckingConfig) {
     return (
-      <div className="w-full flex items-center justify-center p-3 text-neutral-500 text-xs gap-2">
+      <div className="w-full flex items-center justify-center p-3 text-neutral-500 text-xs gap-2 min-h-[44px]">
         <Loader2 className="w-4 h-4 animate-spin text-neutral-400" />
         <span>Memuat opsi login Google...</span>
       </div>
@@ -104,7 +121,7 @@ export default function GoogleSignInButton({
 
   if (!isConfigured) {
     return (
-      <div className="p-3 bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs text-center">
+      <div className="p-3 bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs text-center min-h-[44px] flex flex-col justify-center">
         <p className="font-semibold text-neutral-300">Login Google Tersedia</p>
         <p className="text-[11px] text-neutral-500 mt-0.5">
           (Atur <code className="text-amber-400 font-mono">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> di <code className="text-neutral-400 font-mono">.env</code> untuk mengaktifkan)
@@ -120,7 +137,12 @@ export default function GoogleSignInButton({
         strategy="afterInteractive"
         onLoad={() => setScriptLoaded(true)}
       />
-      <div ref={containerRef} className="w-full flex justify-center min-h-[44px]" />
+      <div
+        ref={containerRef}
+        className={`w-full flex justify-center min-h-[44px] transition-opacity duration-200 ${
+          disabled ? 'opacity-50 pointer-events-none cursor-not-allowed' : 'opacity-100'
+        }`}
+      />
     </div>
   );
 }

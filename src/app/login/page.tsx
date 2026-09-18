@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Shield, Lock, Mail, Loader2, AlertCircle, CheckCircle, ArrowRight, KeyRound } from 'lucide-react';
@@ -139,7 +139,7 @@ function LoginForm() {
   };
 
   // Handle Google Login response
-  const handleGoogleSuccess = async (googleIdToken: string) => {
+  const handleGoogleSuccess = useCallback(async (googleIdToken: string) => {
     setErrorMessage('');
     setSuccessMessage('');
     setSubmitting(true);
@@ -183,7 +183,7 @@ function LoginForm() {
       setErrorMessage('Terjadi kesalahan saat memverifikasi akun Google.');
       setSubmitting(false);
     }
-  };
+  }, [turnstileToken, redirectUrl, router]);
 
   // Handle linking Google account by confirming password
   const handleLinkGoogleAccount = async (e: React.FormEvent) => {
@@ -344,7 +344,7 @@ function LoginForm() {
         <div className="space-y-3">
           <GoogleSignInButton
             onSuccess={handleGoogleSuccess}
-            onError={(err) => setErrorMessage(err)}
+            onError={setErrorMessage}
             text="signin_with"
             disabled={submitting}
           />

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -140,7 +140,7 @@ function RegisterForm() {
     }
   };
 
-  const handleGoogleSuccess = async (googleIdToken: string) => {
+  const handleGoogleSuccess = useCallback(async (googleIdToken: string) => {
     setErrorMessage('');
     setSuccessMessage('');
     setSubmitting(true);
@@ -173,7 +173,7 @@ function RegisterForm() {
       setErrorMessage('Terjadi kesalahan saat memverifikasi akun Google.');
       setSubmitting(false);
     }
-  };
+  }, [turnstileToken, redirectUrl, router]);
 
   return (
     <div className="min-h-screen bg-[#111111] text-white py-10 sm:py-16 px-4 flex flex-col items-center justify-center">
@@ -282,7 +282,7 @@ function RegisterForm() {
           <div className="space-y-3">
             <GoogleSignInButton
               onSuccess={handleGoogleSuccess}
-              onError={(err) => setErrorMessage(err)}
+              onError={setErrorMessage}
               text="signup_with"
               disabled={submitting}
             />
