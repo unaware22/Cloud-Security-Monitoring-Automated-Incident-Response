@@ -405,14 +405,25 @@ function RegisterForm() {
           </form>
 
           {/* Footer info */}
-          <div className="text-center pt-2 border-t border-neutral-800 text-xs text-neutral-400">
-            Sudah punya akun?{' '}
-            <Link
-              href={`/login${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
-              className="text-[#69c944] hover:text-[#84e060] font-bold uppercase"
-            >
-              Masuk di sini &rarr;
-            </Link>
+          <div className="text-center pt-3 border-t border-neutral-800 text-xs text-neutral-400 space-y-2">
+            <div>
+              Sudah punya akun?{' '}
+              <Link
+                href={`/login${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
+                className="text-[#69c944] hover:text-[#84e060] font-bold uppercase"
+              >
+                Masuk di sini &rarr;
+              </Link>
+            </div>
+            <div className="pt-1 border-t border-neutral-800/50">
+              Lupa kata sandi akun Anda?{' '}
+              <Link
+                href="/forgot-password"
+                className="text-neutral-300 hover:text-white font-semibold underline underline-offset-2"
+              >
+                Atur ulang di sini &rarr;
+              </Link>
+            </div>
           </div>
         </div>
       )}

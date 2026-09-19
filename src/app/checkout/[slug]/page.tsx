@@ -19,6 +19,7 @@ import {
   Info,
   Star,
   Ticket,
+  Clock,
 } from 'lucide-react';
 import Script from 'next/script';
 import { formatIDR } from '@/lib/utils';
@@ -131,19 +132,82 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const [showCancelOrderConfirm, setShowCancelOrderConfirm] = useState(false);
   const [cancellingOrder, setCancellingOrder] = useState(false);
   const [cancelOrderError, setCancelOrderError] = useState('');
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(15 * 60);
+  const [isOrderExpired, setIsOrderExpired] = useState(false);
   const activePollerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Confirmation Dialog State
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // Cleanup watcher poller on unmount
+  // Cleanup watcher poller and timer on unmount
   useEffect(() => {
     return () => {
       if (activePollerRef.current) {
         clearInterval(activePollerRef.current);
       }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
     };
   }, []);
+
+  // 15-Minute Countdown Timer for Waiting Payment Modal
+  useEffect(() => {
+    if (!isWaitingPayment || !activeOrder) {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      return;
+    }
+
+    const expiresAt = activeOrder.expired_at
+      ? new Date(activeOrder.expired_at).getTime()
+      : Date.now() + 15 * 60 * 1000;
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const diff = Math.max(0, Math.floor((expiresAt - now) / 1000));
+      setRemainingSeconds(diff);
+      if (diff <= 0) {
+        setIsOrderExpired(true);
+        if (activePollerRef.current) {
+          clearInterval(activePollerRef.current);
+          activePollerRef.current = null;
+        }
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+      }
+    };
+
+    updateTimer();
+    countdownTimerRef.current = setInterval(updateTimer, 1000);
+
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+    };
+  }, [isWaitingPayment, activeOrder]);
+
+  // Lock navigation for guest user while an active order is waiting for payment
+  useEffect(() => {
+    if (!isWaitingPayment || currentUser || isOrderExpired) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isWaitingPayment, currentUser, isOrderExpired]);
 
   // Fetch product detail
   useEffect(() => {
@@ -469,6 +533,9 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
             ) {
               if (activePollerRef.current) clearInterval(activePollerRef.current);
               window.location.href = `/order/success/${orderData.order_code}`;
+            } else if (st === 'cancelled' || ost === 'cancelled' || st === 'expired' || ost === 'expired') {
+              if (activePollerRef.current) clearInterval(activePollerRef.current);
+              setIsOrderExpired(true);
             }
           }
         } catch {}
@@ -571,9 +638,14 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
         clearInterval(activePollerRef.current);
         activePollerRef.current = null;
       }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
       setShowCancelOrderConfirm(false);
       setIsWaitingPayment(false);
       setActiveOrder(null);
+      setIsOrderExpired(false);
       setSubmitting(false);
       setSuccessMessage(`Pesanan ${json.data.order_code} berhasil dibatalkan.`);
     } catch {
@@ -1470,115 +1542,183 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
       {/* Waiting for Payment & Live Watcher Modal */}
       {isWaitingPayment && activeOrder && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-[#181818] border border-emerald-500/40 rounded-2xl max-w-md w-full p-6 text-center space-y-5 shadow-2xl">
-            <div className="w-14 h-14 rounded-full bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center mx-auto text-emerald-400">
-              <Loader2 className="w-7 h-7 animate-spin" />
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Sinkronisasi Otomatis Real-time</span>
-              </span>
-              <h3 className="text-lg font-bold text-white uppercase tracking-wide">
-                Menunggu Pembayaran
-              </h3>
-              <p className="text-xs text-neutral-300">
-                Kode Pesanan:{' '}
-                <span className="font-mono font-bold text-emerald-400">
-                  {activeOrder.order_code}
-                </span>
-              </p>
-            </div>
-
-            <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 text-xs text-left space-y-2">
-              <div className="flex justify-between items-center text-neutral-400">
-                <span>Total Tagihan:</span>
-                <span className="font-mono font-bold text-white text-sm">
-                  {formatIDR(activeOrder.total_amount)}
-                </span>
-              </div>
-              <p className="text-[11px] text-neutral-400 leading-relaxed pt-2 border-t border-neutral-800">
-                ⚡ <strong>Otomatis Langsung Berpindah:</strong> Begitu Anda selesai membayar (scan QRIS / transfer), layar ini akan langsung seketika membuka kredensial akun digital Anda tanpa perlu menutup jendela secara manual.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  const snapToken = activeOrder.snap_token || activeOrder.provider_invoice_id;
-                  if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
-                    window.snap.pay(snapToken, {
-                      onSuccess: () => {
-                        window.location.href = `/order/success/${activeOrder.order_code}`;
-                      },
-                      onError: () => {
-                        window.location.href = `/check-order?order_code=${activeOrder.order_code}&status=error`;
-                      },
-                    });
-                  } else if (activeOrder.payment_url) {
-                    window.open(activeOrder.payment_url, '_blank');
-                  }
-                }}
-                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
-              >
-                Buka Ulang Jendela Midtrans
-              </button>
-              <Link
-                href={`/order/success/${activeOrder.order_code}`}
-                className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs uppercase tracking-wider transition-colors block text-center"
-              >
-                Cek Status Pesanan Saya
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCancelOrderConfirm(true);
-                  setCancelOrderError('');
-                }}
-                className="w-full py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-700 text-rose-200 font-bold text-xs uppercase tracking-wider transition-colors"
-              >
-                Batalkan Pesanan
-              </button>
-
-              {showCancelOrderConfirm && (
-                <div className="mt-2 p-3 rounded-xl bg-[#111111] border border-rose-700/70 text-left space-y-3">
-                  <p className="text-xs text-rose-100 leading-relaxed">
-                    Yakin ingin membatalkan pesanan ini? Pesanan yang sudah dibayar tidak dapat dibatalkan dari halaman ini.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleCancelActiveOrder}
-                      disabled={cancellingOrder}
-                      className="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold text-[11px] uppercase"
-                    >
-                      {cancellingOrder ? 'Memproses...' : 'Ya, Batalkan'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCancelOrderConfirm(false);
-                        setCancelOrderError('');
-                      }}
-                      disabled={cancellingOrder}
-                      className="py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-60 text-neutral-200 font-bold text-[11px] uppercase"
-                    >
-                      Kembali
-                    </button>
-                  </div>
+            {isOrderExpired ? (
+              <>
+                <div className="w-14 h-14 rounded-full bg-rose-950/80 border border-rose-500/50 flex items-center justify-center mx-auto text-rose-400">
+                  <Clock className="w-7 h-7" />
                 </div>
-              )}
 
-              {cancelOrderError && (
-                <p className="text-left text-xs text-rose-300 flex items-start gap-2 mt-1">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>{cancelOrderError}</span>
-                </p>
-              )}
-            </div>
+                <div className="space-y-1.5">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-300 border border-rose-500/30">
+                    <span>Waktu Pembayaran Habis</span>
+                  </span>
+                  <h3 className="text-lg font-bold text-white uppercase tracking-wide">
+                    Pesanan Kedaluwarsa
+                  </h3>
+                  <p className="text-xs text-neutral-300 leading-relaxed">
+                    Batas waktu pembayaran 15 menit telah habis. Pesanan{' '}
+                    <span className="font-mono font-bold text-rose-400">
+                      #{activeOrder.order_code}
+                    </span>{' '}
+                    telah dibatalkan secara otomatis.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWaitingPayment(false);
+                      setActiveOrder(null);
+                      setIsOrderExpired(false);
+                      if (activePollerRef.current) {
+                        clearInterval(activePollerRef.current);
+                        activePollerRef.current = null;
+                      }
+                      if (countdownTimerRef.current) {
+                        clearInterval(countdownTimerRef.current);
+                        countdownTimerRef.current = null;
+                      }
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
+                  >
+                    Buat Pesanan Baru
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-14 h-14 rounded-full bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center mx-auto text-emerald-400">
+                  <Loader2 className="w-7 h-7 animate-spin" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Sinkronisasi Otomatis Real-time</span>
+                  </span>
+                  <h3 className="text-lg font-bold text-white uppercase tracking-wide">
+                    Menunggu Pembayaran
+                  </h3>
+                  <p className="text-xs text-neutral-300">
+                    Kode Pesanan:{' '}
+                    <span className="font-mono font-bold text-emerald-400">
+                      {activeOrder.order_code}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 text-xs text-left space-y-2.5">
+                  <div className="flex justify-between items-center text-neutral-400">
+                    <span>Total Tagihan:</span>
+                    <span className="font-mono font-bold text-white text-sm">
+                      {formatIDR(activeOrder.total_amount)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-neutral-400 pt-2 border-t border-neutral-800 text-[11px]">
+                    <span className="flex items-center gap-1.5 text-amber-400 font-semibold">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Batas Waktu Bayar (15 Menit):</span>
+                    </span>
+                    <span className="font-mono font-bold text-amber-300 text-xs">
+                      {Math.floor(remainingSeconds / 60)
+                        .toString()
+                        .padStart(2, '0')}
+                      :
+                      {(remainingSeconds % 60).toString().padStart(2, '0')}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-400 leading-relaxed pt-2 border-t border-neutral-800">
+                    ℹ️ <strong>Status Otomatis Terverifikasi:</strong> Setelah pembayaran Anda selesai (QRIS / transfer), sistem akan memverifikasi dan menampilkan detail pesanan secara otomatis tanpa perlu konfirmasi manual.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snapToken = activeOrder.snap_token || activeOrder.provider_invoice_id;
+                      if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
+                        window.snap.pay(snapToken, {
+                          onSuccess: () => {
+                            window.location.href = `/order/success/${activeOrder.order_code}`;
+                          },
+                          onError: () => {
+                            window.location.href = `/check-order?order_code=${activeOrder.order_code}&status=error`;
+                          },
+                        });
+                      } else if (activeOrder.payment_url) {
+                        window.open(activeOrder.payment_url, '_blank');
+                      }
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
+                  >
+                    Bayar Sekarang
+                  </button>
+
+                  {/* Cek Status Pesanan Saya: Khusus untuk pengguna yang login */}
+                  {currentUser && (
+                    <Link
+                      href="/account?tab=orders"
+                      className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs uppercase tracking-wider transition-colors block text-center"
+                    >
+                      Cek Status Pesanan Saya
+                    </Link>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCancelOrderConfirm(true);
+                      setCancelOrderError('');
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-700 text-rose-200 font-bold text-xs uppercase tracking-wider transition-colors"
+                  >
+                    Batalkan Pesanan
+                  </button>
+
+                  {showCancelOrderConfirm && (
+                    <div className="mt-2 p-3 rounded-xl bg-[#111111] border border-rose-700/70 text-left space-y-3">
+                      <p className="text-xs text-rose-100 leading-relaxed">
+                        Yakin ingin membatalkan pesanan ini? Pesanan yang sudah dibayar tidak dapat dibatalkan dari halaman ini.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCancelActiveOrder}
+                          disabled={cancellingOrder}
+                          className="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold text-[11px] uppercase"
+                        >
+                          {cancellingOrder ? 'Memproses...' : 'Ya, Batalkan'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCancelOrderConfirm(false);
+                            setCancelOrderError('');
+                          }}
+                          disabled={cancellingOrder}
+                          className="py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-60 text-neutral-200 font-bold text-[11px] uppercase"
+                        >
+                          Kembali
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {cancelOrderError && (
+                    <p className="text-left text-xs text-rose-300 flex items-start gap-2 mt-1">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>{cancelOrderError}</span>
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

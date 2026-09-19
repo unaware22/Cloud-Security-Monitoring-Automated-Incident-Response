@@ -99,7 +99,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           <div className="min-h-[2.6rem] sm:min-h-[2.85rem] flex items-start">
             {isAvailable ? (
               <Link href={`/checkout/${product.slug}`} className="w-full">
-                <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-[#ffc825] transition-colors line-clamp-2 leading-snug">
+                <h3 className="text-sm sm:text-base font-bold text-white line-clamp-2 leading-snug select-none">
                   {product.name}
                 </h3>
               </Link>

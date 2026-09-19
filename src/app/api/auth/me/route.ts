@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
         googleId: true,
         authProvider: true,
         avatarUrl: true,
+        passwordHash: true,
         createdAt: true,
       },
     });
@@ -30,12 +31,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, authenticated: false, user: null });
     }
 
+    const { passwordHash, ...safeUser } = user;
+
     return NextResponse.json({
       success: true,
       authenticated: true,
       user: {
-        ...user,
+        ...safeUser,
         hasGoogleLinked: Boolean(user.googleId),
+        hasPassword: Boolean(passwordHash),
       },
     });
   } catch (error) {

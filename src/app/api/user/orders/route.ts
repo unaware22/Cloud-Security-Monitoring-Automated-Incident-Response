@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
           select: {
             provider: true,
             paymentUrl: true,
+            providerInvoiceId: true,
             rawPayload: true,
             status: true,
           },
@@ -134,9 +135,18 @@ export async function GET(req: NextRequest) {
       let customSkinDetails: any = null;
       let customerNotes: string | null = null;
       const latestTx = order.paymentTransactions[0];
+      let snapToken: string | null = latestTx?.providerInvoiceId || null;
+      let paymentUrl: string | null = latestTx?.paymentUrl || null;
+
       if (latestTx?.rawPayload) {
         try {
           const parsedPayload = JSON.parse(latestTx.rawPayload);
+          if (!snapToken) {
+            snapToken = parsedPayload.token || parsedPayload.snap_token || parsedPayload.snapToken || null;
+          }
+          if (!paymentUrl) {
+            paymentUrl = parsedPayload.redirect_url || parsedPayload.payment_url || null;
+          }
           if (parsedPayload.custom_skin_details) {
             customSkinDetails = parsedPayload.custom_skin_details;
           }
@@ -175,7 +185,8 @@ export async function GET(req: NextRequest) {
         isPaid,
         customSkinDetails,
         customerNotes,
-        paymentUrl: latestTx?.paymentUrl || null,
+        snapToken,
+        paymentUrl,
       };
     });
 

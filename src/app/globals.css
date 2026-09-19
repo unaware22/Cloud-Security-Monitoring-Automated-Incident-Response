@@ -143,3 +143,33 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #383838;
 }
+
+/* =========================================================
+   Clean UI Stabilization: Headings & Icons Non-Hoverable
+   ========================================================= */
+
+/* Headings and titles should not trigger I-beam text-selection cursor or hover jitter */
+h1, h2, h3, h4, h5, h6,
+.font-minecraft,
+.minecraft-font-folder,
+.minecraft-flat-title,
+.title-static {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Allow links/buttons that wrap headings to maintain pointer cursor */
+a h1, a h2, a h3, a h4, a h5, a h6,
+button h1, button h2, button h3, button h4, button h5, button h6 {
+  cursor: pointer;
+}
+
+/* All icons (SVG and Lucide) should be non-interactive pass-through elements */
+svg,
+.lucide,
+[data-lucide] {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

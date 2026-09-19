@@ -64,19 +64,27 @@ export async function POST(req: NextRequest) {
   }
 
   const normalizedBody = {
-    current_password: body?.current_password || body?.old_password,
-    new_password: body?.new_password,
+    current_password: body?.current_password || body?.old_password || '',
+    new_password: body?.new_password || '',
   };
 
-  const parseResult = ChangePasswordSchema.safeParse(normalizedBody);
-  if (!parseResult.success) {
+  const newPasswordSchema = z
+    .string()
+    .min(8, 'Password baru minimal 8 karakter')
+    .max(128)
+    .regex(/[a-z]/, 'Password baru harus mengandung huruf kecil')
+    .regex(/[A-Z]/, 'Password baru harus mengandung huruf besar')
+    .regex(/[0-9]/, 'Password baru harus mengandung angka');
+
+  const newPasswordCheck = newPasswordSchema.safeParse(normalizedBody.new_password);
+  if (!newPasswordCheck.success) {
     return NextResponse.json(
-      { error: 'Validation Error', message: parseResult.error.errors[0]?.message || 'Data tidak valid' },
+      { error: 'Validation Error', message: newPasswordCheck.error.errors[0]?.message || 'Kata sandi baru tidak memenuhi kriteria keamanan.' },
       { status: 422 }
     );
   }
 
-  const { current_password, new_password } = parseResult.data;
+  const new_password = newPasswordCheck.data;
 
   try {
     const user = await prisma.user.findUnique({
@@ -90,32 +98,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!user.passwordHash) {
-      return NextResponse.json(
-        { error: 'Bad Request', message: 'Akun ini terdaftar via Google dan belum memiliki password lokal.' },
-        { status: 400 }
-      );
-    }
+    const isInitialPasswordCreation = !user.passwordHash;
 
-    const isCurrentValid = await verifyPassword(current_password, user.passwordHash);
-    if (!isCurrentValid) {
-      await recordSecurityEvent({
-        eventType: 'user_bruteforce_attempt',
-        severity: 'medium',
-        ipAddress: ip,
-        method: 'POST',
-        endpoint: '/api/auth/change-password',
-        userAgent,
-        payloadSnippet: `userId=${user.id}; reason=incorrect_current_password`,
-        statusCode: 401,
-        description: 'Failed change password: incorrect current password',
-        requestId,
-      });
+    if (!isInitialPasswordCreation) {
+      // User already has a password, current_password is required and must be verified
+      if (!normalizedBody.current_password) {
+        return NextResponse.json(
+          { error: 'Validation Error', message: 'Kata sandi saat ini wajib diisi.' },
+          { status: 422 }
+        );
+      }
 
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Password saat ini tidak sesuai.' },
-        { status: 401 }
-      );
+      if (normalizedBody.current_password === new_password) {
+        return NextResponse.json(
+          { error: 'Validation Error', message: 'Kata sandi baru tidak boleh sama dengan kata sandi saat ini.' },
+          { status: 422 }
+        );
+      }
+
+      const isCurrentValid = await verifyPassword(normalizedBody.current_password, user.passwordHash!);
+      if (!isCurrentValid) {
+        await recordSecurityEvent({
+          eventType: 'user_bruteforce_attempt',
+          severity: 'medium',
+          ipAddress: ip,
+          method: 'POST',
+          endpoint: '/api/auth/change-password',
+          userAgent,
+          payloadSnippet: `userId=${user.id}; reason=incorrect_current_password`,
+          statusCode: 401,
+          description: 'Failed change password: incorrect current password',
+          requestId,
+        });
+
+        return NextResponse.json(
+          { error: 'Unauthorized', message: 'Kata sandi saat ini tidak sesuai.' },
+          { status: 401 }
+        );
+      }
     }
 
     const newHash = await hashPassword(new_password);
@@ -124,6 +144,7 @@ export async function POST(req: NextRequest) {
         where: { id: user.id },
         data: {
           passwordHash: newHash,
+          authProvider: user.authProvider === 'google' ? 'both' : user.authProvider,
           sessionVersion: { increment: 1 },
         },
       });
@@ -131,7 +152,7 @@ export async function POST(req: NextRequest) {
       await tx.auditLog.create({
         data: {
           userId: user.id,
-          action: 'USER_PASSWORD_CHANGED',
+          action: isInitialPasswordCreation ? 'USER_PASSWORD_CREATED' : 'USER_PASSWORD_CHANGED',
           entityType: 'users',
           entityId: user.id,
           ipAddress: ip,
@@ -153,7 +174,10 @@ export async function POST(req: NextRequest) {
 
     const response = NextResponse.json({
       success: true,
-      message: 'Kata sandi berhasil diubah! Semua sesi di perangkat lain telah dinonaktifkan.',
+      hasPassword: true,
+      message: isInitialPasswordCreation
+        ? 'Kata sandi akun Anda berhasil dibuat! Sekarang Anda dapat masuk menggunakan email dan kata sandi.'
+        : 'Kata sandi berhasil diubah! Semua sesi di perangkat lain telah dinonaktifkan.',
     });
 
     response.cookies.set({

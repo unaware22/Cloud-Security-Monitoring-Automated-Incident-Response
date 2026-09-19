@@ -71,7 +71,12 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Schema Validation
-  const parseResult = ResetSchema.safeParse(body);
+  const normalizedBody = {
+    token: body?.token,
+    new_password: body?.new_password || body?.password,
+    turnstile_token: body?.turnstile_token,
+  };
+  const parseResult = ResetSchema.safeParse(normalizedBody);
   if (!parseResult.success) {
     return NextResponse.json(
       { error: 'Validation Error', message: parseResult.error.errors[0]?.message || 'Data tidak valid' },

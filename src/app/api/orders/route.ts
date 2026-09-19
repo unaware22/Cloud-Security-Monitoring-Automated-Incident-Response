@@ -437,6 +437,7 @@ export async function POST(req: NextRequest) {
             payment_url: paymentUrl,
             snap_token: providerInvoiceId,
             provider_invoice_id: providerInvoiceId,
+            created_at: newOrder.createdAt,
             expired_at: newOrder.expiredAt,
           },
         },

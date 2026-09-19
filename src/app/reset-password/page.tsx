@@ -43,6 +43,11 @@ function ResetPasswordForm() {
       return;
     }
 
+    if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setErrorMessage('Kata sandi baru harus mengandung kombinasi huruf besar, huruf kecil, dan angka.');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setErrorMessage('Konfirmasi kata sandi tidak cocok.');
       return;
@@ -61,6 +66,7 @@ function ResetPasswordForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
+          new_password: password,
           password,
           turnstile_token: turnstileToken || undefined,
         }),

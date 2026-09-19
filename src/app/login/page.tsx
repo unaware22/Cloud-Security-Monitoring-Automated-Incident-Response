@@ -254,7 +254,18 @@ function LoginForm() {
         {errorMessage && (
           <div className="p-3.5 bg-rose-950/50 border border-rose-700 text-rose-200 text-xs flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-            <div className="leading-relaxed">{errorMessage}</div>
+            <div className="leading-relaxed flex-1">
+              <div>{errorMessage}</div>
+              <div className="mt-1.5 pt-1.5 border-t border-rose-800/60 text-[11px]">
+                Lupa kata sandi Anda?{' '}
+                <Link
+                  href="/forgot-password"
+                  className="font-bold underline text-amber-300 hover:text-amber-200"
+                >
+                  Atur ulang kata sandi &rarr;
+                </Link>
+              </div>
+            </div>
           </div>
         )}
 
@@ -437,14 +448,25 @@ function LoginForm() {
         </form>
 
         {/* Footer info */}
-        <div className="text-center pt-2 border-t border-neutral-800 text-xs text-neutral-400">
-          Belum punya akun?{' '}
-          <Link
-            href={`/register${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
-            className="text-[#69c944] hover:text-[#84e060] font-bold uppercase"
-          >
-            Daftar Sekarang &rarr;
-          </Link>
+        <div className="text-center pt-3 border-t border-neutral-800 text-xs text-neutral-400 space-y-2">
+          <div>
+            Belum punya akun?{' '}
+            <Link
+              href={`/register${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
+              className="text-[#69c944] hover:text-[#84e060] font-bold uppercase"
+            >
+              Daftar Sekarang &rarr;
+            </Link>
+          </div>
+          <div className="pt-1 border-t border-neutral-800/50">
+            Lupa kata sandi akun Anda?{' '}
+            <Link
+              href="/forgot-password"
+              className="text-neutral-300 hover:text-white font-semibold underline underline-offset-2"
+            >
+              Atur ulang di sini &rarr;
+            </Link>
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,14 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import Script from 'next/script';
 import { useRouter, useSearchParams } from 'next/navigation';
+
+declare global {
+  interface Window {
+    snap?: any;
+  }
+}
 import {
   ShoppingBag,
   Shield,
@@ -65,6 +72,7 @@ export interface OrderRecord {
   orderStatus: string;
   paymentMethod: string;
   paymentUrl?: string | null;
+  snapToken?: string | null;
   productName: string;
   productImage: string;
   productSlug?: string;
@@ -87,6 +95,7 @@ interface UserProfile {
   isEmailVerified: boolean;
   authProvider: string;
   hasGoogleLinked: boolean;
+  hasPassword?: boolean;
 }
 
 function AccountContent() {
@@ -146,21 +155,181 @@ function AccountContent() {
     loadProfile();
   }, [router]);
 
+  // Cancel & Pay Direct Actions State
+  const [orderToCancel, setOrderToCancel] = useState<OrderRecord | null>(null);
+  const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+  const [actionNotification, setActionNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoadingOrders(true);
+    try {
+      const res = await fetch('/api/user/orders');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setOrders(json.data);
+        setSelectedOrder((current) => {
+          if (!current) return null;
+          const updated = json.data.find((o: OrderRecord) => o.orderCode === current.orderCode);
+          return updated || current;
+        });
+      }
+    } catch {
+    } finally {
+      if (!silent) setLoadingOrders(false);
+    }
+  };
+
   // Load orders when on 'orders' tab
   useEffect(() => {
     if (activeTab === 'orders' && profile) {
-      setLoadingOrders(true);
-      fetch('/api/user/orders')
-        .then((res) => res.json())
-        .then((json) => {
-          if (json.success) {
-            setOrders(json.data || []);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoadingOrders(false));
+      fetchOrders();
     }
   }, [activeTab, profile]);
+
+  const handlePayOrder = (order: OrderRecord) => {
+    const snapToken = order.snapToken;
+
+    if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
+      window.snap.pay(snapToken, {
+        onSuccess: async (result?: any) => {
+          try {
+            await fetch('/api/orders/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                order_code: order.orderCode,
+                email: order.customerEmail || profile?.email || '',
+              }),
+            });
+          } catch {}
+          await fetchOrders(true);
+          setActionNotification({
+            type: 'success',
+            message: `Pembayaran pesanan #${order.orderCode} berhasil! Data digital Anda telah aktif.`,
+          });
+          setTimeout(() => setActionNotification(null), 5000);
+        },
+        onPending: async (result?: any) => {
+          if (result?.transaction_status === 'settlement' || result?.status_code === '200') {
+            try {
+              await fetch('/api/orders/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  order_code: order.orderCode,
+                  email: order.customerEmail || profile?.email || '',
+                }),
+              });
+            } catch {}
+            await fetchOrders(true);
+          }
+        },
+        onError: () => {
+          setActionNotification({
+            type: 'error',
+            message: 'Pembayaran gagal atau dibatalkan di Midtrans. Silakan coba kembali.',
+          });
+          setTimeout(() => setActionNotification(null), 5000);
+        },
+        onClose: async () => {
+          try {
+            const verifyRes = await fetch('/api/orders/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                order_code: order.orderCode,
+                email: order.customerEmail || profile?.email || '',
+              }),
+            });
+            const verifyJson = await verifyRes.json();
+            if (verifyJson.success && (verifyJson.is_paid || verifyJson.data?.payment_status === 'paid')) {
+              await fetchOrders(true);
+              setActionNotification({
+                type: 'success',
+                message: `Pembayaran pesanan #${order.orderCode} berhasil diverifikasi! Data akun digital telah aktif.`,
+              });
+              setTimeout(() => setActionNotification(null), 5000);
+            }
+          } catch {}
+        },
+      });
+      return;
+    }
+
+    if (order.paymentUrl) {
+      window.open(order.paymentUrl, '_blank');
+      return;
+    }
+
+    setActionNotification({
+      type: 'error',
+      message: 'Token pembayaran Midtrans tidak ditemukan atau pesanan telah kedaluwarsa.',
+    });
+    setTimeout(() => setActionNotification(null), 5000);
+  };
+
+  const handleConfirmCancelOrder = async () => {
+    if (!orderToCancel) return;
+    setCancellingOrder(true);
+    setCancelError('');
+
+    try {
+      const res = await fetch('/api/orders/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_code: orderToCancel.orderCode,
+          email: orderToCancel.customerEmail || profile?.email || '',
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setCancelError(json.message || 'Pesanan belum dapat dibatalkan.');
+        return;
+      }
+
+      // In-place update in orders list
+      setOrders((prev) =>
+        prev.map((ord) =>
+          ord.orderCode === orderToCancel.orderCode
+            ? {
+                ...ord,
+                orderStatus: 'cancelled',
+                paymentStatus: 'cancelled',
+                deliveryStatus: 'cancelled',
+              }
+            : ord
+        )
+      );
+
+      // In-place update in selectedOrder if open
+      if (selectedOrder && selectedOrder.orderCode === orderToCancel.orderCode) {
+        setSelectedOrder((prev) =>
+          prev
+            ? {
+                ...prev,
+                orderStatus: 'cancelled',
+                paymentStatus: 'cancelled',
+                deliveryStatus: 'cancelled',
+              }
+            : null
+        );
+      }
+
+      setActionNotification({
+        type: 'success',
+        message: `Pesanan #${orderToCancel.orderCode} berhasil dibatalkan.`,
+      });
+      setTimeout(() => setActionNotification(null), 5000);
+      setOrderToCancel(null);
+    } catch {
+      setCancelError('Terjadi gangguan jaringan saat membatalkan pesanan.');
+    } finally {
+      setCancellingOrder(false);
+    }
+  };
 
   const copyDeliveryData = (text: string, fieldId: string) => {
     if (!text) return;
@@ -208,13 +377,25 @@ function AccountContent() {
     setPasswordError('');
     setPasswordSuccess('');
 
-    if (!oldPassword || !newPassword) {
-      setPasswordError('Semua kolom wajib diisi.');
+    const hasPassword = Boolean(profile?.hasPassword);
+
+    if (hasPassword && !oldPassword) {
+      setPasswordError('Kata sandi saat ini wajib diisi.');
+      return;
+    }
+
+    if (!newPassword) {
+      setPasswordError('Kata sandi baru wajib diisi.');
       return;
     }
 
     if (newPassword.length < 8) {
       setPasswordError('Kata sandi baru minimal 8 karakter.');
+      return;
+    }
+
+    if (!/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      setPasswordError('Kata sandi baru harus mengandung kombinasi huruf besar, huruf kecil, dan angka.');
       return;
     }
 
@@ -235,7 +416,7 @@ function AccountContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          old_password: oldPassword,
+          old_password: hasPassword ? oldPassword : undefined,
           new_password: newPassword,
           turnstile_token: turnstileToken || undefined,
         }),
@@ -244,7 +425,7 @@ function AccountContent() {
       const json = await res.json();
 
       if (!res.ok) {
-        setPasswordError(json.message || 'Gagal mengubah kata sandi.');
+        setPasswordError(json.message || 'Gagal mengatur kata sandi.');
         setTurnstileResetKey((k) => k + 1);
         setTurnstileToken('');
         setChangingPassword(false);
@@ -252,7 +433,19 @@ function AccountContent() {
       }
 
       setPasswordSuccess(
-        'Kata sandi Anda berhasil diperbarui! Semua sesi aktif di perangkat lain telah dicabut.'
+        json.message ||
+          (hasPassword
+            ? 'Kata sandi Anda berhasil diperbarui! Semua sesi aktif di perangkat lain telah dicabut.'
+            : 'Kata sandi akun Anda berhasil dibuat! Sekarang Anda dapat login dengan email dan kata sandi.')
+      );
+      setProfile((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              hasPassword: true,
+              authProvider: prev.authProvider === 'google' ? 'both' : prev.authProvider,
+            }
+          : prev
       );
       setOldPassword('');
       setNewPassword('');
@@ -291,17 +484,31 @@ function AccountContent() {
           </span>
         );
       case 'pending':
+      case 'waiting_payment':
+      case 'pending_manual':
         return (
           <span className="px-2.5 py-1 text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
             Menunggu Pembayaran
           </span>
         );
+      case 'cancelled':
       case 'cancel':
+        return (
+          <span className="px-2.5 py-1 text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40">
+            Dibatalkan
+          </span>
+        );
+      case 'expired':
       case 'expire':
+        return (
+          <span className="px-2.5 py-1 text-[10px] font-bold uppercase bg-amber-600/20 text-amber-300 border border-amber-600/40">
+            Kedaluwarsa
+          </span>
+        );
       case 'failed':
         return (
           <span className="px-2.5 py-1 text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40">
-            Dibatalkan / Kadaluwarsa
+            Gagal
           </span>
         );
       default:
@@ -469,6 +676,32 @@ function AccountContent() {
           </div>
         </div>
 
+        {/* Action Notification Banner */}
+        {actionNotification && (
+          <div
+            className={`p-4 border text-xs flex items-center justify-between gap-3 shadow-lg ${
+              actionNotification.type === 'success'
+                ? 'bg-emerald-950/60 border-emerald-600/70 text-emerald-200'
+                : 'bg-rose-950/60 border-rose-600/70 text-rose-200'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {actionNotification.type === 'success' ? (
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              )}
+              <span className="font-medium">{actionNotification.message}</span>
+            </div>
+            <button
+              onClick={() => setActionNotification(null)}
+              className="text-neutral-400 hover:text-white p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Tab Navigation */}
         <div className="flex border-b border-neutral-800 bg-[#181818]">
           <button
@@ -551,7 +784,12 @@ function AccountContent() {
 
                   const totalPay = order.totalAmount ?? order.totalPrice ?? 0;
                   const isPaid = ['paid', 'paid_manual', 'settlement', 'capture'].includes(order.paymentStatus);
-                  const isPending = ['pending', 'pending_manual', 'waiting_payment'].includes(order.paymentStatus);
+                  const isCancelled = order.paymentStatus === 'cancelled' || order.orderStatus === 'cancelled';
+                  const isExpired = (order.paymentStatus === 'expired' || order.orderStatus === 'expired') && !isCancelled;
+                  const isPending =
+                    ['pending', 'pending_manual', 'waiting_payment'].includes(order.paymentStatus) &&
+                    !isCancelled &&
+                    !isExpired;
 
                   return (
                     <div
@@ -609,16 +847,10 @@ function AccountContent() {
                                 )}
                               </div>
 
-                              <div className="min-w-0 space-y-1">
+                              <div className="min-w-0 space-y-0.5">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span
-                                    className={`text-[9px] font-black uppercase px-1.5 py-0.5 border ${
-                                      item.game === 'roblox'
-                                        ? 'bg-red-950/40 text-red-400 border-red-700/50'
-                                        : 'bg-emerald-950/40 text-emerald-400 border-emerald-700/50'
-                                    }`}
-                                  >
-                                    {item.game === 'roblox' ? 'ROBLOX' : 'MINECRAFT'}
+                                  <span className="px-1.5 py-0.5 bg-neutral-800 text-[10px] font-bold uppercase text-neutral-300">
+                                    {item.game}
                                   </span>
                                   <span className="text-[10px] text-neutral-400 font-mono">
                                     {item.deliveryType === 'automatic' ? '⚡ Otomatis' : '🛠️ Manual'}
@@ -657,18 +889,41 @@ function AccountContent() {
                               <span>Data Akun Digital Siap</span>
                             </span>
                           ) : isPending ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider">
                                 <Clock className="w-3.5 h-3.5" />
                                 <span>Menunggu Pembayaran</span>
                               </span>
-                              <Link
-                                href={`/check-order?order_code=${order.orderCode}&email=${encodeURIComponent(order.customerEmail)}`}
-                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black text-xs uppercase tracking-wider transition-colors"
+                              <button
+                                type="button"
+                                onClick={() => handlePayOrder(order)}
+                                className="px-3 py-1 bg-[#ffc825] hover:bg-[#ffd659] text-neutral-950 font-black text-xs uppercase tracking-wider transition-colors flex items-center gap-1.5 shadow-sm"
                               >
-                                Bayar &rarr;
-                              </Link>
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>Bayar Sekarang</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOrderToCancel(order);
+                                  setCancelError('');
+                                }}
+                                className="px-3 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-600/60 text-rose-300 font-bold text-xs uppercase tracking-wider transition-colors flex items-center gap-1"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Batalkan</span>
+                              </button>
                             </div>
+                          ) : isCancelled ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-wider">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>Pesanan Dibatalkan</span>
+                            </span>
+                          ) : isExpired ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Pesanan Kedaluwarsa</span>
+                            </span>
                           ) : null}
                         </div>
 
@@ -762,9 +1017,9 @@ function AccountContent() {
                 <div className="pt-3 border-t border-neutral-800">
                   <p className="text-[11px] text-neutral-400">Metode Login:</p>
                   <p className="text-xs text-neutral-200 font-semibold mt-0.5">
-                    {profile?.authProvider === 'google'
-                      ? 'Google Sign-In'
-                      : profile?.hasGoogleLinked
+                    {profile?.authProvider === 'google' && !profile?.hasPassword
+                      ? 'Google Sign-In (Belum Ada Kata Sandi)'
+                      : profile?.hasGoogleLinked || profile?.authProvider === 'both'
                       ? 'Email/Password & Google Terhubung'
                       : 'Email & Kata Sandi'}
                   </p>
@@ -795,15 +1050,24 @@ function AccountContent() {
               </div>
             </div>
 
-            {/* Right Col: Change Password Form */}
+            {/* Right Col: Create / Change Password Form */}
             <div className="lg:col-span-2 bg-[#181818] border border-neutral-700/80 p-6 space-y-5">
               <div className="space-y-1">
-                <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-                  <KeyRound className="w-4 h-4 text-[#69c944]" />
-                  <span>Ubah Kata Sandi</span>
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-[#69c944]" />
+                    <span>{profile?.hasPassword ? 'Ubah Kata Sandi' : 'Buat Kata Sandi Akun'}</span>
+                  </h3>
+                  {!profile?.hasPassword && (
+                    <span className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold uppercase">
+                      Google OAuth (Belum Ada Password)
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-neutral-400">
-                  Mengubah kata sandi akan otomatis mencabut semua sesi login Anda di perangkat lain.
+                  {profile?.hasPassword
+                    ? 'Mengubah kata sandi akan otomatis mencabut semua sesi login Anda di perangkat lain.'
+                    : 'Akun Anda saat ini terhubung melalui Google. Buat kata sandi baru agar Anda juga dapat masuk langsung menggunakan email dan kata sandi.'}
                 </p>
               </div>
 
@@ -822,19 +1086,21 @@ function AccountContent() {
               )}
 
               <form onSubmit={handleChangePassword} className="space-y-4 text-xs">
-                <div>
-                  <label className="block text-neutral-300 font-bold mb-1.5 uppercase tracking-wider">
-                    Kata Sandi Saat Ini *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={oldPassword}
-                    onChange={(e) => setOldPassword(e.target.value)}
-                    placeholder="Masukkan kata sandi lama Anda"
-                    className="w-full px-3.5 py-2.5 bg-[#111111] border border-neutral-700 text-white placeholder-neutral-600 focus:outline-none focus:border-[#367723]"
-                  />
-                </div>
+                {profile?.hasPassword && (
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1.5 uppercase tracking-wider">
+                      Kata Sandi Saat Ini *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={oldPassword}
+                      onChange={(e) => setOldPassword(e.target.value)}
+                      placeholder="Masukkan kata sandi lama Anda"
+                      className="w-full px-3.5 py-2.5 bg-[#111111] border border-neutral-700 text-white placeholder-neutral-600 focus:outline-none focus:border-[#367723]"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-neutral-300 font-bold mb-1.5 uppercase tracking-wider">
@@ -845,9 +1111,12 @@ function AccountContent() {
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimal 8 karakter"
+                    placeholder="Minimal 8 karakter (huruf besar, kecil, angka)"
                     className="w-full px-3.5 py-2.5 bg-[#111111] border border-neutral-700 text-white placeholder-neutral-600 focus:outline-none focus:border-[#367723]"
                   />
+                  <p className="text-[11px] text-neutral-500 mt-1">
+                    Wajib minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.
+                  </p>
                 </div>
 
                 <div>
@@ -888,7 +1157,7 @@ function AccountContent() {
                       <span>MENYIMPAN...</span>
                     </>
                   ) : (
-                    <span>SIMPAN KATA SANDI BARU</span>
+                    <span>{profile?.hasPassword ? 'PERBARUI KATA SANDI' : 'SIMPAN KATA SANDI BARU'}</span>
                   )}
                 </button>
               </form>
@@ -1232,24 +1501,65 @@ function AccountContent() {
 
                 {/* Pending Notice */}
                 {isPending && (
-                  <div className="p-4 bg-amber-950/40 border border-amber-600/70 space-y-2">
+                  <div className="p-4 bg-amber-950/40 border border-amber-600/70 space-y-3">
                     <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase">
                       <Clock className="w-4 h-4 text-amber-400" />
                       <span>Menunggu Pembayaran</span>
                     </div>
                     <p className="text-xs text-neutral-300 leading-relaxed">
-                      Pesanan ini belum diselesaikan. Setelah pembayaran Anda terverifikasi, data akun atau item digital Anda akan langsung otomatis aktif dan tampil di halaman ini.
+                      Pesanan ini belum diselesaikan. Anda dapat langsung membayar melalui popup Midtrans Snap atau membatalkan pesanan secara langsung di sini tanpa perlu membuka halaman cek pesanan.
                     </p>
-                    <div className="pt-1">
-                      <Link
-                        href={`/check-order?order_code=${selectedOrder.orderCode}&email=${encodeURIComponent(selectedOrder.customerEmail)}`}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#ffc825] hover:bg-[#ffcf3d] text-neutral-950 text-xs font-black uppercase tracking-wider transition-colors"
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handlePayOrder(selectedOrder)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#ffc825] hover:bg-[#ffd659] text-neutral-950 text-xs font-black uppercase tracking-wider transition-colors shadow-sm"
                       >
-                        <span>Selesaikan Pembayaran Sekarang &rarr;</span>
-                      </Link>
+                        <CreditCard className="w-4 h-4" />
+                        <span>Bayar Sekarang &rarr;</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOrderToCancel(selectedOrder);
+                          setCancelError('');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-950/70 hover:bg-rose-900 border border-rose-600/70 text-rose-300 text-xs font-bold uppercase tracking-wider transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>Batalkan Pesanan</span>
+                      </button>
                     </div>
                   </div>
                 )}
+
+                {/* Cancelled Notice */}
+                {(selectedOrder.paymentStatus === 'cancelled' || selectedOrder.orderStatus === 'cancelled') && (
+                  <div className="p-4 bg-rose-950/40 border border-rose-700/70 space-y-2">
+                    <div className="flex items-center gap-2 text-rose-300 font-bold text-xs uppercase">
+                      <AlertCircle className="w-4 h-4 text-rose-400" />
+                      <span>Pesanan Telah Dibatalkan</span>
+                    </div>
+                    <p className="text-xs text-neutral-300 leading-relaxed">
+                      Pesanan ini telah dibatalkan. Tagihan atau transaksi Midtrans terkait telah ditutup dan tidak dapat dibayar lagi.
+                    </p>
+                  </div>
+                )}
+
+                {/* Expired Notice */}
+                {(selectedOrder.paymentStatus === 'expired' || selectedOrder.orderStatus === 'expired') &&
+                  selectedOrder.paymentStatus !== 'cancelled' &&
+                  selectedOrder.orderStatus !== 'cancelled' && (
+                    <div className="p-4 bg-amber-950/40 border border-amber-600/70 space-y-2">
+                      <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <span>Pesanan Telah Kedaluwarsa (15 Menit)</span>
+                      </div>
+                      <p className="text-xs text-neutral-300 leading-relaxed">
+                        Batas waktu pembayaran 15 menit telah terlewati. Pesanan ini telah kedaluwarsa secara otomatis.
+                      </p>
+                    </div>
+                  )}
 
                 {/* Price Breakdown */}
                 <div className="space-y-2 text-xs text-neutral-300 border-t border-neutral-800 pt-4">
@@ -1304,6 +1614,75 @@ function AccountContent() {
             </div>
           );
         })()}
+
+      {/* Cancellation Confirmation Dialog */}
+      {orderToCancel && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#181818] border border-rose-600/70 max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-rose-400 font-bold uppercase tracking-wider text-sm">
+              <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+              <span>Konfirmasi Pembatalan Pesanan</span>
+            </div>
+
+            <p className="text-xs text-neutral-300 leading-relaxed">
+              Apakah Anda yakin ingin membatalkan pesanan{' '}
+              <span className="font-mono font-bold text-white">#{orderToCancel.orderCode}</span>?
+              Tagihan Midtrans akan ditutup dan status pesanan akan langsung diubah menjadi{' '}
+              <span className="text-rose-400 font-semibold">Dibatalkan</span>.
+            </p>
+
+            {cancelError && (
+              <div className="p-3 bg-rose-950/60 border border-rose-800 text-rose-200 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                <span>{cancelError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderToCancel(null);
+                  setCancelError('');
+                }}
+                disabled={cancellingOrder}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50"
+              >
+                Kembali
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancelOrder}
+                disabled={cancellingOrder}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-md"
+              >
+                {cancellingOrder ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Membatalkan...</span>
+                  </>
+                ) : (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>Ya, Batalkan</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Midtrans Snap JS SDK */}
+      <Script
+        src={
+          process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === 'true'
+            ? 'https://app.midtrans.com/snap/snap.js'
+            : 'https://app.sandbox.midtrans.com/snap/snap.js'
+        }
+        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ''}
+        strategy="afterInteractive"
+      />
       </div>
     </div>
   );
