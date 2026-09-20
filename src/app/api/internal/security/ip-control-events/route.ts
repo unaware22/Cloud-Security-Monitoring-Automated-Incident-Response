@@ -19,6 +19,9 @@ const EventSchema = z.object({
   reason: z.string().trim().max(240).optional(),
   rule_id: z.string().trim().max(32).optional(),
   detail: z.string().trim().max(1500).optional(),
+  block_mode: z.enum(['temporary', 'permanent']).nullable().optional(),
+  timeout_seconds: z.coerce.number().int().positive().max(604800).nullable().optional(),
+  expires_at: z.string().datetime().nullable().optional(),
 });
 
 function isAuthorized(req: NextRequest): boolean {
@@ -72,6 +75,9 @@ export async function POST(req: NextRequest) {
         ruleId: event.rule_id,
         detail: event.detail,
         completedAt,
+        blockMode: event.block_mode ?? null,
+        timeoutSeconds: event.timeout_seconds ?? null,
+        expiresAt: event.expires_at ? new Date(event.expires_at) : null,
       },
       update: {
         status: event.status,
@@ -81,6 +87,9 @@ export async function POST(req: NextRequest) {
         ruleId: event.rule_id,
         detail: event.detail,
         completedAt,
+        blockMode: event.block_mode ?? null,
+        timeoutSeconds: event.timeout_seconds ?? null,
+        expiresAt: event.expires_at ? new Date(event.expires_at) : null,
       },
     });
 
