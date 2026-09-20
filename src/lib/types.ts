@@ -96,6 +96,9 @@ export type SecurityEventType =
   | 'direct_rds_access_test'
   | 'user_bruteforce_attempt'
   | 'user_login_failed'
+  | 'credential_stuffing_attempt'
+  | 'account_takeover_attempt'
+  | 'suspicious_login_success'
   | 'user_reauthentication_failed'
   | 'user_login_bot_attempt'
   | 'user_registration_bot_attempt'
@@ -114,6 +117,8 @@ export interface SecurityEventLog {
   status_code: number;
   request_id: string;
   created_at: string;
+  account_ref?: string;
+  auth_method?: 'password' | 'google';
 }
 
 export interface AdminSessionPayload {

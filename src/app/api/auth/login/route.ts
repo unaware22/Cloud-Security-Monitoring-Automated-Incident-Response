@@ -11,6 +11,11 @@ import {
 import { checkRateLimit, RATE_LIMIT_RULES, resetRateLimit } from '@/lib/rate-limiter';
 import { createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
+import { createAccountReference } from '@/lib/account-reference';
+import {
+  assessSuccessfulLogin,
+  recordCredentialFailure,
+} from '@/lib/credential-stuffing-detector';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +24,10 @@ const LoginSchema = z.object({
   password: z.string().min(1, 'Password wajib diisi'),
   turnstile_token: z.string().trim().optional(),
 });
+
+// Comparing against a valid dummy hash makes unknown-email responses closer
+// in timing to wrong-password responses and reduces account enumeration risk.
+const DUMMY_PASSWORD_HASH = '$2a$10$sKLfFdwSmimKEhbKa9l4D.ZuVW8K3WffAwcjwgO06D02hu2lmCZTy';
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req.headers);
@@ -62,7 +71,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       endpoint: '/api/auth/login',
       userAgent,
-      payloadSnippet: `email=${body?.email || ''}`,
+      payloadSnippet: 'login_input_rejected=attack_pattern',
       statusCode: 400,
       description: `Attack attempt in customer login form (${eventType})`,
       requestId,
@@ -85,6 +94,16 @@ export async function POST(req: NextRequest) {
 
   const { email, password, turnstile_token } = parseResult.data;
   const normalizedEmail = email.toLowerCase();
+  let accountRef: string;
+  try {
+    accountRef = createAccountReference(normalizedEmail);
+  } catch (error) {
+    console.error('Customer login account-reference configuration error:', error);
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Layanan autentikasi belum siap. Silakan coba kembali.' },
+      { status: 503 }
+    );
+  }
 
   // 4. Turnstile Verification
   const turnstileConfig = getTurnstileConfigurationStatus();
@@ -107,10 +126,12 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         endpoint: '/api/auth/login',
         userAgent,
-        payloadSnippet: `email=${normalizedEmail}; error=${verification.errorCodes.join(',')}`,
+        payloadSnippet: `turnstile_errors=${verification.errorCodes.join(',')}`,
         statusCode: 403,
         description: 'Customer login failed Turnstile verification',
         requestId,
+        accountRef,
+        authMethod: 'password',
       });
 
       return NextResponse.json(
@@ -120,6 +141,70 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const rejectInvalidCredentials = async (reason: string) => {
+    const detection = recordCredentialFailure(ip, accountRef);
+
+    await recordSecurityEvent({
+      eventType: 'user_login_failed',
+      severity: 'medium',
+      ipAddress: ip,
+      method: 'POST',
+      endpoint: '/api/auth/login',
+      userAgent,
+      payloadSnippet: `reason=${reason}`,
+      statusCode: 401,
+      description: 'Failed customer login attempt: invalid credentials',
+      requestId,
+      accountRef,
+      authMethod: 'password',
+    });
+
+    if (detection.credentialStuffingDetected) {
+      await recordSecurityEvent({
+        eventType: 'credential_stuffing_attempt',
+        severity: 'critical',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        userAgent,
+        payloadSnippet: `distinct_accounts=${detection.distinctAccountCount}; window_minutes=10`,
+        statusCode: 429,
+        description: 'Credential stuffing detected: one source targeted multiple customer accounts',
+        requestId,
+        accountRef,
+        authMethod: 'password',
+      });
+    }
+
+    if (detection.accountTakeoverDetected) {
+      await recordSecurityEvent({
+        eventType: 'account_takeover_attempt',
+        severity: 'critical',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        userAgent,
+        payloadSnippet: `distinct_source_ips=${detection.distinctIpCount}; window_minutes=10`,
+        statusCode: 401,
+        description: 'Possible account takeover: one customer account targeted by multiple sources',
+        requestId,
+        accountRef,
+        authMethod: 'password',
+      });
+    }
+
+    const shouldThrottle = detection.credentialStuffingDetected;
+    return NextResponse.json(
+      {
+        error: shouldThrottle ? 'Too Many Requests' : 'Unauthorized',
+        message: shouldThrottle
+          ? 'Terlalu banyak percobaan login. Silakan coba lagi nanti.'
+          : 'Email atau password salah.',
+      },
+      { status: shouldThrottle ? 429 : 401 }
+    );
+  };
+
   try {
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -127,56 +212,20 @@ export async function POST(req: NextRequest) {
 
     // If user not found
     if (!user) {
-      await recordSecurityEvent({
-        eventType: 'user_login_failed',
-        severity: 'low',
-        ipAddress: ip,
-        method: 'POST',
-        endpoint: '/api/auth/login',
-        userAgent,
-        payloadSnippet: `email=${normalizedEmail}; reason=user_not_found`,
-        statusCode: 401,
-        description: 'Failed customer login attempt: email not found',
-        requestId,
-      });
-
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Email atau password salah.' },
-        { status: 401 }
-      );
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return rejectInvalidCredentials('invalid_credentials');
     }
 
     // If account was created purely via Google without a password
     if (!user.passwordHash) {
-      return NextResponse.json(
-        {
-          error: 'BadRequest',
-          message: 'Akun ini terdaftar melalui Akun Google. Silakan klik tombol Masuk dengan Google.',
-        },
-        { status: 400 }
-      );
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return rejectInvalidCredentials('invalid_credentials');
     }
 
     // Verify Password
     const isPasswordValid = await verifyPassword(password, user.passwordHash);
     if (!isPasswordValid) {
-      await recordSecurityEvent({
-        eventType: 'user_login_failed',
-        severity: 'medium',
-        ipAddress: ip,
-        method: 'POST',
-        endpoint: '/api/auth/login',
-        userAgent,
-        payloadSnippet: `email=${normalizedEmail}; reason=incorrect_password`,
-        statusCode: 401,
-        description: 'Failed customer login attempt: incorrect password',
-        requestId,
-      });
-
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Email atau password salah.' },
-        { status: 401 }
-      );
+      return rejectInvalidCredentials('invalid_credentials');
     }
 
     // A correct password ends the consecutive-failure window even if the
@@ -194,6 +243,24 @@ export async function POST(req: NextRequest) {
         },
         { status: 403 }
       );
+    }
+
+    const successAssessment = assessSuccessfulLogin(ip, accountRef);
+    if (successAssessment.suspicious) {
+      await recordSecurityEvent({
+        eventType: 'suspicious_login_success',
+        severity: 'critical',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        userAgent,
+        payloadSnippet: `distinct_accounts=${successAssessment.distinctAccountCount}; distinct_source_ips=${successAssessment.distinctIpCount}`,
+        statusCode: 200,
+        description: 'Successful login followed recent suspicious credential activity',
+        requestId,
+        accountRef,
+        authMethod: 'password',
+      });
     }
 
     // Update Last Login and Audit Log

@@ -150,6 +150,8 @@ export async function recordSecurityEvent(params: {
   statusCode: number;
   description?: string;
   requestId?: string;
+  accountRef?: string;
+  authMethod?: 'password' | 'google';
 }): Promise<void> {
   const createdAt = new Date().toISOString();
   const requestId = params.requestId || `req-${crypto.randomBytes(6).toString('hex')}`;
@@ -167,6 +169,8 @@ export async function recordSecurityEvent(params: {
     status_code: params.statusCode,
     request_id: requestId,
     created_at: createdAt,
+    ...(params.accountRef ? { account_ref: params.accountRef } : {}),
+    ...(params.authMethod ? { auth_method: params.authMethod } : {}),
   };
 
   logSecurityEventToFile(fileLogEntry);
