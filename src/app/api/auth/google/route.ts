@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyGoogleIdToken, createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
 import { getClientIp, recordSecurityEvent } from '@/lib/security';
-import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
+import { checkRateLimit, RATE_LIMIT_RULES, resetRateLimit } from '@/lib/rate-limiter';
+import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,11 +35,46 @@ export async function POST(req: NextRequest) {
   }
 
   const idToken = body?.google_id_token || body?.id_token || body?.credential;
+  const turnstileToken = body?.turnstile_token;
   if (!idToken || typeof idToken !== 'string') {
     return NextResponse.json(
       { error: 'Bad Request', message: 'Google ID Token wajib disertakan' },
       { status: 400 }
     );
+  }
+
+  const turnstileConfig = getTurnstileConfigurationStatus();
+  if (turnstileConfig.misconfigured) {
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Verifikasi keamanan belum dikonfigurasi dengan benar.' },
+      { status: 503 }
+    );
+  }
+
+  if (turnstileConfig.enabled) {
+    const verification = turnstileToken
+      ? await verifyTurnstileToken(turnstileToken, ip, ['login', 'register'])
+      : { success: false, errorCodes: ['missing-input'] };
+
+    if (!verification.success) {
+      await recordSecurityEvent({
+        eventType: 'user_login_bot_attempt',
+        severity: 'medium',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/google',
+        userAgent,
+        payloadSnippet: `reason=turnstile_failed; error=${verification.errorCodes.join(',')}`,
+        statusCode: 403,
+        description: 'Google authentication failed Turnstile verification',
+        requestId,
+      });
+
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Verifikasi anti-bot gagal atau kedaluwarsa.' },
+        { status: 403 }
+      );
+    }
   }
 
   let googleUser;
@@ -103,6 +139,8 @@ export async function POST(req: NextRequest) {
         sessionVersion: user.sessionVersion,
       });
 
+      resetRateLimit(ip, RATE_LIMIT_RULES.USER_LOGIN);
+
       const response = NextResponse.json({
         success: true,
         message: 'Login Google berhasil!',
@@ -136,6 +174,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingByEmail) {
+      // The Google identity was valid; the next step is ownership proof for
+      // account linking, not another failed-login attempt.
+      resetRateLimit(ip, RATE_LIMIT_RULES.USER_LOGIN);
       // Sesuai requirement: "Jika email sudah terdaftar lewat password, akun jangan otomatis digabung tanpa pembuktian kepemilikan."
       return NextResponse.json(
         {
@@ -144,7 +185,6 @@ export async function POST(req: NextRequest) {
           message:
             'Alamat email Google ini sudah terdaftar menggunakan kata sandi lokal. Demi keamanan, silakan konfirmasi kata sandi akun Anda untuk menghubungkannya.',
           email: existingByEmail.email,
-          googleSub: sub,
         },
         { status: 409 }
       );
@@ -183,6 +223,8 @@ export async function POST(req: NextRequest) {
       role: 'customer',
       sessionVersion: user.sessionVersion,
     });
+
+    resetRateLimit(ip, RATE_LIMIT_RULES.USER_LOGIN);
 
     const response = NextResponse.json({
       success: true,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyGoogleIdToken, createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
 import { getClientIp, verifyPassword, recordSecurityEvent } from '@/lib/security';
-import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
+import { checkRateLimit, RATE_LIMIT_RULES, resetRateLimit } from '@/lib/rate-limiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     const isPasswordValid = await verifyPassword(password, user.passwordHash);
     if (!isPasswordValid) {
       await recordSecurityEvent({
-        eventType: 'user_bruteforce_attempt',
+        eventType: 'user_login_failed',
         severity: 'high',
         ipAddress: ip,
         method: 'POST',
@@ -115,6 +115,13 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // Google has verified the email and account ownership was proven with
+      // the local password. Any outstanding email-verification links must no
+      // longer remain usable.
+      await tx.emailVerificationToken.deleteMany({
+        where: { userId: user.id },
+      });
+
       return u;
     });
 
@@ -126,6 +133,8 @@ export async function POST(req: NextRequest) {
       role: 'customer',
       sessionVersion: updatedUser.sessionVersion,
     });
+
+    resetRateLimit(ip, RATE_LIMIT_RULES.USER_LOGIN);
 
     const response = NextResponse.json({
       success: true,

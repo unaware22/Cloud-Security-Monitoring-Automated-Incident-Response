@@ -16,7 +16,7 @@ function getUserSessionTtlSeconds(): number {
 }
 
 function getUserJwtSecret(): Uint8Array {
-  const secret = process.env.CUSTOMER_JWT_SECRET || 'super-secure-customer-jwt-secret-key-thesis-2026-saladinshop';
+  const secret = process.env.CUSTOMER_JWT_SECRET;
   if (!secret || secret.length < 32) {
     throw new Error('CUSTOMER_JWT_SECRET must be set to at least 32 characters');
   }
@@ -148,16 +148,21 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserPa
   }
 
   const configuredClientId =
-    process.env.GOOGLE_CLIENT_ID ||
-    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-    '';
+    (
+      process.env.GOOGLE_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+      ''
+    ).trim();
 
-  // In production / when Client ID is configured, verify against Google's public keys
+  if (!configuredClientId || configuredClientId.includes('REPLACE_ME')) {
+    throw new Error('GOOGLE_CLIENT_ID must be configured before Google authentication can be used');
+  }
+
   try {
     const JWKS = getGoogleJwks();
     const { payload } = await jwtVerify(idToken, JWKS, {
       issuer: ['https://accounts.google.com', 'accounts.google.com'],
-      ...(configuredClientId ? { audience: configuredClientId } : {}),
+      audience: configuredClientId,
     });
 
     if (!payload.sub || typeof payload.sub !== 'string') {
@@ -165,6 +170,9 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserPa
     }
     if (!payload.email || typeof payload.email !== 'string') {
       throw new Error('Missing email in Google ID token');
+    }
+    if (payload.email_verified !== true) {
+      throw new Error('Google account email is not verified');
     }
 
     return {
@@ -175,24 +183,6 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserPa
       picture: (payload.picture as string) || undefined,
     };
   } catch (error: any) {
-    // If JWKS verification failed and no clientId configured (local dev fallback if mocked):
-    if (!configuredClientId && process.env.NODE_ENV !== 'production') {
-      try {
-        const parts = idToken.split('.');
-        if (parts.length === 3) {
-          const rawPayload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-          if (rawPayload.sub && rawPayload.email) {
-            return {
-              sub: String(rawPayload.sub),
-              email: String(rawPayload.email).toLowerCase(),
-              emailVerified: Boolean(rawPayload.email_verified),
-              name: String(rawPayload.name || rawPayload.email.split('@')[0]),
-              picture: rawPayload.picture ? String(rawPayload.picture) : undefined,
-            };
-          }
-        }
-      } catch {}
-    }
     throw new Error(`Google ID Token verification failed: ${error.message || 'Invalid signature'}`);
   }
 }

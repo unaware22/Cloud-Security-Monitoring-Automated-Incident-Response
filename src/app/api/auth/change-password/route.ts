@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       const isCurrentValid = await verifyPassword(normalizedBody.current_password, user.passwordHash!);
       if (!isCurrentValid) {
         await recordSecurityEvent({
-          eventType: 'user_bruteforce_attempt',
+          eventType: 'user_reauthentication_failed',
           severity: 'medium',
           ipAddress: ip,
           method: 'POST',

@@ -176,3 +176,12 @@ export async function checkRateLimit(
   bucket.count += 1;
   return { allowed: true, remaining: config.limit - bucket.count, resetTime: bucket.resetAt };
 }
+
+/**
+ * Clears an authentication bucket after a successful login. This makes the
+ * counter represent consecutive unsuccessful attempts instead of total login
+ * traffic from an IP address.
+ */
+export function resetRateLimit(identifier: string, config: RateLimitConfig): void {
+  rateLimitStore.delete(`${config.actionName}:${identifier}`);
+}

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getCustomerSession } from '@/lib/user-auth';
 import { getClientIp } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { sendEmailVerificationLink } from '@/lib/email';
+import { generateOpaqueToken } from '@/lib/auth-tokens';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,13 +75,13 @@ export async function POST(req: NextRequest) {
       where: { userId: user.id },
     });
 
-    const token = crypto.randomBytes(32).toString('hex');
+    const { token, tokenHash } = generateOpaqueToken();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
 
     await prisma.emailVerificationToken.create({
       data: {
         userId: user.id,
-        token,
+        token: tokenHash,
         expiresAt,
       },
     });

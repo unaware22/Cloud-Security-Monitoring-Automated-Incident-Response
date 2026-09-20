@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getClientIp } from '@/lib/security';
 import { createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
+import { hashOpaqueToken } from '@/lib/auth-tokens';
 
 export const dynamic = 'force-dynamic';
+
+class VerificationTokenAlreadyConsumedError extends Error {}
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req.headers);
@@ -24,8 +27,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const tokenHash = hashOpaqueToken(token.trim());
     const verification = await prisma.emailVerificationToken.findUnique({
-      where: { token: token.trim() },
+      where: { token: tokenHash },
       include: { user: true },
     });
 
@@ -36,44 +40,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // If user is ALREADY verified (handles repeated clicks, scanners, or React StrictMode re-renders)
-    if (verification.user.isEmailVerified) {
-      const sessionToken = await createUserToken({
-        userId: verification.user.id,
-        email: verification.user.email,
-        name: verification.user.name,
-        role: 'customer',
-        sessionVersion: verification.user.sessionVersion,
-      });
-
-      const res = NextResponse.json({
-        success: true,
-        alreadyVerified: true,
-        message: 'Alamat email Anda telah berhasil diverifikasi. Akun Anda kini aktif sepenuhnya.',
-        user: {
-          id: verification.user.id,
-          name: verification.user.name,
-          email: verification.user.email,
-        },
-      });
-
-      res.cookies.set({
-        name: CUSTOMER_COOKIE_NAME,
-        value: sessionToken,
-        httpOnly: true,
-        secure:
-          req.headers.get('x-forwarded-proto') === 'https' ||
-          req.nextUrl.protocol === 'https:',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 3600,
-      });
-
-      return res;
-    }
-
     // Check expiration (5 minutes) for unverified accounts
     if (verification.expiresAt < new Date()) {
+      await prisma.emailVerificationToken.deleteMany({ where: { id: verification.id } });
       return NextResponse.json(
         {
           error: 'EXPIRED',
@@ -84,28 +53,50 @@ export async function POST(req: NextRequest) {
     }
 
     // Mark user as verified
-    const updatedUser = await prisma.$transaction(async (tx) => {
-      const u = await tx.user.update({
-        where: { id: verification.userId },
-        data: {
-          isEmailVerified: true,
-          emailVerifiedAt: new Date(),
+    const verificationResult = await prisma.$transaction(async (tx) => {
+      const consumed = await tx.emailVerificationToken.deleteMany({
+        where: {
+          id: verification.id,
+          expiresAt: { gte: new Date() },
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          userId: verification.userId,
-          action: 'USER_EMAIL_VERIFIED',
-          entityType: 'users',
-          entityId: verification.userId,
-          ipAddress: ip,
-          userAgent,
-        },
+      if (consumed.count !== 1) {
+        throw new VerificationTokenAlreadyConsumedError();
+      }
+
+      const wasAlreadyVerified = verification.user.isEmailVerified;
+      const u = wasAlreadyVerified
+        ? verification.user
+        : await tx.user.update({
+            where: { id: verification.userId },
+            data: {
+              isEmailVerified: true,
+              emailVerifiedAt: new Date(),
+            },
+          });
+
+      await tx.emailVerificationToken.deleteMany({
+        where: { userId: verification.userId },
       });
 
-      return u;
+      if (!wasAlreadyVerified) {
+        await tx.auditLog.create({
+          data: {
+            userId: verification.userId,
+            action: 'USER_EMAIL_VERIFIED',
+            entityType: 'users',
+            entityId: verification.userId,
+            ipAddress: ip,
+            userAgent,
+          },
+        });
+      }
+
+      return { user: u, wasAlreadyVerified };
     });
+
+    const updatedUser = verificationResult.user;
 
     // Auto-login the user into their session now that their email is verified!
     const sessionToken = await createUserToken({
@@ -118,7 +109,10 @@ export async function POST(req: NextRequest) {
 
     const response = NextResponse.json({
       success: true,
-      message: 'Selamat! Alamat email Anda telah berhasil diverifikasi. Akun Anda kini aktif.',
+      alreadyVerified: verificationResult.wasAlreadyVerified,
+      message: verificationResult.wasAlreadyVerified
+        ? 'Alamat email Anda sebelumnya sudah diverifikasi. Tautan ini sekarang tidak dapat digunakan kembali.'
+        : 'Selamat! Alamat email Anda telah berhasil diverifikasi. Akun Anda kini aktif.',
       user: {
         id: updatedUser.id,
         name: updatedUser.name,
@@ -140,6 +134,12 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error: any) {
+    if (error instanceof VerificationTokenAlreadyConsumedError) {
+      return NextResponse.json(
+        { error: 'Bad Request', message: 'Tautan verifikasi sudah digunakan atau kedaluwarsa.' },
+        { status: 400 }
+      );
+    }
     console.error('Email verification error:', error);
     return NextResponse.json(
       { error: 'Internal Server Error', message: 'Gagal memproses verifikasi email.' },

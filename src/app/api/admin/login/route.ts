@@ -7,7 +7,7 @@ import {
   recordSecurityEvent,
   detectSQLi,
 } from '@/lib/security';
-import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
+import { checkRateLimit, RATE_LIMIT_RULES, resetRateLimit } from '@/lib/rate-limiter';
 import { createAdminToken, COOKIE_NAME, getSessionTtlSeconds } from '@/lib/auth';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     if (admin) {
       if (!admin.isActive) {
         await recordSecurityEvent({
-          eventType: 'admin_bruteforce_attempt',
+          eventType: 'admin_login_failed',
           severity: 'high',
           ipAddress: ip,
           method: 'POST',
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
       const isPasswordValid = await verifyPassword(password, admin.passwordHash);
       if (!isPasswordValid) {
         await recordSecurityEvent({
-          eventType: 'admin_bruteforce_attempt',
+          eventType: 'admin_login_failed',
           severity: 'high',
           ipAddress: ip,
           method: 'POST',
@@ -201,6 +201,8 @@ export async function POST(req: NextRequest) {
         sessionVersion: admin.sessionVersion,
       });
 
+      resetRateLimit(ip, RATE_LIMIT_RULES.ADMIN_LOGIN);
+
       const response = NextResponse.json({
         success: true,
         data: {
@@ -232,7 +234,7 @@ export async function POST(req: NextRequest) {
     // Invalid credentials. Admin accounts must exist in PostgreSQL; there is no
     // source-code credential fallback in any deployed environment.
     await recordSecurityEvent({
-      eventType: 'admin_bruteforce_attempt',
+      eventType: 'admin_login_failed',
       severity: 'high',
       ipAddress: ip,
       method: 'POST',

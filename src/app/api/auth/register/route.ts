@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import {
@@ -13,6 +12,7 @@ import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 import { sendEmailVerificationLink } from '@/lib/email';
+import { generateOpaqueToken } from '@/lib/auth-tokens';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +97,12 @@ export async function POST(req: NextRequest) {
 
   // 4. Turnstile Verification
   const turnstileConfig = getTurnstileConfigurationStatus();
+  if (turnstileConfig.misconfigured) {
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Verifikasi keamanan belum dikonfigurasi dengan benar.' },
+      { status: 503 }
+    );
+  }
   if (turnstileConfig.enabled) {
     const verification = turnstile_token
       ? await verifyTurnstileToken(turnstile_token, ip, 'register')
@@ -138,7 +144,7 @@ export async function POST(req: NextRequest) {
 
     // 6. Create User and Verification Token
     const passwordHash = await hashPassword(password);
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const { token: verificationToken, tokenHash } = generateOpaqueToken();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
 
     const newUser = await prisma.$transaction(async (tx) => {
@@ -157,7 +163,7 @@ export async function POST(req: NextRequest) {
       await tx.emailVerificationToken.create({
         data: {
           userId: user.id,
-          token: verificationToken,
+          token: tokenHash,
           expiresAt,
         },
       });

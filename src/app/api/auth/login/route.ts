@@ -8,7 +8,7 @@ import {
   detectSQLi,
   detectXSS,
 } from '@/lib/security';
-import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
+import { checkRateLimit, RATE_LIMIT_RULES, resetRateLimit } from '@/lib/rate-limiter';
 import { createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 
@@ -88,6 +88,12 @@ export async function POST(req: NextRequest) {
 
   // 4. Turnstile Verification
   const turnstileConfig = getTurnstileConfigurationStatus();
+  if (turnstileConfig.misconfigured) {
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Verifikasi keamanan belum dikonfigurasi dengan benar.' },
+      { status: 503 }
+    );
+  }
   if (turnstileConfig.enabled) {
     const verification = turnstile_token
       ? await verifyTurnstileToken(turnstile_token, ip, 'login')
@@ -122,7 +128,7 @@ export async function POST(req: NextRequest) {
     // If user not found
     if (!user) {
       await recordSecurityEvent({
-        eventType: 'user_bruteforce_attempt',
+        eventType: 'user_login_failed',
         severity: 'low',
         ipAddress: ip,
         method: 'POST',
@@ -155,7 +161,7 @@ export async function POST(req: NextRequest) {
     const isPasswordValid = await verifyPassword(password, user.passwordHash);
     if (!isPasswordValid) {
       await recordSecurityEvent({
-        eventType: 'user_bruteforce_attempt',
+        eventType: 'user_login_failed',
         severity: 'medium',
         ipAddress: ip,
         method: 'POST',
@@ -172,6 +178,10 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+
+    // A correct password ends the consecutive-failure window even if the
+    // account still needs to complete email verification.
+    resetRateLimit(ip, RATE_LIMIT_RULES.USER_LOGIN);
 
     // Require email verification before allowing access to user account/dashboard
     if (!user.isEmailVerified) {

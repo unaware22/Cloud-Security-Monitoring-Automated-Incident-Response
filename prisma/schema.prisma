@@ -241,7 +241,7 @@ model User {
 model EmailVerificationToken {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
-  token     String   @unique
+  token     String   @unique // Stores a SHA-256 digest, never the raw email token.
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -253,7 +253,7 @@ model EmailVerificationToken {
 model PasswordResetToken {
   id        String    @id @default(uuid())
   userId    String    @map("user_id")
-  token     String    @unique
+  token     String    @unique // Stores a SHA-256 digest, never the raw reset token.
   expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
   createdAt DateTime  @default(now()) @map("created_at")

@@ -16,11 +16,12 @@ import {
 } from 'lucide-react';
 import TurnstileWidget from '@/components/security/TurnstileWidget';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
+import { getSafeInternalRedirect } from '@/lib/safe-redirect';
 
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/account';
+  const redirectUrl = getSafeInternalRedirect(searchParams.get('redirect'));
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -284,7 +285,7 @@ function RegisterForm() {
               onSuccess={handleGoogleSuccess}
               onError={setErrorMessage}
               text="signup_with"
-              disabled={submitting}
+              disabled={submitting || (turnstileEnabled && !turnstileToken)}
             />
 
             <div className="flex items-center gap-3 my-4">

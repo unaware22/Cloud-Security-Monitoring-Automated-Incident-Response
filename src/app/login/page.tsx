@@ -6,11 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Shield, Lock, Mail, Loader2, AlertCircle, CheckCircle, ArrowRight, KeyRound } from 'lucide-react';
 import TurnstileWidget from '@/components/security/TurnstileWidget';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
+import { getSafeInternalRedirect } from '@/lib/safe-redirect';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/account';
+  const redirectUrl = getSafeInternalRedirect(searchParams.get('redirect'));
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -357,7 +358,7 @@ function LoginForm() {
             onSuccess={handleGoogleSuccess}
             onError={setErrorMessage}
             text="signin_with"
-            disabled={submitting}
+            disabled={submitting || (turnstileEnabled && !turnstileToken)}
           />
 
           <div className="flex items-center gap-3 my-4">

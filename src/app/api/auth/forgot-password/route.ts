@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import {
@@ -11,6 +10,7 @@ import {
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 import { sendPasswordResetLink } from '@/lib/email';
+import { generateOpaqueToken } from '@/lib/auth-tokens';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,6 +78,12 @@ export async function POST(req: NextRequest) {
 
   // 4. Turnstile Verification
   const turnstileConfig = getTurnstileConfigurationStatus();
+  if (turnstileConfig.misconfigured) {
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Verifikasi keamanan belum dikonfigurasi dengan benar.' },
+      { status: 503 }
+    );
+  }
   if (turnstileConfig.enabled) {
     const verification = turnstile_token
       ? await verifyTurnstileToken(turnstile_token, ip, 'forgot_password')
@@ -115,13 +121,13 @@ export async function POST(req: NextRequest) {
         where: { userId: user.id },
       });
 
-      const token = crypto.randomBytes(32).toString('hex');
+      const { token, tokenHash } = generateOpaqueToken();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
       await prisma.passwordResetToken.create({
         data: {
           userId: user.id,
-          token,
+          token: tokenHash,
           expiresAt,
         },
       });

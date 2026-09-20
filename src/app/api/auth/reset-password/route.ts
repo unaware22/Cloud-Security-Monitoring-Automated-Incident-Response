@@ -10,8 +10,11 @@ import {
 } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
+import { hashOpaqueToken } from '@/lib/auth-tokens';
 
 export const dynamic = 'force-dynamic';
+
+class ResetTokenAlreadyConsumedError extends Error {}
 
 const ResetSchema = z.object({
   token: z.string().trim().min(1, 'Token wajib diisi'),
@@ -88,6 +91,12 @@ export async function POST(req: NextRequest) {
 
   // 4. Turnstile Verification
   const turnstileConfig = getTurnstileConfigurationStatus();
+  if (turnstileConfig.misconfigured) {
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Verifikasi keamanan belum dikonfigurasi dengan benar.' },
+      { status: 503 }
+    );
+  }
   if (turnstileConfig.enabled) {
     const verification = turnstile_token
       ? await verifyTurnstileToken(turnstile_token, ip, 'reset_password')
@@ -102,8 +111,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const tokenHash = hashOpaqueToken(token.trim());
     const resetRecord = await prisma.passwordResetToken.findUnique({
-      where: { token: token.trim() },
+      where: { token: tokenHash },
       include: { user: true },
     });
 
@@ -115,6 +125,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (resetRecord.expiresAt < new Date()) {
+      await prisma.passwordResetToken.deleteMany({ where: { id: resetRecord.id } });
       return NextResponse.json(
         { error: 'Gone', message: 'Tautan reset kata sandi telah kedaluwarsa. Silakan minta tautan baru.' },
         { status: 410 }
@@ -125,6 +136,19 @@ export async function POST(req: NextRequest) {
     const passwordHash = await hashPassword(new_password);
 
     await prisma.$transaction(async (tx) => {
+      const consumed = await tx.passwordResetToken.updateMany({
+        where: {
+          id: resetRecord.id,
+          usedAt: null,
+          expiresAt: { gte: new Date() },
+        },
+        data: { usedAt: new Date() },
+      });
+
+      if (consumed.count !== 1) {
+        throw new ResetTokenAlreadyConsumedError();
+      }
+
       await tx.user.update({
         where: { id: resetRecord.userId },
         data: {
@@ -133,9 +157,11 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      await tx.passwordResetToken.update({
-        where: { id: resetRecord.id },
-        data: { usedAt: new Date() },
+      await tx.passwordResetToken.deleteMany({
+        where: {
+          userId: resetRecord.userId,
+          id: { not: resetRecord.id },
+        },
       });
 
       await tx.auditLog.create({
@@ -155,6 +181,12 @@ export async function POST(req: NextRequest) {
       message: 'Kata sandi berhasil diperbarui! Seluruh sesi lama telah dinonaktifkan. Silakan login kembali.',
     });
   } catch (error) {
+    if (error instanceof ResetTokenAlreadyConsumedError) {
+      return NextResponse.json(
+        { error: 'Bad Request', message: 'Tautan reset kata sandi sudah digunakan atau kedaluwarsa.' },
+        { status: 400 }
+      );
+    }
     console.error('Reset password error:', error);
     return NextResponse.json(
       { error: 'Internal Server Error', message: 'Gagal memperbarui kata sandi.' },

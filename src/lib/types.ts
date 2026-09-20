@@ -80,6 +80,7 @@ export type SecuritySeverity = 'low' | 'medium' | 'high' | 'critical';
 
 export type SecurityEventType =
   | 'admin_bruteforce_attempt'
+  | 'admin_login_failed'
   | 'admin_login_bot_attempt'
   | 'admin_content_change'
   | 'sql_injection_attempt'
@@ -94,6 +95,8 @@ export type SecurityEventType =
   | 'rate_limit_exceeded'
   | 'direct_rds_access_test'
   | 'user_bruteforce_attempt'
+  | 'user_login_failed'
+  | 'user_reauthentication_failed'
   | 'user_login_bot_attempt'
   | 'user_registration_bot_attempt'
   | 'user_password_reset_abuse'
