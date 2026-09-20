@@ -78,12 +78,14 @@ export async function GET(req: NextRequest) {
     const [history, terminalActions, pendingCount] = await Promise.all([
       prisma.ipControlAction.findMany({
         take: 100,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
       }),
       prisma.ipControlAction.findMany({
         where: { status: { in: ['blocked', 'unblocked'] } },
         take: 2000,
-        orderBy: { createdAt: 'desc' },
+        // A pending dashboard request can be confirmed later by Wazuh.  The
+        // latest state therefore follows the last update, not row creation.
+        orderBy: { updatedAt: 'desc' },
       }),
       prisma.ipControlAction.count({
         where: { status: 'pending' },
@@ -97,9 +99,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const blockedIps = Array.from(latestByIp.values()).filter(
-      (action) => action.action === 'block' && action.status === 'blocked'
-    );
+    const now = Date.now();
+    const blockedIps = Array.from(latestByIp.values()).filter((action) => {
+      if (action.action !== 'block' || action.status !== 'blocked') return false;
+
+      // Do not leave an expired temporary block displayed when an auto-expire
+      // callback is delayed. Permanent blocks are only removed by an explicit
+      // confirmed unblock event.
+      return !(
+        action.blockMode === 'temporary' &&
+        action.expiresAt &&
+        action.expiresAt.getTime() <= now
+      );
+    });
 
     return NextResponse.json({
       success: true,

@@ -52,7 +52,16 @@ export async function POST(req: NextRequest) {
 
   const parsed = EventSchema.safeParse(body);
   if (!parsed.success || !isPublicIpv4(parsed.data?.ip_address || '')) {
-    return NextResponse.json({ error: 'Bad Request' }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: 'Bad Request',
+        message: parsed.success
+          ? 'Only public IPv4 addresses can be synchronized.'
+          : 'Invalid IP response event payload.',
+        fields: parsed.success ? undefined : parsed.error.flatten().fieldErrors,
+      },
+      { status: 400 }
+    );
   }
 
   const event = parsed.data;
