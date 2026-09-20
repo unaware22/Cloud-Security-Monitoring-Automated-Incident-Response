@@ -209,6 +209,9 @@ export async function POST(req: NextRequest) {
       actor,
       source: 'admin_dashboard',
       reason,
+      blockMode: action === 'block' ? 'permanent' : null,
+      timeoutSeconds: null,
+      expiresAt: null,
     },
   });
 

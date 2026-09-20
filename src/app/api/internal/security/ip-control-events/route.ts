@@ -87,9 +87,13 @@ export async function POST(req: NextRequest) {
         ruleId: event.rule_id,
         detail: event.detail,
         completedAt,
-        blockMode: event.block_mode ?? null,
-        timeoutSeconds: event.timeout_seconds ?? null,
-        expiresAt: event.expires_at ? new Date(event.expires_at) : null,
+        ...(event.block_mode !== undefined ? { blockMode: event.block_mode } : {}),
+        ...(event.timeout_seconds !== undefined
+          ? { timeoutSeconds: event.timeout_seconds }
+          : {}),
+        ...(event.expires_at !== undefined
+          ? { expiresAt: event.expires_at ? new Date(event.expires_at) : null }
+          : {}),
       },
     });
 

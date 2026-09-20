@@ -23,6 +23,9 @@ type IpControlAction = {
   reason: string | null;
   ruleId: string | null;
   detail: string | null;
+  blockMode: 'temporary' | 'permanent' | null;
+  timeoutSeconds: number | null;
+  expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -51,6 +54,7 @@ export default function AdminIpControlPage() {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [now, setNow] = useState<number | null>(null);
 
   const fetchState = useCallback(async (showSpinner = false) => {
     if (showSpinner) setLoading(true);
@@ -75,6 +79,12 @@ export default function AdminIpControlPage() {
     const timer = window.setInterval(() => fetchState(false), 15_000);
     return () => window.clearInterval(timer);
   }, [fetchState]);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const runAction = async (
     action: 'block' | 'unblock',
@@ -246,6 +256,8 @@ export default function AdminIpControlPage() {
               <thead className="text-neutral-400 border-b border-neutral-700">
                 <tr>
                   <th className="pb-3">IP Address</th>
+                  <th className="pb-3">Mode</th>
+                  <th className="pb-3">Masa Berlaku</th>
                   <th className="pb-3">Alasan</th>
                   <th className="pb-3">Sumber/Aktor</th>
                   <th className="pb-3">Waktu</th>
@@ -256,6 +268,12 @@ export default function AdminIpControlPage() {
                 {data.blocked_ips.map((item) => (
                   <tr key={item.id}>
                     <td className="py-3.5 font-mono font-bold text-rose-300">{item.ipAddress}</td>
+                    <td className="py-3.5">
+                      <BlockModeBadge mode={item.blockMode} />
+                    </td>
+                    <td className="py-3.5 min-w-44">
+                      <ExpiryLabel item={item} now={now} />
+                    </td>
                     <td className="py-3.5 text-neutral-300 max-w-xs">{item.reason || '-'}</td>
                     <td className="py-3.5 text-neutral-400">
                       <span className="block">{item.actor}</span>
@@ -298,6 +316,8 @@ export default function AdminIpControlPage() {
               <tr>
                 <th className="pb-3">Status</th>
                 <th className="pb-3">IP</th>
+                <th className="pb-3">Mode</th>
+                <th className="pb-3">Masa Berlaku</th>
                 <th className="pb-3">Aktor</th>
                 <th className="pb-3">Alasan</th>
                 <th className="pb-3">Waktu</th>
@@ -310,6 +330,12 @@ export default function AdminIpControlPage() {
                     <StatusLabel status={item.status} action={item.action} />
                   </td>
                   <td className="py-3 font-mono text-blue-300">{item.ipAddress}</td>
+                  <td className="py-3">
+                    <BlockModeBadge mode={item.blockMode} />
+                  </td>
+                  <td className="py-3 min-w-44">
+                    <ExpiryLabel item={item} now={now} compact />
+                  </td>
                   <td className="py-3 text-neutral-400">{item.actor}</td>
                   <td className="py-3 text-neutral-300 max-w-sm">{item.reason || '-'}</td>
                   <td className="py-3 text-neutral-500">{formatDate(item.updatedAt)}</td>
@@ -367,5 +393,90 @@ function StatusLabel({ status, action }: { status: IpControlAction['status']; ac
     <span className={`px-2 py-1 border text-[10px] font-black uppercase ${styles[status]}`}>
       {action} · {status}
     </span>
+  );
+}
+
+function BlockModeBadge({ mode }: { mode: IpControlAction['blockMode'] }) {
+  const label = mode === 'temporary' ? 'Sementara' : mode === 'permanent' ? 'Permanen' : 'Legacy';
+  const style =
+    mode === 'temporary'
+      ? 'bg-amber-950/70 text-amber-300 border-amber-700/50'
+      : mode === 'permanent'
+        ? 'bg-rose-950/70 text-rose-300 border-rose-700/50'
+        : 'bg-neutral-900 text-neutral-400 border-neutral-700';
+
+  return (
+    <span className={`inline-flex px-2 py-1 border text-[10px] font-black uppercase ${style}`}>
+      {label}
+    </span>
+  );
+}
+
+function ExpiryLabel({
+  item,
+  now,
+  compact = false,
+}: {
+  item: IpControlAction;
+  now: number | null;
+  compact?: boolean;
+}) {
+  if (item.action === 'unblock' || item.status === 'unblocked') {
+    return <span className="text-emerald-400">Sudah dibuka</span>;
+  }
+
+  if (item.blockMode === 'permanent') {
+    return <span className="text-rose-300">Sampai dibuka admin</span>;
+  }
+
+  if (item.blockMode !== 'temporary') {
+    return <span className="text-neutral-500">Data lama</span>;
+  }
+
+  if (!item.expiresAt) {
+    return <span className="text-amber-300">Menunggu waktu kedaluwarsa</span>;
+  }
+
+  if (now === null) {
+    return <span className="text-neutral-500">Menghitung...</span>;
+  }
+
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((new Date(item.expiresAt).getTime() - now) / 1_000)
+  );
+
+  if (remainingSeconds === 0 && compact) {
+    return <span className="text-neutral-500">Berakhir {formatDate(item.expiresAt)}</span>;
+  }
+
+  if (remainingSeconds === 0 && item.status === 'blocked') {
+    return (
+      <span className="text-amber-300">
+        Menunggu konfirmasi auto-unblock Wazuh
+      </span>
+    );
+  }
+
+  const hours = Math.floor(remainingSeconds / 3_600);
+  const minutes = Math.floor((remainingSeconds % 3_600) / 60);
+  const seconds = remainingSeconds % 60;
+  const countdown = [
+    hours > 0 ? `${hours}j` : null,
+    minutes > 0 || hours > 0 ? `${minutes}m` : null,
+    `${seconds}d`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <div className="space-y-0.5">
+      <span className="block font-mono font-bold text-amber-300">{countdown}</span>
+      {!compact && (
+        <span className="block text-[10px] text-neutral-600">
+          Hingga {formatDate(item.expiresAt)}
+        </span>
+      )}
+    </div>
   );
 }

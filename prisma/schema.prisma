@@ -194,22 +194,26 @@ model SecurityEvent {
 }
 
 model IpControlAction {
-  id          String    @id @default(uuid())
-  externalId  String    @unique @map("external_id")
-  ipAddress   String    @map("ip_address")
-  action      String // block, unblock
-  status      String // pending, blocked, unblocked, rejected, failed
-  actor       String
-  source      String
-  reason      String?
-  ruleId      String?   @map("rule_id")
-  detail      String?
-  completedAt DateTime? @map("completed_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  externalId     String    @unique @map("external_id")
+  ipAddress      String    @map("ip_address")
+  action         String // block, unblock
+  status         String // pending, blocked, unblocked, rejected, failed
+  actor          String
+  source         String
+  reason         String?
+  ruleId         String?   @map("rule_id")
+  detail         String?
+  blockMode      String?   @map("block_mode") // temporary, permanent
+  timeoutSeconds Int?      @map("timeout_seconds")
+  expiresAt      DateTime? @map("expires_at")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@index([ipAddress, createdAt])
   @@index([status, createdAt])
+  @@index([status, expiresAt])
   @@index([createdAt])
   @@map("ip_control_actions")
 }
