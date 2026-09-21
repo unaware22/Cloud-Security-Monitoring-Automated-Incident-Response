@@ -10,8 +10,18 @@ import { prisma } from '@/lib/prisma';
 export const dynamic = 'force-dynamic';
 
 const EventSchema = z.object({
-  action: z.enum(['block', 'unblock']),
-  status: z.enum(['pending', 'blocked', 'unblocked', 'rejected', 'failed']),
+  action: z.string().trim().pipe(z.enum(['block', 'unblock'])),
+  status: z.string().trim().pipe(
+    z.enum([
+      'pending',
+      'blocked',
+      'already_blocked',
+      'unblocked',
+      'already_unblocked',
+      'rejected',
+      'failed',
+    ])
+  ),
   ip_address: z.string().trim().min(7).max(45),
   actor: z.string().trim().min(1).max(160),
   alert_id: z.string().trim().min(1).max(240),
@@ -19,7 +29,12 @@ const EventSchema = z.object({
   reason: z.string().trim().max(240).optional(),
   rule_id: z.string().trim().max(32).optional(),
   detail: z.string().trim().max(1500).optional(),
-  block_mode: z.enum(['temporary', 'permanent']).nullable().optional(),
+  block_mode: z
+    .union([
+      z.string().trim().pipe(z.enum(['temporary', 'permanent'])),
+      z.null(),
+    ])
+    .optional(),
   timeout_seconds: z.coerce.number().int().positive().max(604800).nullable().optional(),
   expires_at: z.string().datetime().nullable().optional(),
 });
@@ -65,8 +80,14 @@ export async function POST(req: NextRequest) {
   }
 
   const event = parsed.data;
+  const status =
+    event.status === 'already_blocked'
+      ? 'blocked'
+      : event.status === 'already_unblocked'
+        ? 'unblocked'
+        : event.status;
   const externalId = buildIpControlExternalId(event.action, event.alert_id);
-  const completedAt = ['blocked', 'unblocked', 'rejected', 'failed'].includes(event.status)
+  const completedAt = ['blocked', 'unblocked', 'rejected', 'failed'].includes(status)
     ? new Date()
     : null;
 
@@ -77,7 +98,7 @@ export async function POST(req: NextRequest) {
         externalId,
         ipAddress: event.ip_address,
         action: event.action,
-        status: event.status,
+        status,
         actor: event.actor,
         source: event.source,
         reason: event.reason,
@@ -89,7 +110,7 @@ export async function POST(req: NextRequest) {
         expiresAt: event.expires_at ? new Date(event.expires_at) : null,
       },
       update: {
-        status: event.status,
+        status,
         actor: event.actor,
         source: event.source,
         reason: event.reason,

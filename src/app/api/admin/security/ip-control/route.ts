@@ -99,19 +99,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const now = Date.now();
-    const blockedIps = Array.from(latestByIp.values()).filter((action) => {
-      if (action.action !== 'block' || action.status !== 'blocked') return false;
-
-      // Do not leave an expired temporary block displayed when an auto-expire
-      // callback is delayed. Permanent blocks are only removed by an explicit
-      // confirmed unblock event.
-      return !(
-        action.blockMode === 'temporary' &&
-        action.expiresAt &&
-        action.expiresAt.getTime() <= now
-      );
-    });
+    // Wazuh Active Response is the source of truth. A temporary block stays
+    // visible until its confirmed `unblocked` callback arrives; the expiry is
+    // informational and must not make the dashboard diverge from Nginx.
+    const blockedIps = Array.from(latestByIp.values()).filter(
+      (action) => action.action === 'block' && action.status === 'blocked'
+    );
 
     return NextResponse.json({
       success: true,
