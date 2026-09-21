@@ -76,7 +76,10 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
   },
   USER_LOGIN: {
     actionName: 'user_login',
-    limit: 5,
+    // This is a coarse request-flood guard. Failed-authentication patterns
+    // are counted separately so five distinct accounts can always reach the
+    // credential-stuffing detector before this guard rejects the request.
+    limit: 30,
     windowMs: 15 * 60 * 1000, // 15 minutes
     severity: 'high',
   },

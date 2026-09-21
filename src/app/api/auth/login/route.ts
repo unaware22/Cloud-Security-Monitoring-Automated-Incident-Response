@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       endpoint: '/api/auth/login',
       userAgent,
-      payloadSnippet: `reason=${reason}`,
+      payloadSnippet: `reason=${reason}; distinct_accounts=${detection.distinctAccountCount}; failures_for_account=${detection.failuresForAccount}`,
       statusCode: 401,
       description: 'Failed customer login attempt: invalid credentials',
       requestId,
@@ -176,6 +176,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (detection.bruteForceDetected) {
+      await recordSecurityEvent({
+        eventType: 'user_bruteforce_attempt',
+        severity: 'high',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        userAgent,
+        payloadSnippet: `failures_for_account=${detection.failuresForAccount}; window_minutes=10`,
+        statusCode: 429,
+        description: 'Customer brute-force login detected: repeated failures against one account',
+        requestId,
+        accountRef,
+        authMethod: 'password',
+      });
+    }
+
     if (detection.accountTakeoverDetected) {
       await recordSecurityEvent({
         eventType: 'account_takeover_attempt',
@@ -193,7 +210,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const shouldThrottle = detection.credentialStuffingDetected;
+    const shouldThrottle =
+      detection.credentialStuffingActive || detection.bruteForceActive;
     return NextResponse.json(
       {
         error: shouldThrottle ? 'Too Many Requests' : 'Unauthorized',
@@ -261,6 +279,16 @@ export async function POST(req: NextRequest) {
         accountRef,
         authMethod: 'password',
       });
+
+      if (successAssessment.credentialStuffingActive) {
+        return NextResponse.json(
+          {
+            error: 'Too Many Requests',
+            message: 'Aktivitas login mencurigakan terdeteksi. Silakan coba lagi nanti.',
+          },
+          { status: 429 }
+        );
+      }
     }
 
     // Update Last Login and Audit Log
