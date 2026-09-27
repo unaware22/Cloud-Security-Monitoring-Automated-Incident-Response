@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCustomerSession } from '@/lib/user-auth';
+import { customerOrderWhere, customerOrderSelect, deliveredContent } from '@/lib/customer-order';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,49 +16,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const orders = await prisma.order.findMany({
-      where: {
-        OR: [
-          { userId: session.userId },
-          { customerEmail: session.email.toLowerCase() },
-        ],
-      },
+      where: customerOrderWhere(session),
       orderBy: { createdAt: 'desc' },
-      include: {
-        orderItems: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                imageUrl: true,
-                game: true,
-                deliveryType: true,
-                deliveryContent: true,
-                serviceTag: true,
-              },
-            },
-          },
-        },
-        digitalDeliveries: {
-          select: {
-            deliveryStatus: true,
-            deliveredAt: true,
-            deliveryData: true,
-          },
-        },
-        paymentTransactions: {
-          select: {
-            provider: true,
-            paymentUrl: true,
-            providerInvoiceId: true,
-            rawPayload: true,
-            status: true,
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
+      select: customerOrderSelect,
     });
 
     const formattedOrders = orders.map((order) => {
@@ -69,8 +30,8 @@ export async function GET(req: NextRequest) {
         paymentStatus = 'expired';
         orderStatus = 'cancelled';
         prisma.order
-          .update({
-            where: { id: order.id },
+          .updateMany({
+            where: { id: order.id, paymentStatus: 'pending', paidAt: null },
             data: { paymentStatus: 'expired', orderStatus: 'cancelled' },
           })
           .catch(() => {});
@@ -118,18 +79,7 @@ export async function GET(req: NextRequest) {
       const primaryProductImage = primaryItem?.imageUrl || '/images/products/default.png';
 
       // Digital delivery content
-      let deliveryContent: string | null = null;
-      if (isPaid || order.deliveryStatus === 'delivered') {
-        const directDelivery = order.digitalDeliveries[0]?.deliveryData;
-        if (directDelivery) {
-          deliveryContent = directDelivery;
-        } else if (order.orderItems[0]?.product?.deliveryContent) {
-          const raw = order.orderItems[0].product.deliveryContent;
-          const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-          const qty = order.orderItems[0]?.quantity || 1;
-          deliveryContent = lines.length > 0 ? lines.slice(0, qty).join('\n') : raw;
-        }
-      }
+      const deliveryContent = deliveredContent({ ...order, paymentStatus });
 
       // Check payment transaction payload for custom skin details or customer notes
       let customSkinDetails: any = null;
@@ -193,7 +143,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: formattedOrders,
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('Error fetching user orders:', error);
     return NextResponse.json(

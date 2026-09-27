@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCustomerSession } from '@/lib/user-auth';
 import { getClientIp, recordSecurityEvent } from '@/lib/security';
+import { customerOrderWhere, customerOrderSelect, customerOrderDetail, orderReference } from '@/lib/customer-order';
+import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,65 +19,44 @@ export async function GET(
     );
   }
 
-  const orderCode = decodeURIComponent(params.orderCode || '').trim().toUpperCase();
+  const orderCode = (params.orderCode || '').trim().toUpperCase();
   const ip = getClientIp(req.headers);
   const userAgent = req.headers.get('user-agent') || 'Unknown';
   const requestId = req.headers.get('x-request-id') || `req-${Date.now()}`;
 
+  const rate = await checkRateLimit(ip, RATE_LIMIT_RULES.ORDER_DETAIL, {
+    endpoint: '/api/user/orders/[orderCode]', method: 'GET', userAgent, requestId,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json({ error: 'Too Many Requests' }, { status: 429 });
+  }
+
   try {
-    const order = await prisma.order.findUnique({
-      where: { orderCode },
-      include: {
-        orderItems: {
-          include: {
-            product: true,
-          },
-        },
-        digitalDeliveries: true,
-        voucherUsage: {
-          include: {
-            voucher: true,
-          },
-        },
-      },
-    });
+    const order = orderCode.length <= 30 ? await prisma.order.findFirst({
+      where: { orderCode, ...customerOrderWhere(session) },
+      select: customerOrderSelect,
+    }) : null;
 
     if (!order) {
+      await recordSecurityEvent({
+        eventType: 'unauthorized_object_access_attempt',
+        severity: 'high', ipAddress: ip, method: 'GET',
+        endpoint: '/api/user/orders/[orderCode]', userAgent,
+        payloadSnippet: `order_ref=${orderReference(orderCode)}`,
+        statusCode: 404,
+        description: 'Customer order lookup denied: unknown order or ownership mismatch',
+        requestId,
+      });
       return NextResponse.json(
         { error: 'Not Found', message: 'Pesanan tidak ditemukan.' },
         { status: 404 }
       );
     }
 
-    // Ownership Verification
-    const isOwner =
-      order.userId === session.userId ||
-      order.customerEmail.toLowerCase() === session.email.toLowerCase();
-
-    if (!isOwner) {
-      await recordSecurityEvent({
-        eventType: 'unauthorized_order_access',
-        severity: 'high',
-        ipAddress: ip,
-        method: 'GET',
-        endpoint: `/api/user/orders/${orderCode}`,
-        userAgent,
-        payloadSnippet: `targetOrder=${orderCode}; sessionUserId=${session.userId}; sessionEmail=${session.email}`,
-        statusCode: 403,
-        description: 'Unauthorized attempt by authenticated customer to access another user order',
-        requestId,
-      });
-
-      return NextResponse.json(
-        { error: 'Forbidden', message: 'Anda tidak memiliki akses ke rincian pesanan ini.' },
-        { status: 403 }
-      );
-    }
-
     return NextResponse.json({
       success: true,
-      data: order,
-    });
+      data: customerOrderDetail(order),
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('Error fetching order detail:', error);
     return NextResponse.json(

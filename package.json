@@ -13,7 +13,8 @@
     "prisma:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
     "optimize:product-images": "node prisma/optimize-product-images.mjs",
-    "test:security": "tsx scripts/security-test-suite.ts"
+    "test:security": "tsx scripts/security-test-suite.ts",
+    "test:order-security": "tsx --test tests/order-access.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

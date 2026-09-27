@@ -104,11 +104,14 @@ export async function getCustomerSession(req?: NextRequest): Promise<CustomerSes
         name: true,
         role: true,
         sessionVersion: true,
+        isEmailVerified: true,
       },
     });
 
     if (
       !user ||
+      user.role !== 'customer' ||
+      !user.isEmailVerified ||
       user.email.toLowerCase() !== payload.email.toLowerCase() ||
       user.sessionVersion !== payload.sessionVersion
     ) {

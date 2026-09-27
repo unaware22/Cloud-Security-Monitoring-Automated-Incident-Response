@@ -16,7 +16,7 @@ setInterval(() => {
       rateLimitStore.delete(key);
     }
   }
-}, 60000);
+}, 60000).unref();
 
 export interface RateLimitConfig {
   actionName: string;
@@ -49,6 +49,12 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
     limit: 120,
     windowMs: 60 * 1000, // 1 minute
     severity: 'low',
+  },
+  ORDER_DETAIL: {
+    actionName: 'order_detail', limit: 30, windowMs: 60 * 1000, severity: 'medium',
+  },
+  VERIFY_PAYMENT: {
+    actionName: 'verify_payment', limit: 12, windowMs: 60 * 1000, severity: 'medium',
   },
   CHECKOUT: {
     actionName: 'checkout',
@@ -151,7 +157,7 @@ export async function checkRateLimit(
           ? 'user_password_reset_abuse'
           : config.actionName === 'apply_voucher'
           ? 'voucher_abuse_attempt'
-          : config.actionName === 'check_order'
+          : config.actionName === 'check_order' || config.actionName === 'order_detail'
           ? 'order_enumeration_attempt'
           : config.actionName === 'checkout'
           ? 'checkout_abuse'

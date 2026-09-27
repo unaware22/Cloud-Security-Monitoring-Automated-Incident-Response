@@ -5,6 +5,10 @@ import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-s
 import { sendDigitalDelivery, sendCustomSkinProcessingEmail } from '@/lib/email';
 import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
+import { z } from 'zod';
+import { getClientIp } from '@/lib/security';
+import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
+import { deliveredContent } from '@/lib/customer-order';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +18,12 @@ export const dynamic = 'force-dynamic';
  * and updates order + dispatches delivery if paid.
  */
 export async function POST(req: NextRequest) {
+  const rate = await checkRateLimit(getClientIp(req.headers), RATE_LIMIT_RULES.VERIFY_PAYMENT, {
+    endpoint: '/api/orders/verify-payment', method: 'POST',
+    userAgent: req.headers.get('user-agent') || 'Unknown',
+    requestId: req.headers.get('x-request-id') || undefined,
+  });
+  if (!rate.allowed) return NextResponse.json({ error: 'Too Many Requests' }, { status: 429 });
   let body: any;
   try {
     body = await req.json();
@@ -21,11 +31,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Bad Request' }, { status: 400 });
   }
 
-  const orderCode = body.order_code;
-  const customerEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-  if (!orderCode || !customerEmail) {
-    return NextResponse.json({ error: 'Missing order_code or email' }, { status: 400 });
-  }
+  const parsed = z.object({
+    order_code: z.string().trim().min(4).max(30),
+    email: z.string().trim().email().max(150),
+  }).safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: 'Bad Request' }, { status: 400 });
+  const orderCode = parsed.data.order_code.toUpperCase();
+  const customerEmail = parsed.data.email.toLowerCase();
 
   const dbOnline = await isDatabaseOnline();
 
@@ -311,20 +323,7 @@ export async function POST(req: NextRequest) {
         }
 
         const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual';
-        let deliveryContent: string | null = null;
-
-        if (isPaid) {
-          const qty = order.orderItems?.[0]?.quantity || 1;
-          const directDelivery = order.digitalDeliveries?.[0]?.deliveryData;
-          if (directDelivery) {
-            const lines = directDelivery.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
-            deliveryContent = lines.length > 0 ? lines.slice(0, qty).join('\n') : directDelivery;
-          } else {
-            const raw = order.orderItems?.[0]?.product?.deliveryContent || '';
-            const lines = raw.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
-            deliveryContent = lines.length > 0 ? lines.slice(0, qty).join('\n') : (raw || null);
-          }
-        }
+        const deliveryContent = deliveredContent(order);
 
         const paymentTx = order.paymentTransactions?.[0];
         let txPayload: any = {};

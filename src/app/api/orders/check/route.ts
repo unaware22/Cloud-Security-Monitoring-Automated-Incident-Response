@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getClientIp, detectSQLi, recordSecurityEvent } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
-import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
+import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
+import { deliveredContent, orderReference } from '@/lib/customer-order';
 import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 
@@ -224,18 +225,7 @@ export async function POST(req: NextRequest) {
         }
 
         const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual';
-        let deliveryContent: string | null = null;
-        if (isPaid) {
-          const qty = order.orderItems[0]?.quantity || 1;
-          const directDelivery = order.digitalDeliveries[0]?.deliveryData;
-          if (directDelivery) {
-            deliveryContent = directDelivery;
-          } else {
-            const raw = order.orderItems[0]?.product?.deliveryContent || '';
-            const lines = raw.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
-            deliveryContent = lines.length > 0 ? lines.slice(0, qty).join('\n') : (raw || 'Akun telah aktif.');
-          }
-        }
+        const deliveryContent = deliveredContent(order);
 
         const mainItem = order.orderItems[0];
         const latestTx = order.paymentTransactions[0];
@@ -290,17 +280,22 @@ export async function POST(req: NextRequest) {
           },
         });
       }
-    } catch {
-      // Fallback below
+    } catch (error) {
+      console.error('Check-order lookup failed:', error);
+      return NextResponse.json({ error: 'Service Unavailable' }, { status: 503 });
     }
   }
 
+  if (!dbOnline && !isInMemoryFallbackEnabled()) {
+    return NextResponse.json({ error: 'Service Unavailable' }, { status: 503 });
+  }
+
   // Instant In-Memory Lookup
-  const found = inMemoryOrders.find((o) => {
+  const found = isInMemoryFallbackEnabled() ? inMemoryOrders.find((o) => {
     const codeMatch = o.orderCode.toUpperCase() === order_code.trim().toUpperCase();
     if (!codeMatch) return false;
     return o.customerEmail.toLowerCase() === email.trim().toLowerCase();
-  });
+  }) : undefined;
 
   if (found) {
     const isPaid = found.paymentStatus === 'paid' || found.paymentStatus === 'paid_manual';
@@ -335,7 +330,7 @@ export async function POST(req: NextRequest) {
           game: item.product?.game,
         })) || [],
         product_name: found.orderItems?.[0]?.productNameSnapshot || found.items?.[0]?.product_name || 'Akun Game Digital',
-        delivery_content: isPaid ? (found.digital_delivery?.content || found.deliveryContent || 'Akun telah aktif. Email: saladin-vip892@mojangmail.com | Pass: SaladinSecure#2026') : null,
+        delivery_content: isPaid ? (found.digital_delivery?.content || found.deliveryContent || null) : null,
         delivery_type: found.deliveryType || 'manual',
         customer_notes: found.customerNotes || found.notes || null,
         custom_skin_details: found.customSkinDetails || null,
@@ -352,7 +347,7 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     endpoint: '/api/orders/check',
     userAgent,
-    payloadSnippet: `order_code=${order_code}, email=${email || ''}`,
+    payloadSnippet: `order_ref=${orderReference(order_code.toUpperCase())}; email=[REDACTED]`,
     statusCode: 404,
     description: 'Failed check-order lookup (mismatched or non-existent code/email)',
     requestId,
