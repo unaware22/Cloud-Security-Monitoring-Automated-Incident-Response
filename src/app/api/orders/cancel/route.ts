@@ -5,6 +5,8 @@ import { getClientIp, detectSQLi, recordSecurityEvent } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { cancelMidtransTransaction, checkMidtransTransactionStatus } from '@/lib/midtrans';
+import { canAccessMemoryOrder, checkoutOrderWhere, orderReference } from '@/lib/customer-order';
+import { getCustomerSession } from '@/lib/user-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,15 +78,13 @@ export async function POST(req: NextRequest) {
 
   const orderCode = parsed.data.order_code.toUpperCase();
   const email = parsed.data.email.toLowerCase();
+  const session = await getCustomerSession(req);
   const dbOnline = await isDatabaseOnline();
   const allowInMemoryFallback = isInMemoryFallbackEnabled();
 
   if (dbOnline) {
     const order = await prisma.order.findFirst({
-      where: {
-        orderCode,
-        customerEmail: { equals: email, mode: 'insensitive' },
-      },
+      where: checkoutOrderWhere(orderCode, email, session),
     });
 
     if (!order) {
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         endpoint: '/api/orders/cancel',
         userAgent,
-        payloadSnippet: `order_code=${orderCode}`,
+        payloadSnippet: `order_ref=${orderReference(orderCode)}`,
         statusCode: 404,
         description: 'Cancellation attempted with mismatched order code and email',
         requestId,
@@ -228,7 +228,8 @@ export async function POST(req: NextRequest) {
     const memoryOrder = inMemoryOrders.find(
       (item) =>
         item.orderCode.toUpperCase() === orderCode &&
-        item.customerEmail.toLowerCase() === email
+        item.customerEmail.toLowerCase() === email &&
+        canAccessMemoryOrder(item, session)
     );
 
     if (!memoryOrder) {

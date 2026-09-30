@@ -12,6 +12,29 @@ export function customerOrderWhere(session: CustomerSessionPayload): Prisma.Orde
   };
 }
 
+/** A checkout email is not proof of ownership for an account-bound order. */
+export function checkoutOrderWhere(
+  orderCode: string,
+  email: string,
+  session: CustomerSessionPayload | null
+): Prisma.OrderWhereInput {
+  return {
+    orderCode,
+    customerEmail: { equals: email, mode: 'insensitive' },
+    ...(session
+      ? { OR: [{ userId: session.userId }, { userId: null }] }
+      : { userId: null }),
+  };
+}
+
+/** Keep the local-development fallback consistent with the database policy. */
+export function canAccessMemoryOrder(
+  order: { userId?: string | null },
+  session: CustomerSessionPayload | null
+): boolean {
+  return !order.userId || order.userId === session?.userId;
+}
+
 /** Customer APIs must never read the product's unallocated credential inventory. */
 export const customerOrderSelect = {
   id: true, orderCode: true, customerName: true, customerEmail: true,

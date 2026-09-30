@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '../src/lib/prisma';
 import { createUserToken, getCustomerSession } from '../src/lib/user-auth';
 import {
-  customerOrderWhere, customerOrderSelect, customerOrderDetail,
+  canAccessMemoryOrder, checkoutOrderWhere, customerOrderWhere, customerOrderSelect, customerOrderDetail,
   deliveredContent, CustomerOrder,
 } from '../src/lib/customer-order';
 import { GET as detailGET } from '../src/app/api/user/orders/[orderCode]/route';
@@ -12,6 +12,7 @@ import { GET as listGET } from '../src/app/api/user/orders/route';
 import { POST as manualPOST } from '../src/app/api/orders/manual-payment/route';
 import { POST as verifyPOST } from '../src/app/api/orders/verify-payment/route';
 import { POST as checkPOST } from '../src/app/api/orders/check/route';
+import { POST as cancelPOST } from '../src/app/api/orders/cancel/route';
 import { resetRateLimit, RATE_LIMIT_RULES } from '../src/lib/rate-limiter';
 import type { CustomerSessionPayload } from '../src/lib/types';
 
@@ -77,6 +78,9 @@ afterEach(() => {
   restoreStubs();
   mock.restoreAll();
   resetRateLimit('192.0.2.41', RATE_LIMIT_RULES.ORDER_DETAIL);
+  resetRateLimit('192.0.2.41', RATE_LIMIT_RULES.CHECK_ORDER);
+  resetRateLimit('192.0.2.41', RATE_LIMIT_RULES.CANCEL_ORDER);
+  resetRateLimit('192.0.2.41', RATE_LIMIT_RULES.VERIFY_PAYMENT);
   resetRateLimit('192.0.2.42', RATE_LIMIT_RULES.VERIFY_PAYMENT);
 });
 
@@ -86,6 +90,19 @@ test('ownership email fallback applies only to guest orders', () => {
     { userId: null, customerEmail: { equals: session.email, mode: 'insensitive' } },
   ] });
   assert.equal('deliveryContent' in customerOrderSelect.orderItems.select.product.select, false);
+});
+
+test('checkout lookups require session ownership for account orders and keep guest orders available', () => {
+  const base = { orderCode: 'ORD-TEST2345', customerEmail: { equals: session.email, mode: 'insensitive' } };
+  assert.deepEqual(checkoutOrderWhere('ORD-TEST2345', session.email, session), {
+    ...base, OR: [{ userId: session.userId }, { userId: null }],
+  });
+  assert.deepEqual(checkoutOrderWhere('ORD-TEST2345', session.email, null), {
+    ...base, userId: null,
+  });
+  assert.equal(canAccessMemoryOrder({ userId: 'user-b' }, session), false);
+  assert.equal(canAccessMemoryOrder({ userId: 'user-b' }, null), false);
+  assert.equal(canAccessMemoryOrder({ userId: null }, null), true);
 });
 
 test('unpaid order never exposes delivery, inventory, payment payload or token', () => {
@@ -240,4 +257,127 @@ test('guest order check and payment verification never substitute unsold product
     assert.equal(body.data.delivery_content, null);
     assert.equal(JSON.stringify(body).includes('UNALLOCATED-INVENTORY-SECRET'), false);
   }
+});
+
+test('foreign account orders are hidden from check, cancel and verify before provider calls', async () => {
+  stubSession();
+  stub(prisma, '$queryRaw', async () => [{ '?column?': 1 }]);
+  const query = stub(prisma.order, 'findFirst', async () => null);
+  stub(prisma.securityEvent, 'create', async () => ({}));
+  const provider = mock.method(globalThis, 'fetch', () => { throw new Error('Must not contact payment provider'); });
+
+  for (const [path, handler] of [
+    ['/api/orders/check', checkPOST],
+    ['/api/orders/cancel', cancelPOST],
+    ['/api/orders/verify-payment', verifyPOST],
+  ] as const) {
+    const req = new NextRequest(`https://shop.example.test${path}`, {
+      method: 'POST', headers: {
+        'Content-Type': 'application/json', 'x-real-ip': '192.0.2.41',
+        Authorization: `Bearer ${await createUserToken(session)}`,
+      },
+      body: JSON.stringify({ order_code: 'ORD-VICTIM01', email: 'victim@example.test' }),
+    });
+    const response = await handler(req);
+    assert.equal(response.status, 404, path);
+    const lookup = query.mock.calls.at(-1)?.arguments[0] as any;
+    assert.deepEqual(lookup.where, checkoutOrderWhere('ORD-VICTIM01', 'victim@example.test', session));
+  }
+  assert.equal(provider.mock.callCount(), 0);
+});
+
+test('logged-out callers cannot use code and email to read or cancel account orders', async () => {
+  stub(prisma, '$queryRaw', async () => [{ '?column?': 1 }]);
+  const query = stub(prisma.order, 'findFirst', async () => null);
+  stub(prisma.securityEvent, 'create', async () => ({}));
+  const provider = mock.method(globalThis, 'fetch', () => { throw new Error('Must not contact payment provider'); });
+
+  for (const [path, handler] of [
+    ['/api/orders/check', checkPOST],
+    ['/api/orders/cancel', cancelPOST],
+    ['/api/orders/verify-payment', verifyPOST],
+  ] as const) {
+    const req = new NextRequest(`https://shop.example.test${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-real-ip': '192.0.2.41' },
+      body: JSON.stringify({ order_code: 'ORD-TEST2345', email: session.email }),
+    });
+    const response = await handler(req);
+    assert.equal(response.status, 404, path);
+    const lookup = query.mock.calls.at(-1)?.arguments[0] as any;
+    assert.deepEqual(lookup.where, checkoutOrderWhere('ORD-TEST2345', session.email, null));
+  }
+  assert.equal(provider.mock.callCount(), 0);
+});
+
+test('owner may still check a paid account order and see only allocated delivery', async () => {
+  stubSession();
+  stub(prisma, '$queryRaw', async () => [{ '?column?': 1 }]);
+  const order = fixture();
+  order.paymentStatus = 'paid';
+  order.deliveryStatus = 'delivered';
+  const query = stub(prisma.order, 'findFirst', async () => order);
+  const req = new NextRequest('https://shop.example.test/api/orders/check', {
+    method: 'POST', headers: {
+      'Content-Type': 'application/json', 'x-real-ip': '192.0.2.41',
+      Authorization: `Bearer ${await createUserToken(session)}`,
+    },
+    body: JSON.stringify({ order_code: order.orderCode, email: order.customerEmail }),
+  });
+  const response = await checkPOST(req);
+  assert.equal(response.status, 200);
+  assert.deepEqual((query.mock.calls[0].arguments[0] as any).where,
+    checkoutOrderWhere(order.orderCode, order.customerEmail, session));
+  const body = await response.json();
+  assert.equal(body.data.delivery_content, 'ALLOCATED-ORDER-A');
+  assert.equal(JSON.stringify(body).includes('UNALLOCATED-INVENTORY-SECRET'), false);
+});
+
+test('owner may verify an already-paid order without reallocating inventory', async () => {
+  stubSession();
+  stub(prisma, '$queryRaw', async () => [{ '?column?': 1 }]);
+  const order = fixture();
+  order.paymentStatus = 'paid';
+  order.deliveryStatus = 'delivered';
+  const query = stub(prisma.order, 'findFirst', async () => order);
+  const update = stub(prisma.order, 'update', () => { throw new Error('Must not reallocate'); });
+  mock.method(globalThis, 'fetch', async () => new Response('{}', { status: 404 }));
+  const req = new NextRequest('https://shop.example.test/api/orders/verify-payment', {
+    method: 'POST', headers: {
+      'Content-Type': 'application/json', 'x-real-ip': '192.0.2.41',
+      Authorization: `Bearer ${await createUserToken(session)}`,
+    },
+    body: JSON.stringify({ order_code: order.orderCode, email: order.customerEmail }),
+  });
+  const response = await verifyPOST(req);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.delivery_content, 'ALLOCATED-ORDER-A');
+  for (const call of query.mock.calls) {
+    assert.deepEqual((call.arguments[0] as any).where,
+      call === query.mock.calls[0]
+        ? checkoutOrderWhere(order.orderCode, order.customerEmail, session)
+        : { id: order.id, ...checkoutOrderWhere(order.orderCode, order.customerEmail, session) });
+  }
+  assert.equal(update.mock.callCount(), 0);
+});
+
+test('owner may read an already-cancelled order through the cancellation endpoint', async () => {
+  stubSession();
+  stub(prisma, '$queryRaw', async () => [{ '?column?': 1 }]);
+  const order = fixture();
+  order.orderStatus = 'cancelled';
+  order.paymentStatus = 'cancelled';
+  const query = stub(prisma.order, 'findFirst', async () => order);
+  const provider = mock.method(globalThis, 'fetch', () => { throw new Error('Must not contact provider'); });
+  const req = new NextRequest('https://shop.example.test/api/orders/cancel', {
+    method: 'POST', headers: {
+      'Content-Type': 'application/json', 'x-real-ip': '192.0.2.41',
+      Authorization: `Bearer ${await createUserToken(session)}`,
+    },
+    body: JSON.stringify({ order_code: order.orderCode, email: order.customerEmail }),
+  });
+  const response = await cancelPOST(req);
+  assert.equal(response.status, 200);
+  assert.deepEqual((query.mock.calls[0].arguments[0] as any).where,
+    checkoutOrderWhere(order.orderCode, order.customerEmail, session));
+  assert.equal(provider.mock.callCount(), 0);
 });

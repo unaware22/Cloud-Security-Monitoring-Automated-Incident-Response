@@ -8,7 +8,8 @@ import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 import { z } from 'zod';
 import { getClientIp } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
-import { deliveredContent } from '@/lib/customer-order';
+import { canAccessMemoryOrder, checkoutOrderWhere, deliveredContent } from '@/lib/customer-order';
+import { getCustomerSession } from '@/lib/user-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'Bad Request' }, { status: 400 });
   const orderCode = parsed.data.order_code.toUpperCase();
   const customerEmail = parsed.data.email.toLowerCase();
+  const session = await getCustomerSession(req);
+  const accessWhere = checkoutOrderWhere(orderCode, customerEmail, session);
 
   const dbOnline = await isDatabaseOnline();
 
@@ -45,13 +48,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Service Unavailable' }, { status: 503 });
   }
 
-  // An order code is not a customer credential. Require the buyer's checkout
-  // email before returning payment or digital-delivery details.
+  // Account orders also require their current owner's session. Guest orders
+  // retain the checkout code + email flow until guest access is strengthened.
   const matchingOrder = await prisma.order.findFirst({
-    where: {
-      orderCode,
-      customerEmail: { equals: customerEmail, mode: 'insensitive' },
-    },
+    where: accessWhere,
   });
 
   if (!matchingOrder) {
@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
     try {
       let snapToken: string | null = null;
       if (dbOnline) {
-        const ord = await prisma.order.findUnique({
-          where: { orderCode },
+        const ord = await prisma.order.findFirst({
+          where: { id: matchingOrder.id, ...accessWhere },
           include: { paymentTransactions: true },
         });
         snapToken = ord?.paymentTransactions?.[0]?.providerInvoiceId || null;
@@ -102,8 +102,8 @@ export async function POST(req: NextRequest) {
 
     if (dbOnline) {
       try {
-        const order = await prisma.order.findUnique({
-          where: { orderCode },
+        const order = await prisma.order.findFirst({
+          where: { id: matchingOrder.id, ...accessWhere },
           include: {
             orderItems: { include: { product: true } },
             paymentTransactions: true,
@@ -238,7 +238,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Also update in-memory order
-    const memOrder = inMemoryOrders.find((o) => o.orderCode === orderCode);
+    const memOrder = inMemoryOrders.find((o) => o.orderCode === orderCode &&
+      o.customerEmail.toLowerCase() === customerEmail && canAccessMemoryOrder(o, session));
     if (memOrder && memOrder.paymentStatus !== 'paid') {
       const isManual =
         memOrder.deliveryType === 'manual' ||
@@ -300,8 +301,8 @@ export async function POST(req: NextRequest) {
   // Re-fetch to get latest data
   if (dbOnline) {
     try {
-      const order = await prisma.order.findUnique({
-        where: { orderCode },
+      const order = await prisma.order.findFirst({
+        where: { id: matchingOrder.id, ...accessWhere },
         include: {
           orderItems: { include: { product: true } },
           paymentTransactions: true,
@@ -363,7 +364,8 @@ export async function POST(req: NextRequest) {
   }
 
   // In-memory fallback
-  const memOrder = inMemoryOrders.find((o) => o.orderCode === orderCode);
+  const memOrder = inMemoryOrders.find((o) => o.orderCode === orderCode &&
+    o.customerEmail.toLowerCase() === customerEmail && canAccessMemoryOrder(o, session));
   if (memOrder) {
     const isPaid = memOrder.paymentStatus === 'paid' || memOrder.paymentStatus === 'paid_manual';
     const qty = memOrder.quantity || memOrder.orderItems?.[0]?.quantity || 1;

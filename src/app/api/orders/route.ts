@@ -465,6 +465,7 @@ export async function POST(req: NextRequest) {
   const memoryOrderRecord = {
     id: `ord-${Date.now()}`,
     orderCode,
+    userId: customerSession?.userId || null,
     customerName: customer_name,
     customerEmail: customer_email,
     customerPhone: customer_phone,

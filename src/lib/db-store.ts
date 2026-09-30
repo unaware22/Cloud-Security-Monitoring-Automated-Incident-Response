@@ -5,6 +5,7 @@ import { fallbackStore, FallbackProduct } from '@/lib/products-store';
 export interface MemoryOrder {
   id: string;
   orderCode: string;
+  userId?: string | null;
   customerName: string;
   customerEmail: string;
   customerPhone: string;

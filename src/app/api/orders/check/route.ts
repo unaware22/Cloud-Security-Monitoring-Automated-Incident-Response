@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { getClientIp, detectSQLi, recordSecurityEvent } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
-import { deliveredContent, orderReference } from '@/lib/customer-order';
+import { canAccessMemoryOrder, checkoutOrderWhere, deliveredContent, orderReference } from '@/lib/customer-order';
+import { getCustomerSession } from '@/lib/user-auth';
 import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 
@@ -83,20 +84,13 @@ export async function POST(req: NextRequest) {
   }
 
   const { order_code, email } = parseResult.data;
+  const session = await getCustomerSession(req);
   const dbOnline = await isDatabaseOnline();
 
   if (dbOnline) {
     try {
-      const whereClause: any = {
-        orderCode: order_code.trim().toUpperCase(),
-      };
-      whereClause.customerEmail = {
-        equals: email.trim(),
-        mode: 'insensitive',
-      };
-
       const order = await prisma.order.findFirst({
-        where: whereClause,
+        where: checkoutOrderWhere(order_code.trim().toUpperCase(), email.trim(), session),
         include: {
           orderItems: {
             include: {
@@ -294,7 +288,8 @@ export async function POST(req: NextRequest) {
   const found = isInMemoryFallbackEnabled() ? inMemoryOrders.find((o) => {
     const codeMatch = o.orderCode.toUpperCase() === order_code.trim().toUpperCase();
     if (!codeMatch) return false;
-    return o.customerEmail.toLowerCase() === email.trim().toLowerCase();
+    return o.customerEmail.toLowerCase() === email.trim().toLowerCase() &&
+      canAccessMemoryOrder(o, session);
   }) : undefined;
 
   if (found) {
