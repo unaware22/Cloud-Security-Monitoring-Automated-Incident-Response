@@ -9,6 +9,33 @@ export type IpControlStatus =
   | 'rejected'
   | 'failed';
 
+export type IpControlBlockMode = 'temporary' | 'permanent';
+
+type IpControlLifecycleInput = {
+  blockMode?: IpControlBlockMode | null;
+  timeoutSeconds?: number | null;
+  expiresAt?: Date | null;
+};
+
+// A release is a separate event, not a new permanent block. Always clear
+// lifecycle metadata even if an upstream workflow sends a stale block mode.
+export function getIpControlLifecycleData(
+  action: IpControlActionName,
+  input: IpControlLifecycleInput
+): IpControlLifecycleInput {
+  if (action === 'unblock') {
+    return { blockMode: null, timeoutSeconds: null, expiresAt: null };
+  }
+
+  return {
+    ...(input.blockMode !== undefined ? { blockMode: input.blockMode } : {}),
+    ...(input.timeoutSeconds !== undefined
+      ? { timeoutSeconds: input.timeoutSeconds }
+      : {}),
+    ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
+  };
+}
+
 export function isPublicIpv4(value: string): boolean {
   if (net.isIP(value) !== 4) return false;
 

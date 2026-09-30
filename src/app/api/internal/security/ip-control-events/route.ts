@@ -3,11 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   buildIpControlExternalId,
+  getIpControlLifecycleData,
   isPublicIpv4,
 } from '@/lib/ip-control';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
+
+// n8n String fields may serialize an empty expression result as "".
+// Treat that as missing lifecycle metadata, especially for unblock events.
+const emptyStringAsNull = (value: unknown) =>
+  typeof value === 'string' && value.trim() === '' ? null : value;
 
 const EventSchema = z.object({
   action: z.string().trim().pipe(z.enum(['block', 'unblock'])),
@@ -29,14 +35,23 @@ const EventSchema = z.object({
   reason: z.string().trim().max(240).optional(),
   rule_id: z.string().trim().max(32).optional(),
   detail: z.string().trim().max(1500).optional(),
-  block_mode: z
-    .union([
-      z.string().trim().pipe(z.enum(['temporary', 'permanent'])),
-      z.null(),
-    ])
-    .optional(),
-  timeout_seconds: z.coerce.number().int().positive().max(604800).nullable().optional(),
-  expires_at: z.string().datetime().nullable().optional(),
+  block_mode: z.preprocess(
+    emptyStringAsNull,
+    z
+      .union([
+        z.string().trim().pipe(z.enum(['temporary', 'permanent'])),
+        z.null(),
+      ])
+      .optional()
+  ),
+  timeout_seconds: z.preprocess(
+    emptyStringAsNull,
+    z.coerce.number().int().positive().max(604800).nullable().optional()
+  ),
+  expires_at: z.preprocess(
+    emptyStringAsNull,
+    z.string().datetime().nullable().optional()
+  ),
 });
 
 function isAuthorized(req: NextRequest): boolean {
@@ -90,6 +105,14 @@ export async function POST(req: NextRequest) {
   const completedAt = ['blocked', 'unblocked', 'rejected', 'failed'].includes(status)
     ? new Date()
     : null;
+  const lifecycle = getIpControlLifecycleData(event.action, {
+    blockMode: event.block_mode,
+    timeoutSeconds: event.timeout_seconds,
+    expiresAt:
+      event.expires_at === undefined || event.expires_at === null
+        ? event.expires_at
+        : new Date(event.expires_at),
+  });
 
   try {
     const action = await prisma.ipControlAction.upsert({
@@ -105,9 +128,7 @@ export async function POST(req: NextRequest) {
         ruleId: event.rule_id,
         detail: event.detail,
         completedAt,
-        blockMode: event.block_mode ?? null,
-        timeoutSeconds: event.timeout_seconds ?? null,
-        expiresAt: event.expires_at ? new Date(event.expires_at) : null,
+        ...lifecycle,
       },
       update: {
         status,
@@ -117,13 +138,7 @@ export async function POST(req: NextRequest) {
         ruleId: event.rule_id,
         detail: event.detail,
         completedAt,
-        ...(event.block_mode !== undefined ? { blockMode: event.block_mode } : {}),
-        ...(event.timeout_seconds !== undefined
-          ? { timeoutSeconds: event.timeout_seconds }
-          : {}),
-        ...(event.expires_at !== undefined
-          ? { expiresAt: event.expires_at ? new Date(event.expires_at) : null }
-          : {}),
+        ...lifecycle,
       },
     });
 

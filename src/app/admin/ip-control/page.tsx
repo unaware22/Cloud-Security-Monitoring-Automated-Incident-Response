@@ -269,7 +269,7 @@ export default function AdminIpControlPage() {
                   <tr key={item.id}>
                     <td className="py-3.5 font-mono font-bold text-rose-300">{item.ipAddress}</td>
                     <td className="py-3.5">
-                      <BlockModeBadge mode={item.blockMode} />
+                      <BlockModeBadge mode={item.blockMode} action={item.action} />
                     </td>
                     <td className="py-3.5 min-w-44">
                       <ExpiryLabel item={item} now={now} />
@@ -331,7 +331,7 @@ export default function AdminIpControlPage() {
                   </td>
                   <td className="py-3 font-mono text-blue-300">{item.ipAddress}</td>
                   <td className="py-3">
-                    <BlockModeBadge mode={item.blockMode} />
+                    <BlockModeBadge mode={item.blockMode} action={item.action} />
                   </td>
                   <td className="py-3 min-w-44">
                     <ExpiryLabel item={item} now={now} compact />
@@ -396,7 +396,17 @@ function StatusLabel({ status, action }: { status: IpControlAction['status']; ac
   );
 }
 
-function BlockModeBadge({ mode }: { mode: IpControlAction['blockMode'] }) {
+function BlockModeBadge({
+  mode,
+  action,
+}: {
+  mode: IpControlAction['blockMode'];
+  action: IpControlAction['action'];
+}) {
+  if (action === 'unblock') {
+    return <span className="text-neutral-500">—</span>;
+  }
+
   const label = mode === 'temporary' ? 'Sementara' : mode === 'permanent' ? 'Permanen' : 'Legacy';
   const style =
     mode === 'temporary'
