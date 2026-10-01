@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCustomerSession } from '@/lib/user-auth';
-import { customerOrderWhere, customerOrderSelect, deliveredContent } from '@/lib/customer-order';
+import { customerOrderWhere, customerOrderSummarySelect } from '@/lib/customer-order';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const requestStartedAt = performance.now();
   const session = await getCustomerSession(req);
+  const authDuration = performance.now() - requestStartedAt;
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized', message: 'Silakan login terlebih dahulu untuk melihat riwayat pesanan.' },
@@ -15,29 +17,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const queryStartedAt = performance.now();
     const orders = await prisma.order.findMany({
       where: customerOrderWhere(session),
       orderBy: { createdAt: 'desc' },
-      select: customerOrderSelect,
+      select: customerOrderSummarySelect,
     });
+    const queryDuration = performance.now() - queryStartedAt;
+    const formatStartedAt = performance.now();
 
     const formattedOrders = orders.map((order) => {
-      let paymentStatus = order.paymentStatus;
-      let orderStatus = order.orderStatus;
-
-      // Auto-cancel if unpaid after 15 minutes (expiredAt)
-      if (paymentStatus === 'pending' && order.expiredAt && new Date() > order.expiredAt) {
-        paymentStatus = 'expired';
-        orderStatus = 'cancelled';
-        prisma.order
-          .updateMany({
-            where: { id: order.id, paymentStatus: 'pending', paidAt: null },
-            data: { paymentStatus: 'expired', orderStatus: 'cancelled' },
-          })
-          .catch(() => {});
-      }
-
-      const isPaid = ['paid', 'paid_manual', 'settlement', 'capture'].includes(paymentStatus);
+      // Only the expiry worker may change payment state after checking Midtrans.
+      const isPaid = ['paid', 'paid_manual', 'settlement', 'capture'].includes(order.paymentStatus);
 
       // Map individual items with their snapshots and product relations
       const items = order.orderItems.map((item) => {
@@ -78,33 +69,9 @@ export async function GET(req: NextRequest) {
         : 'Produk Digital';
       const primaryProductImage = primaryItem?.imageUrl || '/images/products/default.png';
 
-      // Digital delivery content
-      const deliveryContent = deliveredContent({ ...order, paymentStatus });
-
-      // Check payment transaction payload for custom skin details or customer notes
-      let customSkinDetails: any = null;
-      let customerNotes: string | null = null;
       const latestTx = order.paymentTransactions[0];
-      let snapToken: string | null = latestTx?.providerInvoiceId || null;
-      let paymentUrl: string | null = latestTx?.paymentUrl || null;
-
-      if (latestTx?.rawPayload) {
-        try {
-          const parsedPayload = JSON.parse(latestTx.rawPayload);
-          if (!snapToken) {
-            snapToken = parsedPayload.token || parsedPayload.snap_token || parsedPayload.snapToken || null;
-          }
-          if (!paymentUrl) {
-            paymentUrl = parsedPayload.redirect_url || parsedPayload.payment_url || null;
-          }
-          if (parsedPayload.custom_skin_details) {
-            customSkinDetails = parsedPayload.custom_skin_details;
-          }
-          if (parsedPayload.customer_notes) {
-            customerNotes = parsedPayload.customer_notes;
-          }
-        } catch {}
-      }
+      const snapToken = order.paymentStatus === 'pending' ? latestTx?.providerInvoiceId || null : null;
+      const paymentUrl = order.paymentStatus === 'pending' ? latestTx?.paymentUrl || null : null;
 
       return {
         id: order.id,
@@ -119,8 +86,8 @@ export async function GET(req: NextRequest) {
         discountAmount,
         adminFee,
         voucherCode: order.voucherCode,
-        orderStatus,
-        paymentStatus,
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
         deliveryStatus: order.deliveryStatus,
         paymentMethod: order.paymentMethod,
         createdAt: order.createdAt,
@@ -130,20 +97,22 @@ export async function GET(req: NextRequest) {
         productName: primaryProductName,
         productImage: primaryProductImage,
         productSlug: primaryItem?.slug || '',
-        deliveryContent,
-        rawDelivery: deliveryContent,
         isPaid,
-        customSkinDetails,
-        customerNotes,
         snapToken,
         paymentUrl,
       };
     });
+    const formatDuration = performance.now() - formatStartedAt;
 
     return NextResponse.json({
       success: true,
       data: formattedOrders,
-    }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }, {
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'Server-Timing': `auth;dur=${authDuration.toFixed(1)}, db;dur=${queryDuration.toFixed(1)}, format;dur=${formatDuration.toFixed(1)}`,
+      },
+    });
   } catch (error) {
     console.error('Error fetching user orders:', error);
     return NextResponse.json(

@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '../src/lib/prisma';
 import { createUserToken, getCustomerSession } from '../src/lib/user-auth';
 import {
-  canAccessMemoryOrder, checkoutOrderWhere, customerOrderWhere, customerOrderSelect, customerOrderDetail,
+  canAccessMemoryOrder, checkoutOrderWhere, customerOrderWhere, customerOrderSelect, customerOrderSummarySelect, customerOrderDetail,
   deliveredContent, CustomerOrder,
 } from '../src/lib/customer-order';
 import { GET as detailGET } from '../src/app/api/user/orders/[orderCode]/route';
@@ -186,15 +186,40 @@ test('foreign and unknown orders return the same 404 and a redacted BOLA event',
   }
 });
 
-test('history has the same owner scope and hides prepayment delivery content', async () => {
+test('history uses a lean owner-scoped query and never returns delivery or payment payloads', async () => {
   stubSession();
   const query = stub(prisma.order, 'findMany', async () => [fixture()]);
   const response = await listGET(await request('/api/user/orders'));
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'private, no-store');
+  assert.match(response.headers.get('server-timing') || '', /auth;dur=.*db;dur=.*format;dur=/);
   assert.deepEqual((query.mock.calls[0].arguments[0] as any).where, customerOrderWhere(session));
+  assert.deepEqual((query.mock.calls[0].arguments[0] as any).select, customerOrderSummarySelect);
+  assert.equal('digitalDeliveries' in customerOrderSummarySelect, false);
+  assert.equal('rawPayload' in customerOrderSummarySelect.paymentTransactions.select, false);
   const body = await response.json();
-  assert.equal(body.data[0].deliveryContent, null);
-  assert.equal(body.data[0].rawDelivery, null);
+  assert.equal('deliveryContent' in body.data[0], false);
+  assert.equal('rawDelivery' in body.data[0], false);
+  assert.equal(JSON.stringify(body).includes('DO-NOT-RETURN'), false);
+  assert.equal(JSON.stringify(body).includes('ALLOCATED-ORDER-A'), false);
+});
+
+test('paid order history still omits credentials; an expired order read does not mutate payment state', async () => {
+  stubSession();
+  const paid = fixture();
+  paid.paymentStatus = 'paid';
+  paid.deliveryStatus = 'delivered';
+  const expired = fixture();
+  expired.orderCode = 'ORD-EXPIRED';
+  expired.expiredAt = new Date(Date.now() - 60_000);
+  stub(prisma.order, 'findMany', async () => [paid, expired]);
+  const update = stub(prisma.order, 'updateMany', () => { throw new Error('History GET must not update orders'); });
+  const response = await listGET(await request('/api/user/orders'));
+  assert.equal(response.status, 200);
+  assert.equal(update.mock.callCount(), 0);
+  const body = await response.json();
+  assert.equal(body.data.length, 2);
+  assert.equal(JSON.stringify(body).includes('ALLOCATED-ORDER-A'), false);
   assert.equal(JSON.stringify(body).includes('DO-NOT-RETURN'), false);
 });
 

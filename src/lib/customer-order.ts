@@ -35,8 +35,8 @@ export function canAccessMemoryOrder(
   return !order.userId || order.userId === session?.userId;
 }
 
-/** Customer APIs must never read the product's unallocated credential inventory. */
-export const customerOrderSelect = {
+/** Shared, allowlisted fields. Never select unallocated product credentials. */
+const customerOrderBaseSelect = {
   id: true, orderCode: true, customerName: true, customerEmail: true,
   customerPhone: true, totalAmount: true, discountAmount: true, voucherCode: true,
   orderStatus: true, paymentStatus: true, deliveryStatus: true, paymentMethod: true,
@@ -53,6 +53,20 @@ export const customerOrderSelect = {
       },
     },
   },
+} as const;
+
+/** The history view needs payment continuation, but not delivery secrets or raw payloads. */
+export const customerOrderSummarySelect = {
+  ...customerOrderBaseSelect,
+  paymentTransactions: {
+    select: { paymentUrl: true, providerInvoiceId: true },
+    orderBy: { createdAt: 'desc' }, take: 1,
+  },
+} satisfies Prisma.OrderSelect;
+
+/** Full delivery data is fetched only when the owner opens one order. */
+export const customerOrderSelect = {
+  ...customerOrderBaseSelect,
   digitalDeliveries: {
     select: { deliveryStatus: true, deliveredAt: true, deliveryData: true },
     orderBy: { createdAt: 'desc' }, take: 1,

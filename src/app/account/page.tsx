@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import Script from 'next/script';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -110,7 +110,11 @@ function AccountContent() {
   // Orders State
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
+  const [loadingOrderDetail, setLoadingOrderDetail] = useState(false);
+  const [orderDetailError, setOrderDetailError] = useState('');
+  const orderDetailRequestId = useRef(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(true);
 
@@ -163,29 +167,80 @@ function AccountContent() {
 
   const fetchOrders = async (silent = false) => {
     if (!silent) setLoadingOrders(true);
+    if (!silent) setOrdersError('');
     try {
-      const res = await fetch('/api/user/orders');
+      const res = await fetch('/api/user/orders', { cache: 'no-store' });
       const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setOrders(json.data);
-        setSelectedOrder((current) => {
-          if (!current) return null;
-          const updated = json.data.find((o: OrderRecord) => o.orderCode === current.orderCode);
-          return updated || current;
-        });
-      }
+      if (!res.ok || !json.success || !Array.isArray(json.data)) throw new Error('Invalid order response');
+      setOrders(json.data);
+      setSelectedOrder((current) => {
+        if (!current) return null;
+        const updated = json.data.find((o: OrderRecord) => o.orderCode === current.orderCode);
+        if (!updated) return current;
+        const mayShowDelivery = ['paid', 'paid_manual'].includes(updated.paymentStatus) &&
+          ['delivered', 'resent'].includes(updated.deliveryStatus);
+        return {
+          ...updated,
+          deliveryContent: mayShowDelivery ? current.deliveryContent : null,
+          rawDelivery: mayShowDelivery ? current.rawDelivery : null,
+        };
+      });
     } catch {
+      if (!silent) setOrdersError('Riwayat pesanan belum dapat dimuat. Silakan coba lagi.');
     } finally {
       if (!silent) setLoadingOrders(false);
     }
   };
 
-  // Load orders when on 'orders' tab
+  // Start the private order request in parallel with profile loading.
   useEffect(() => {
-    if (activeTab === 'orders' && profile) {
+    if (activeTab === 'orders') {
       fetchOrders();
     }
-  }, [activeTab, profile]);
+  }, [activeTab]);
+
+  const openOrderDetail = async (order: OrderRecord) => {
+    const requestId = ++orderDetailRequestId.current;
+    setSelectedOrder(order);
+    setOrderDetailError('');
+    setLoadingOrderDetail(false);
+
+    if (!['paid', 'paid_manual', 'settlement', 'capture'].includes(order.paymentStatus)) return;
+
+    setLoadingOrderDetail(true);
+    try {
+      const res = await fetch(`/api/user/orders/${encodeURIComponent(order.orderCode)}`, { cache: 'no-store' });
+      const json = await res.json();
+      const detail = json?.data;
+      if (!res.ok || !json?.success || detail?.orderCode !== order.orderCode) {
+        throw new Error('Invalid order detail response');
+      }
+      if (orderDetailRequestId.current !== requestId) return;
+
+      const deliveryContent = detail.digitalDeliveries?.[0]?.deliveryData || null;
+      setSelectedOrder((current) => current?.orderCode === order.orderCode ? {
+        ...current,
+        paymentStatus: detail.paymentStatus,
+        deliveryStatus: detail.deliveryStatus,
+        orderStatus: detail.orderStatus,
+        deliveryContent,
+        rawDelivery: deliveryContent,
+      } : current);
+    } catch {
+      if (orderDetailRequestId.current === requestId) {
+        setOrderDetailError('Detail pengiriman belum dapat dimuat. Silakan coba lagi.');
+      }
+    } finally {
+      if (orderDetailRequestId.current === requestId) setLoadingOrderDetail(false);
+    }
+  };
+
+  const closeOrderDetail = () => {
+    orderDetailRequestId.current += 1;
+    setSelectedOrder(null);
+    setLoadingOrderDetail(false);
+    setOrderDetailError('');
+  };
 
   const handlePayOrder = (order: OrderRecord) => {
     const snapToken = order.snapToken;
@@ -742,6 +797,14 @@ function AccountContent() {
                 <Loader2 className="w-8 h-8 animate-spin text-[#367723] mx-auto mb-2" />
                 <p className="text-xs">Memuat daftar pesanan Anda...</p>
               </div>
+            ) : ordersError ? (
+              <div role="alert" className="p-8 text-center bg-[#181818] border border-red-800 space-y-3">
+                <p className="text-sm text-red-300">{ordersError}</p>
+                <button type="button" onClick={() => void fetchOrders()}
+                  className="px-4 py-2 bg-[#367723] hover:bg-[#418e2a] text-white text-xs font-bold uppercase">
+                  Coba lagi
+                </button>
+              </div>
             ) : orders.length === 0 ? (
               <div className="p-12 text-center bg-[#181818] border border-neutral-800 space-y-3">
                 <ShoppingBag className="w-12 h-12 text-neutral-600 mx-auto" />
@@ -938,7 +1001,7 @@ function AccountContent() {
                           </div>
 
                           <button
-                            onClick={() => setSelectedOrder(order)}
+                            onClick={() => void openOrderDetail(order)}
                             className="px-4 py-2 bg-[#222222] hover:bg-[#2c2c2c] text-white text-xs font-bold uppercase tracking-wider border border-neutral-700 flex items-center gap-1.5 transition-colors"
                           >
                             <Eye className="w-3.5 h-3.5 text-sky-400" />
@@ -1210,7 +1273,7 @@ function AccountContent() {
                     </h3>
                   </div>
                   <button
-                    onClick={() => setSelectedOrder(null)}
+                    onClick={closeOrderDetail}
                     className="p-2 text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 transition-colors"
                     title="Tutup"
                   >
@@ -1306,6 +1369,21 @@ function AccountContent() {
                     ))}
                   </div>
                 </div>
+
+                {loadingOrderDetail && (
+                  <div role="status" className="flex items-center gap-2 p-4 bg-[#09172e] border border-cyan-700 text-cyan-200 text-xs">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Memuat detail pengiriman...
+                  </div>
+                )}
+                {orderDetailError && (
+                  <div role="alert" className="p-4 bg-red-950/40 border border-red-800 text-red-200 text-xs space-y-2">
+                    <p>{orderDetailError}</p>
+                    <button type="button" onClick={() => void openOrderDetail(selectedOrder)}
+                      className="px-3 py-1.5 bg-red-800 hover:bg-red-700 text-white font-bold uppercase">
+                      Coba lagi
+                    </button>
+                  </div>
+                )}
 
                 {/* Digital Delivery / Credentials (if paid or delivered) */}
                 {(isOrderPaid || selectedOrder.deliveryStatus === 'delivered') && deliveryText && (
@@ -1604,7 +1682,7 @@ function AccountContent() {
                     <span>Buka Halaman Bukti Transaksi</span>
                   </Link>
                   <button
-                    onClick={() => setSelectedOrder(null)}
+                    onClick={closeOrderDetail}
                     className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs uppercase transition-colors"
                   >
                     Tutup
