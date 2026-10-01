@@ -114,6 +114,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [checkoutAlert, setCheckoutAlert] = useState<{ title: string; message: string } | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
 
@@ -328,6 +329,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const handleFormValidation = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setCheckoutAlert(null);
 
     if (!product) return;
 
@@ -370,6 +372,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
     setSubmitting(true);
     setErrorMessage('');
+    setCheckoutAlert(null);
 
     try {
       const res = await fetch('/api/orders', {
@@ -400,10 +403,20 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
         }),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setErrorMessage(json.message || 'Gagal memproses pesanan');
+        const message = typeof json?.message === 'string'
+          ? json.message
+          : 'Gagal memproses pesanan. Silakan coba lagi.';
+        setCheckoutAlert({
+          title: json?.code === 'ACTIVE_PENDING_LIMIT'
+            ? 'BATAS PESANAN MENUNGGU PEMBAYARAN TERCAPAI'
+            : res.status === 429
+              ? 'TERLALU BANYAK PERMINTAAN'
+              : 'PESANAN BELUM DAPAT DIBUAT',
+          message,
+        });
         resetTurnstile();
         setSubmitting(false);
         return;
@@ -420,7 +433,10 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
       }
       window.location.assign(`/order/success/${encodeURIComponent(orderData.order_code)}`);
     } catch {
-      setErrorMessage('Terjadi kesalahan jaringan saat checkout.');
+      setCheckoutAlert({
+        title: 'KONEKSI TERGANGGU',
+        message: 'Terjadi kesalahan jaringan saat checkout. Silakan coba lagi.',
+      });
       resetTurnstile();
       setSubmitting(false);
     }
@@ -1099,7 +1115,11 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
                   resetKey={turnstileResetKey}
                   onVerify={(token) => {
                     setTurnstileToken(token);
-                    setErrorMessage('');
+                    setErrorMessage((current) =>
+                      current.startsWith('Verifikasi CAPTCHA') || current.startsWith('CAPTCHA')
+                        ? ''
+                        : current
+                    );
                   }}
                   onExpire={() => {
                     setTurnstileToken('');
@@ -1144,6 +1164,37 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
         </form>
       </div>
+
+      {checkoutAlert && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="fixed inset-x-4 top-4 z-[70] mx-auto max-w-lg border-2 border-amber-500 bg-[#241a06] p-4 text-amber-100 shadow-2xl sm:top-6 sm:p-5"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-6 w-6 flex-shrink-0 text-amber-400" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <p className="text-sm font-black uppercase tracking-wide text-amber-300">
+                {checkoutAlert.title}
+              </p>
+              <p className="text-xs leading-relaxed sm:text-sm">{checkoutAlert.message}</p>
+              {currentUser && (
+                <Link href="/account" className="inline-block text-xs font-bold underline underline-offset-2 hover:text-white">
+                  Lihat pesanan saya
+                </Link>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCheckoutAlert(null)}
+              aria-label="Tutup peringatan checkout"
+              className="flex-shrink-0 p-1 text-amber-200 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ================= CONFIRMATION DIALOG/MODAL ================= */}
       {showConfirmation && product && (

@@ -369,6 +369,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: 'Too Many Requests',
+        code: 'ACTIVE_PENDING_LIMIT',
         message: 'Terlalu banyak pesanan yang menunggu pembayaran. Selesaikan pembayaran atau tunggu pesanan sebelumnya kedaluwarsa.',
       },
       { status: 429 }
