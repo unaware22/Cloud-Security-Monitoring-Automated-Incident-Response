@@ -48,6 +48,7 @@ model Order {
   deliveryStatus           String                    @default("pending") @map("delivery_status") // pending, processing, delivered, failed, cancelled, resent
   paymentMethod            String                    @map("payment_method") // Midtrans payment channel selected at checkout
   userId                   String?                   @map("user_id")
+  checkoutIpAddress        String?                   @map("checkout_ip_address")
   voucherCode              String?                   @map("voucher_code")
   discountAmount           Int                       @default(0) @map("discount_amount")
   expiredAt                DateTime?                 @map("expired_at")
@@ -65,6 +66,7 @@ model Order {
   @@index([paymentStatus])
   @@index([deliveryStatus])
   @@index([userId])
+  @@index([checkoutIpAddress, paymentStatus, expiredAt])
   @@map("orders")
 }
 

@@ -15,6 +15,7 @@ import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/l
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 import { getCustomerSession } from '@/lib/user-auth';
 import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
+import { findPendingCheckoutLimit } from '@/lib/checkout-abuse';
 
 export const dynamic = 'force-dynamic';
 
@@ -314,6 +315,66 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Reject excessive outstanding checkouts before asking Midtrans to create
+  // another transaction. Guests are limited by IP; signed-in customers also
+  // have an account limit so changing networks does not reset their quota.
+  let pendingLimit: Awaited<ReturnType<typeof findPendingCheckoutLimit>>;
+  try {
+    pendingLimit = await findPendingCheckoutLimit(
+      { userId: customerSession?.userId || null, ipAddress: ip },
+      async (scope, identifier, now) => {
+        if (dbOnline) {
+          return prisma.order.count({
+            where: {
+              paymentStatus: 'pending',
+              paidAt: null,
+              expiredAt: { gt: now },
+              ...(scope === 'account'
+                ? { userId: identifier }
+                : { checkoutIpAddress: identifier }),
+            },
+          });
+        }
+
+        return inMemoryOrders.filter((order) =>
+          order.paymentStatus === 'pending' &&
+          new Date(order.expiredAt) > now &&
+          (scope === 'account'
+            ? order.userId === identifier
+            : order.checkoutIpAddress === identifier)
+        ).length;
+      }
+    );
+  } catch (error) {
+    console.error('[Checkout] Pending-order check failed:', error);
+    return NextResponse.json(
+      { error: 'Service Unavailable', message: 'Checkout belum dapat diproses. Silakan coba kembali.' },
+      { status: 503 }
+    );
+  }
+
+  if (pendingLimit) {
+    await recordSecurityEvent({
+      eventType: 'checkout_abuse',
+      severity: 'medium',
+      ipAddress: ip,
+      method: 'POST',
+      endpoint: '/api/orders',
+      userAgent,
+      payloadSnippet: `active_pending_limit=${pendingLimit.scope}; limit=${pendingLimit.limit}`,
+      statusCode: 429,
+      description: 'Checkout rejected because the active pending-order limit was reached',
+      requestId,
+    });
+    return NextResponse.json(
+      {
+        error: 'Too Many Requests',
+        message: 'Terlalu banyak pesanan yang menunggu pembayaran. Selesaikan pembayaran atau tunggu pesanan sebelumnya kedaluwarsa.',
+      },
+      { status: 429 }
+    );
+  }
+
   const discountedProductSubtotal = Math.max(0, productSubtotal - discountAmount);
   const feeData = calculatePaymentFee(discountedProductSubtotal);
   const totalAmount = feeData.totalWithFee;
@@ -368,6 +429,7 @@ export async function POST(req: NextRequest) {
             customerPhone: customer_phone,
             totalAmount,
             userId: customerSession?.userId || null,
+            checkoutIpAddress: ip,
             voucherCode: appliedVoucher?.code || null,
             discountAmount,
             orderStatus: 'waiting_payment',
@@ -467,6 +529,7 @@ export async function POST(req: NextRequest) {
     id: `ord-${Date.now()}`,
     orderCode,
     userId: customerSession?.userId || null,
+    checkoutIpAddress: ip,
     customerName: customer_name,
     customerEmail: customer_email,
     customerPhone: customer_phone,

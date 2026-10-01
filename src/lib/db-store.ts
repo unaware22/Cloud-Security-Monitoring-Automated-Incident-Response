@@ -6,6 +6,7 @@ export interface MemoryOrder {
   id: string;
   orderCode: string;
   userId?: string | null;
+  checkoutIpAddress?: string | null;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
