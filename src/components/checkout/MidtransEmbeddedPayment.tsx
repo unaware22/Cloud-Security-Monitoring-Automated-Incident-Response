@@ -53,14 +53,14 @@ export default function MidtransEmbeddedPayment({
   }, [sdkReady, token]);
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-emerald-500/20 bg-[#171b19] shadow-2xl shadow-black/30">
-      <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4 sm:px-7">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300">
+    <div className="overflow-hidden border border-neutral-700 bg-[#181818]">
+      <div className="flex items-center gap-3 border-b border-neutral-700 px-5 py-4 sm:px-7">
+        <div className="flex h-10 w-10 items-center justify-center border border-[#367723] bg-[#262423] text-[#69c944]">
           <ShieldCheck className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-sm font-bold text-white sm:text-base">Selesaikan pembayaran</h2>
-          <p className="text-xs text-neutral-400">QRIS atau nomor VA resmi ditampilkan oleh Midtrans di bawah ini.</p>
+          <h2 className="minecraft-font-folder text-base text-white sm:text-lg">Selesaikan pembayaran</h2>
+          <p className="font-config-text text-xs text-neutral-300 sm:text-sm">QRIS atau nomor VA resmi ditampilkan oleh Midtrans di bawah ini.</p>
         </div>
       </div>
 
@@ -81,7 +81,7 @@ export default function MidtransEmbeddedPayment({
           </div>
         )}
         {token && clientKey && (
-          <div id={EMBED_ID} className="min-h-[520px] w-full overflow-hidden rounded-2xl bg-white sm:min-h-[600px] [&_iframe]:!w-full" />
+          <div id={EMBED_ID} className="min-h-[520px] w-full overflow-hidden border border-neutral-600 bg-white sm:min-h-[600px] [&_iframe]:!w-full" />
         )}
         {(sdkError || !token || !clientKey) && (
           <p className="mt-3 text-center text-xs text-amber-300">
@@ -93,7 +93,7 @@ export default function MidtransEmbeddedPayment({
             href={paymentUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-xs font-semibold text-neutral-200 transition-colors hover:bg-white/5"
+            className="mt-4 flex items-center justify-center gap-2 border border-neutral-600 px-4 py-3 text-xs font-bold uppercase tracking-wider text-neutral-200 transition-colors hover:border-[#69c944] hover:bg-[#262423]"
           >
             Buka pembayaran di Midtrans <ExternalLink className="h-4 w-4" />
           </a>

@@ -12,7 +12,6 @@ import {
   Eye,
   EyeOff,
   Check,
-  RefreshCw,
   ExternalLink,
   Sparkles,
   Download,
@@ -74,27 +73,27 @@ function OrderProgress({ paid, delivered }: { paid: boolean; delivered: boolean 
   const activeStep = delivered ? 3 : paid ? 2 : 1;
 
   return (
-    <section className="rounded-[28px] border border-white/10 bg-[#191d1b] p-5 sm:p-7">
-      <h2 className="text-base font-bold text-white sm:text-lg">Progress transaksi</h2>
+    <section className="border border-neutral-700 bg-[#181818] p-5 sm:p-7">
+      <h2 className="minecraft-font-folder text-lg text-white sm:text-xl">Progress transaksi</h2>
       <div className="relative mt-6 grid grid-cols-4 gap-1 text-center">
-        <div className="absolute left-[12%] right-[12%] top-[21px] h-1 rounded-full bg-neutral-700">
+        <div className="absolute left-[12%] right-[12%] top-[21px] h-1 bg-neutral-700">
           <div
-            className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+            className="h-full bg-[#367723] transition-all duration-500"
             style={{ width: `${(completedStep / 3) * 100}%` }}
           />
         </div>
         {steps.map(({ label, icon: Icon }, index) => (
           <div key={label} className="relative z-10 flex flex-col items-center gap-2">
-            <div className={`flex h-11 w-11 items-center justify-center rounded-full border-2 transition-colors ${
+            <div className={`flex h-11 w-11 items-center justify-center border-2 transition-colors ${
               index <= completedStep
-                ? 'border-emerald-400 bg-emerald-500 text-[#082b18]'
+                ? 'border-[#69c944] bg-[#367723] text-white'
                 : index === activeStep
-                  ? 'border-amber-300 bg-amber-400 text-[#312006]'
-                : 'border-neutral-600 bg-[#242927] text-neutral-400'
+                  ? 'border-amber-300 bg-amber-500 text-[#312006]'
+                : 'border-neutral-600 bg-[#262423] text-neutral-400'
             }`}>
               <Icon className="h-5 w-5" />
             </div>
-            <span className={`text-[10px] font-semibold sm:text-xs ${index <= completedStep ? 'text-emerald-300' : index === activeStep ? 'text-amber-300' : 'text-neutral-500'}`}>
+            <span className={`text-[10px] font-semibold sm:text-xs ${index <= completedStep ? 'text-[#69c944]' : index === activeStep ? 'text-amber-300' : 'text-neutral-500'}`}>
               {label}
             </span>
           </div>
@@ -119,16 +118,12 @@ export default function OrderSuccessPage({
   const [lookupEmail, setLookupEmail] = useState('');
   const [emailReady, setEmailReady] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [cancellingOrder, setCancellingOrder] = useState(false);
-  const [cancelError, setCancelError] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const fetchAndVerifyOrder = useCallback(async (isManual = false) => {
+  const fetchAndVerifyOrder = useCallback(async () => {
     if (!orderEmail) return;
-    if (isManual) setLoading(true);
 
     try {
       const res = await fetch('/api/orders/verify-payment', {
@@ -218,31 +213,6 @@ export default function OrderSuccessPage({
     setOrderEmail(email);
   };
 
-  const handleCancelOrder = async () => {
-    if (!order || !orderEmail) return;
-    setCancellingOrder(true);
-    setCancelError('');
-    try {
-      const response = await fetch('/api/orders/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_code: orderCode, email: orderEmail }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        setCancelError(result.message || 'Pesanan belum dapat dibatalkan.');
-        return;
-      }
-      setOrder((current) => current ? { ...current, ...result.data } : current);
-      setPolling(false);
-      setShowCancelConfirm(false);
-    } catch {
-      setCancelError('Gagal menghubungi server. Coba lagi.');
-    } finally {
-      setCancellingOrder(false);
-    }
-  };
-
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
@@ -280,30 +250,30 @@ export default function OrderSuccessPage({
   };
 
   return (
-    <div className="min-h-screen bg-[#101413] text-white selection:bg-emerald-500 selection:text-[#092517]">
+    <div className="min-h-screen bg-[#111111] text-white selection:bg-[#367723] selection:text-white">
       
       {/* Main Content Area */}
       <div className="w-full max-w-3xl mx-auto space-y-6 px-4 py-8 sm:px-6 sm:py-12">
 
         <div className="flex items-center justify-between gap-4">
-          <Link href="/" className="text-sm font-black tracking-[0.2em] text-emerald-300">SALADINSHOP</Link>
-          <Link href="/check-order" className="text-xs font-semibold text-neutral-400 hover:text-white">Cek pesanan</Link>
+          <Link href="/" className="minecraft-font-folder text-lg text-white hover:text-[#69c944]">SALADINSHOP</Link>
+          <Link href="/check-order" className="text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-white">Cek pesanan</Link>
         </div>
 
         {/* Initial Loading Screen */}
         {loading && !order && (!emailReady || orderEmail) && (
           <div className="p-12 rounded-none bg-[#181818] border border-neutral-700 text-center space-y-4 shadow-2xl">
             <Loader2 className="w-10 h-10 text-[#367723] animate-spin mx-auto" />
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider">Memeriksa Pembayaran</h2>
-            <p className="text-xs text-neutral-400">Menghubungkan ke gateway pembayaran...</p>
+            <h2 className="minecraft-font-folder text-xl text-white">Memeriksa Pembayaran</h2>
+            <p className="font-config-text text-sm text-neutral-400">Menghubungkan ke gateway pembayaran...</p>
           </div>
         )}
 
         {emailReady && !orderEmail && (
-          <form onSubmit={handleEmailLookup} className="space-y-4 rounded-[28px] border border-white/10 bg-[#191d1b] p-6 sm:p-8">
-            <ShieldCheck className="h-8 w-8 text-emerald-400" />
-            <h1 className="text-xl font-bold">Buka detail pesanan</h1>
-            <p className="text-sm text-neutral-400">Masukkan email yang digunakan saat checkout untuk melihat pembayaran dan pengiriman pesanan {orderCode}.</p>
+          <form onSubmit={handleEmailLookup} className="space-y-4 border border-neutral-700 bg-[#181818] p-6 sm:p-8">
+            <ShieldCheck className="h-8 w-8 text-[#69c944]" />
+            <h1 className="minecraft-font-folder text-xl">Buka detail pesanan</h1>
+            <p className="font-config-text text-sm text-neutral-300">Masukkan email yang digunakan saat checkout untuk melihat pembayaran dan pengiriman pesanan {orderCode}.</p>
             <label htmlFor="order-email" className="block text-xs font-semibold text-neutral-300">Email checkout</label>
             <input
               id="order-email"
@@ -312,10 +282,10 @@ export default function OrderSuccessPage({
               required
               value={lookupEmail}
               onChange={(event) => setLookupEmail(event.target.value)}
-              className="w-full rounded-xl border border-neutral-600 bg-[#101413] px-4 py-3 text-sm text-white outline-none focus:border-emerald-400"
+              className="w-full border border-neutral-600 bg-[#111111] px-4 py-3 text-sm text-white outline-none focus:border-[#69c944]"
             />
             {errorMsg && <p className="text-xs text-rose-300">{errorMsg}</p>}
-            <button type="submit" className="w-full rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-[#092517] hover:bg-emerald-400">
+            <button type="submit" className="w-full border-b-4 border-[#1f4813] bg-[#367723] px-5 py-3 text-sm font-black uppercase tracking-wider text-white hover:bg-[#418e2a]">
               Lihat pesanan
             </button>
           </form>
@@ -325,12 +295,9 @@ export default function OrderSuccessPage({
         {errorMsg && !order && Boolean(orderEmail) && !loading && (
           <div className="p-8 rounded-none bg-[#181818] border border-rose-600/60 text-center space-y-4 shadow-2xl">
             <AlertCircle className="w-10 h-10 text-rose-400 mx-auto" />
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider">Belum dapat memuat pesanan</h2>
-            <p className="text-xs text-neutral-400">{errorMsg}</p>
-            <div className="flex justify-center gap-3 pt-2">
-              <button type="button" onClick={() => fetchAndVerifyOrder(true)} className="px-5 py-2.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white uppercase">
-                Coba lagi
-              </button>
+            <h2 className="minecraft-font-folder text-xl text-white">Belum dapat memuat pesanan</h2>
+            <p className="font-config-text text-sm text-neutral-300">{errorMsg} Kamu juga bisa memuat ulang halaman lewat browser.</p>
+            <div className="flex flex-wrap justify-center gap-3 pt-2">
               <Link
                 href="/check-order"
                 className="px-5 py-2.5 rounded-none text-xs font-semibold bg-[#111111] hover:bg-neutral-800 border border-neutral-700 text-white uppercase"
@@ -349,61 +316,61 @@ export default function OrderSuccessPage({
 
         {order && (
           <>
-            <section className={`relative overflow-hidden rounded-[32px] px-6 py-12 text-center shadow-2xl sm:px-12 sm:py-16 ${
+            <section className={`relative overflow-hidden border-2 px-6 py-12 text-center sm:px-12 sm:py-16 ${
               isComplete
-                ? 'bg-[#1ec765] text-[#064728]'
+                ? 'border-[#69c944] bg-[#367723] text-white'
                 : isPaymentFailed
-                  ? 'border border-rose-500/30 bg-gradient-to-br from-[#452328] to-[#201a1c] text-white'
+                  ? 'border-rose-700 bg-[#291b1d] text-white'
                   : isPaid
-                    ? 'border border-emerald-400/20 bg-gradient-to-br from-[#19583b] to-[#123026] text-white'
-                    : 'border border-amber-400/20 bg-gradient-to-br from-[#344a2b] to-[#17261e] text-white'
+                    ? 'border-[#367723] bg-[#1c3320] text-white'
+                    : 'border-amber-700 bg-[#28261a] text-white'
             }`}>
               <span aria-hidden="true" className="absolute left-[15%] top-[20%] h-3 w-3 rotate-12 rounded-sm border-4 border-current opacity-25" />
               <span aria-hidden="true" className="absolute right-[18%] top-[32%] h-4 w-4 rotate-45 rounded-sm bg-amber-300 opacity-70" />
               <span aria-hidden="true" className="absolute bottom-[18%] left-[24%] h-2 w-2 rounded-full bg-emerald-100 opacity-70" />
-              <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-black/10 sm:h-28 sm:w-28">
+              <div className="relative mx-auto flex h-24 w-24 items-center justify-center border-2 border-white/20 bg-black/10 sm:h-28 sm:w-28">
                 {isComplete ? <CheckCircle2 className="h-14 w-14" strokeWidth={2.4} />
                   : isPaymentFailed ? <AlertCircle className="h-12 w-12 text-rose-300" />
                     : isPaid ? <PackageCheck className="h-12 w-12 text-emerald-300" />
                       : <Clock className="h-12 w-12 text-amber-300" />}
               </div>
-              <h1 className="relative mt-7 text-3xl font-black tracking-tight sm:text-5xl">
+              <h1 className="minecraft-font-folder relative mt-7 text-2xl leading-tight sm:text-4xl">
                 {isComplete ? 'Pesanan Selesai!' : isPaymentFailed ? 'Pembayaran Belum Selesai'
                   : isPaid ? 'Pembayaran Berhasil' : awaitingExpiryConfirmation ? 'Batas Waktu Terlewati' : 'Menunggu Pembayaran'}
               </h1>
-              <p className="relative mx-auto mt-3 max-w-lg text-sm font-medium opacity-80 sm:text-base">
+              <p className="font-config-text relative mx-auto mt-3 max-w-lg text-sm leading-relaxed text-white/90 sm:text-base">
                 {isComplete ? 'Pembayaran terverifikasi. Data produk digitalmu tersedia di bawah.'
                   : isPaymentFailed ? 'Pesanan ini tidak dapat dilanjutkan. Kamu bisa membuat pesanan baru.'
                     : isPaid ? 'Pembayaran sudah aman; pesananmu sedang diproses untuk dikirim.'
                       : awaitingExpiryConfirmation ? 'Kami sedang memastikan status akhir pembayaran dengan Midtrans. Jangan lakukan transfer baru untuk pesanan ini.'
                         : 'Selesaikan pembayaran melalui instruksi Midtrans di bawah. Status akan diperbarui otomatis.'}
               </p>
-              <div className="relative mt-6 inline-flex rounded-full bg-black/15 px-4 py-2 font-mono text-xs font-bold tracking-wide">
+              <div className="relative mt-6 inline-flex border border-white/20 bg-black/20 px-4 py-2 font-mono text-xs font-bold tracking-wide">
                 #{order.order_code}
               </div>
             </section>
 
             {!isPaymentFailed && <OrderProgress paid={isPaid} delivered={isComplete} />}
 
-            <section className="rounded-[28px] border border-white/10 bg-[#191d1b] p-5 sm:p-7">
+            <section className="border border-neutral-700 bg-[#181818] p-5 sm:p-7">
               <div className="flex items-start gap-4">
                 {order.product_image_url ? (
-                  <img src={order.product_image_url} alt="" className="h-20 w-20 flex-shrink-0 rounded-2xl object-cover sm:h-24 sm:w-24" />
+                  <img src={order.product_image_url} alt="" className="h-20 w-20 flex-shrink-0 border border-neutral-600 object-cover sm:h-24 sm:w-24" />
                 ) : (
-                  <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300 sm:h-24 sm:w-24">
+                  <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center border border-neutral-600 bg-[#262423] text-[#69c944] sm:h-24 sm:w-24">
                     <ShoppingBag className="h-9 w-9" />
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Informasi pesanan</p>
-                  <h2 className="mt-1 text-base font-bold text-white sm:text-lg">{order.product_name || 'Produk Digital'}</h2>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#69c944]">Informasi pesanan</p>
+                  <h2 className="minecraft-font-folder mt-1 text-base text-white sm:text-lg">{order.product_name || 'Produk Digital'}</h2>
                   <p className="mt-1 text-xs text-neutral-400">{order.quantity || 1} item · {paymentMethodLabel[order.payment_method || ''] || order.payment_method || 'Midtrans'}</p>
                 </div>
               </div>
               <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 text-sm sm:grid-cols-2">
                 <div><p className="text-xs text-neutral-500">Kode pesanan</p><p className="mt-1 break-all font-mono text-neutral-100">{order.order_code}</p></div>
                 <div><p className="text-xs text-neutral-500">Dibuat</p><p className="mt-1 text-neutral-100">{order.created_at ? formatDate(order.created_at) : '—'}</p></div>
-                <div><p className="text-xs text-neutral-500">Total pembayaran</p><p className="mt-1 text-lg font-black text-emerald-300">{formatIDR(order.total_amount)}</p></div>
+                <div><p className="text-xs text-neutral-500">Total pembayaran</p><p className="mt-1 text-lg font-black text-[#69c944]">{formatIDR(order.total_amount)}</p></div>
                 {!isPaid && order.expired_at && (
                   <div><p className="text-xs text-neutral-500">Batas pembayaran</p><p className="mt-1 font-semibold text-amber-300">{formatDate(order.expired_at)}</p></div>
                 )}
@@ -900,17 +867,6 @@ export default function OrderSuccessPage({
                   </div>
                 )}
 
-                {!isComplete && (
-                  <button
-                    type="button"
-                    onClick={() => fetchAndVerifyOrder(true)}
-                    disabled={loading}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 px-4 py-3 text-xs font-bold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
-                  >
-                    <RefreshCw className="h-4 w-4" /> Perbarui status pengiriman
-                  </button>
-                )}
-
                 {/* 3. Action Buttons */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <Link
@@ -932,9 +888,9 @@ export default function OrderSuccessPage({
             ) : isPaymentFailed ? (
               /* ================= FAILED STATE ================= */
               <div className="space-y-6 animate-fadeIn">
-                <div className="rounded-[28px] border border-rose-500/30 bg-[#191d1b] p-6 text-center sm:p-8">
-                  <p className="text-sm text-neutral-300">Status pesanan: <span className="font-bold text-rose-300">{order.payment_status}</span>. Jika masih ingin membeli, buat pesanan baru agar mendapat instruksi pembayaran yang aktif.</p>
-                  <Link href="/" className="mt-5 inline-flex rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-[#082b18] hover:bg-emerald-400">
+                <div className="border border-rose-700 bg-[#181818] p-6 text-center sm:p-8">
+                  <p className="font-config-text text-sm text-neutral-300">Status pesanan: <span className="font-bold text-rose-300">{order.payment_status}</span>. Jika masih ingin membeli, buat pesanan baru agar mendapat instruksi pembayaran yang aktif.</p>
+                  <Link href="/" className="mt-5 inline-flex border-b-4 border-[#1f4813] bg-[#367723] px-5 py-3 text-sm font-black uppercase tracking-wider text-white hover:bg-[#418e2a]">
                     Kembali ke toko
                   </Link>
                 </div>
@@ -942,7 +898,7 @@ export default function OrderSuccessPage({
             ) : (
               /* ================= PENDING PAYMENT STATE ================= */
               <div className="space-y-6 animate-fadeIn">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-amber-500/20 bg-amber-500/5 px-5 py-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border border-amber-700/50 bg-[#262423] px-5 py-4 text-sm">
                   <span className="flex items-center gap-2 font-semibold text-amber-200">
                     <Clock className="h-4 w-4" /> Menunggu konfirmasi Midtrans
                   </span>
@@ -950,7 +906,7 @@ export default function OrderSuccessPage({
                     <span className="font-mono font-bold text-amber-300">
                       {remainingSeconds > 0
                         ? `${Math.floor(remainingSeconds / 60).toString().padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')} tersisa`
-                        : 'Waktu habis — periksa status'}
+                        : 'Waktu habis — pembatalan otomatis diproses'}
                     </span>
                   )}
                 </div>
@@ -963,34 +919,11 @@ export default function OrderSuccessPage({
                   />
                 )}
 
-                <div className="rounded-[20px] border border-white/10 bg-[#191d1b] p-5 text-xs leading-relaxed text-neutral-400">
-                  Jangan transfer ke rekening pribadi. QRIS/VA pada panel Midtrans terikat pada pesanan ini; data produk hanya muncul setelah pembayaran terverifikasi di server.
+                <div className="border border-neutral-700 bg-[#181818] p-5 text-xs leading-relaxed text-neutral-300">
+                  Jangan transfer ke rekening pribadi. QRIS/VA pada panel Midtrans terikat pada pesanan ini; data produk hanya muncul setelah pembayaran terverifikasi di server. Pesanan yang belum dibayar akan dibatalkan otomatis setelah 15 menit.
                 </div>
 
                 {errorMsg && <p className="text-center text-xs text-amber-300">{errorMsg}</p>}
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={() => fetchAndVerifyOrder(true)} disabled={loading} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 px-4 py-3 text-xs font-bold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50">
-                    <RefreshCw className="h-4 w-4" /> Perbarui status
-                  </button>
-                  <button type="button" onClick={() => setShowCancelConfirm(true)} className="flex-1 rounded-xl border border-rose-500/30 px-4 py-3 text-xs font-bold text-rose-300 hover:bg-rose-500/10">
-                    Batalkan pesanan
-                  </button>
-                </div>
-
-                {showCancelConfirm && (
-                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-5">
-                    <p className="text-sm text-neutral-200">Yakin ingin membatalkan? Pesanan yang sudah dibayar tidak dapat dibatalkan di halaman ini.</p>
-                    {cancelError && <p className="mt-3 text-xs text-rose-300">{cancelError}</p>}
-                    <div className="mt-4 flex gap-3">
-                      <button type="button" onClick={handleCancelOrder} disabled={cancellingOrder} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
-                        {cancellingOrder ? 'Memproses...' : 'Ya, batalkan'}
-                      </button>
-                      <button type="button" onClick={() => { setShowCancelConfirm(false); setCancelError(''); }} className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-semibold text-neutral-300">
-                        Kembali
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </>
