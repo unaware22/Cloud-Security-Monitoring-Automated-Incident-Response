@@ -53,4 +53,5 @@ coverage/
 # Agent skills & internal tools (Do not push to GitHub)
 .agents/
 .gemini/
-scripts/
+scripts/*
+!scripts/expire-unpaid-orders.mjs

@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const paymentStatus = searchParams.get('payment_status');
+  const view = searchParams.get('view') || 'active';
   const deliveryStatus = searchParams.get('delivery_status');
   const search = searchParams.get('search');
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
@@ -24,6 +25,14 @@ export async function GET(req: NextRequest) {
   if (dbOnline) {
     try {
       const where: any = {};
+
+      if (!paymentStatus || paymentStatus === 'all') {
+        if (view === 'active') {
+          where.paymentStatus = { notIn: ['expired', 'cancelled', 'rejected', 'failed'] };
+        } else if (view === 'history') {
+          where.paymentStatus = { in: ['expired', 'cancelled', 'rejected', 'failed'] };
+        }
+      }
 
       if (paymentStatus && paymentStatus !== 'all') {
         where.paymentStatus = paymentStatus;
@@ -72,7 +81,7 @@ export async function GET(req: NextRequest) {
         prisma.order.count({ where }),
       ]);
 
-      if (orders && orders.length > 0) {
+      if (orders) {
         const mappedOrders = orders.map((ord: any) => {
           let customerNotes: string | null = null;
           let customSkinDetails: any = null;
@@ -110,6 +119,12 @@ export async function GET(req: NextRequest) {
 
   // Instant In-Memory Fallback
   let filtered = [...inMemoryOrders];
+
+  if (!paymentStatus || paymentStatus === 'all') {
+    const historical = new Set(['expired', 'cancelled', 'rejected', 'failed']);
+    if (view === 'active') filtered = filtered.filter((o) => !historical.has(o.paymentStatus));
+    if (view === 'history') filtered = filtered.filter((o) => historical.has(o.paymentStatus));
+  }
 
   if (paymentStatus && paymentStatus !== 'all') {
     filtered = filtered.filter((o) => o.paymentStatus === paymentStatus);

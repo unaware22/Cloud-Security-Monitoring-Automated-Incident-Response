@@ -1,5 +1,6 @@
 services:
   app:
+    image: ecommerce-security-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -26,3 +27,19 @@ services:
     volumes:
       # A host-visible JSONL log directory for the Wazuh agent on this EC2.
       - ./runtime-logs:/app/logs
+
+  order-expiry-worker:
+    image: ecommerce-security-app
+    depends_on:
+      - app
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    command: ["node", "scripts/expire-unpaid-orders.mjs"]

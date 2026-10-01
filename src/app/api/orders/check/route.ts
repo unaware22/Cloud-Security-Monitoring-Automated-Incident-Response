@@ -6,8 +6,6 @@ import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { canAccessMemoryOrder, checkoutOrderWhere, deliveredContent, orderReference } from '@/lib/customer-order';
 import { getCustomerSession } from '@/lib/user-auth';
-import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
-import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -119,104 +117,8 @@ export async function POST(req: NextRequest) {
       });
 
       if (order) {
-        // Auto-sync with Midtrans if order is pending
-        if (order.paymentStatus === 'pending') {
-          let isPaidFromProvider = false;
-
-          // 1. Check Midtrans
-          try {
-            const mStatus = await checkMidtransTransactionStatus(order.orderCode);
-            if (mStatus) {
-              const ts = mStatus.transaction_status;
-              const fs = mStatus.fraud_status;
-              if (ts === 'settlement' || (ts === 'capture' && fs === 'accept')) {
-                isPaidFromProvider = true;
-              }
-            }
-          } catch (errM) {
-            console.warn('Midtrans check sync error:', errM);
-          }
-
-          // 1b. Check Midtrans Snap Token
-          if (!isPaidFromProvider && order.paymentTransactions?.[0]?.providerInvoiceId) {
-            try {
-              const snapCheck = await checkMidtransSnapTokenStatus(order.paymentTransactions[0].providerInvoiceId);
-              if (snapCheck.isPaid) {
-                isPaidFromProvider = true;
-              }
-            } catch (errSnap) {
-              console.warn('Midtrans snap check sync error:', errSnap);
-            }
-          }
-
-          if (isPaidFromProvider) {
-            const now = new Date();
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                paymentStatus: 'paid',
-                orderStatus: 'completed',
-                deliveryStatus: 'delivered',
-                paidAt: now,
-              },
-            });
-            const mainItem = order.orderItems[0];
-            const qty = mainItem?.quantity || 1;
-            const rawLines = (mainItem?.product?.deliveryContent || '')
-              .split(/\r?\n/)
-              .map((l) => l.trim())
-              .filter(Boolean);
-
-            let deliveryContent = '';
-            let remainingContent = '';
-
-            if (rawLines.length > 0) {
-              deliveryContent = rawLines.slice(0, qty).join('\n');
-              remainingContent = rawLines.slice(qty).join('\n');
-            } else {
-              deliveryContent =
-                mainItem?.product?.deliveryContent ||
-                'Akun telah aktif. Silakan cek detail di bawah atau hubungi CS kami.';
-            }
-
-            if (mainItem?.productId) {
-              await prisma.product
-                .update({
-                  where: { id: mainItem.productId },
-                  data: {
-                    stock: { decrement: qty },
-                    deliveryContent: remainingContent,
-                  },
-                })
-                .catch(() => {});
-              invalidatePublicProductCatalog();
-            }
-
-            await prisma.digitalDelivery.create({
-              data: {
-                orderId: order.id,
-                deliveryEmail: order.customerEmail,
-                deliveryStatus: 'delivered',
-                deliveryData: deliveryContent,
-                deliveredAt: now,
-              },
-            }).catch(() => {});
-            order.paymentStatus = 'paid';
-            order.orderStatus = 'completed';
-            order.deliveryStatus = 'delivered';
-            order.paidAt = now;
-          } else if (order.paymentStatus === 'pending' && order.expiredAt && new Date() > order.expiredAt) {
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                paymentStatus: 'expired',
-                orderStatus: 'cancelled',
-              },
-            }).catch(() => {});
-            order.paymentStatus = 'expired';
-            order.orderStatus = 'cancelled';
-          }
-        }
+        // Lookup is read-only. The signed webhook and verify-payment endpoint
+        // own fulfillment, so viewing this page cannot deliver a product twice.
 
         const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual';
         const deliveryContent = deliveredContent(order);

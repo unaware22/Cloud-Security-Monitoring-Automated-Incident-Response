@@ -49,6 +49,26 @@ export interface MidtransStatusResponse {
   signature_key?: string;
 }
 
+/** Only a server-to-server status for this exact order and amount can release goods. */
+export function isConfirmedMidtransPayment(
+  status: MidtransStatusResponse,
+  orderId: string,
+  amount: number
+): boolean {
+  if (
+    status.order_id !== orderId ||
+    status.status_code !== '200' ||
+    !Number.isFinite(Number(status.gross_amount)) ||
+    Number(status.gross_amount) !== amount ||
+    status.fraud_status === 'deny' ||
+    status.fraud_status === 'challenge'
+  ) {
+    return false;
+  }
+
+  return status.transaction_status === 'settlement' || status.transaction_status === 'capture';
+}
+
 /**
  * Calculates admin/gateway payment fee: Rp 750 + 0.7% of product subtotal.
  */
@@ -314,44 +334,6 @@ export async function checkMidtransTransactionStatus(
   } catch (err) {
     console.error('[Midtrans checkTransactionStatus Error]:', err);
     return null;
-  }
-}
-
-/**
- * Checks Snap transaction token status directly from Midtrans Snap API.
- * In Midtrans Snap, a completed/settled transaction returns 409 {"error_messages":["transaction has been succeed"]}.
- */
-export async function checkMidtransSnapTokenStatus(
-  token: string
-): Promise<{ isPaid: boolean; rawStatus?: string }> {
-  if (!token) return { isPaid: false };
-  const isProduction = process.env.MIDTRANS_IS_PRODUCTION === 'true';
-  const snapHost = isProduction
-    ? 'https://app.midtrans.com'
-    : 'https://app.sandbox.midtrans.com';
-
-  try {
-    const res = await fetch(`${snapHost}/snap/v1/transactions/${encodeURIComponent(token)}`, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-      cache: 'no-store',
-    });
-
-    const text = await res.text();
-    if (
-      text.includes('transaction has been succeed') ||
-      text.includes('settlement') ||
-      text.includes('capture')
-    ) {
-      return { isPaid: true, rawStatus: 'settlement' };
-    }
-
-    return { isPaid: false };
-  } catch (err) {
-    console.warn('[Midtrans checkMidtransSnapTokenStatus Error]:', err);
-    return { isPaid: false };
   }
 }
 

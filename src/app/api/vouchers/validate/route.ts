@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCustomerSession } from '@/lib/user-auth';
 import { getClientIp } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
+import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,10 +94,7 @@ export async function POST(req: NextRequest) {
     // 6. Check Single Use Per Account
     if (voucher.singleUsePerAccount && session) {
       const existingUsage = await prisma.voucherUsage.findFirst({
-        where: {
-          voucherId: voucher.id,
-          userId: session.userId,
-        },
+        where: blockingVoucherUsageWhere(voucher.id, session.userId),
       });
 
       if (existingUsage) {

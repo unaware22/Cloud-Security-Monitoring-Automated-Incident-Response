@@ -19,18 +19,10 @@ import {
   Info,
   Star,
   Ticket,
-  Clock,
 } from 'lucide-react';
-import Script from 'next/script';
 import { formatIDR } from '@/lib/utils';
 import { ProductItem } from '@/lib/types';
 import TurnstileWidget from '@/components/security/TurnstileWidget';
-
-declare global {
-  interface Window {
-    snap?: any;
-  }
-}
 
 interface PaymentMethodItem {
   id: string;
@@ -122,92 +114,11 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
 
-  // Midtrans Live Watcher & Active Payment States
-  const [activeOrder, setActiveOrder] = useState<any | null>(null);
-  const [isWaitingPayment, setIsWaitingPayment] = useState(false);
-  const [showCancelOrderConfirm, setShowCancelOrderConfirm] = useState(false);
-  const [cancellingOrder, setCancellingOrder] = useState(false);
-  const [cancelOrderError, setCancelOrderError] = useState('');
-  const [remainingSeconds, setRemainingSeconds] = useState<number>(15 * 60);
-  const [isOrderExpired, setIsOrderExpired] = useState(false);
-  const activePollerRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   // Confirmation Dialog State
   const [showConfirmation, setShowConfirmation] = useState(false);
-
-  // Cleanup watcher poller and timer on unmount
-  useEffect(() => {
-    return () => {
-      if (activePollerRef.current) {
-        clearInterval(activePollerRef.current);
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-    };
-  }, []);
-
-  // 15-Minute Countdown Timer for Waiting Payment Modal
-  useEffect(() => {
-    if (!isWaitingPayment || !activeOrder) {
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
-      return;
-    }
-
-    const expiresAt = activeOrder.expired_at
-      ? new Date(activeOrder.expired_at).getTime()
-      : Date.now() + 15 * 60 * 1000;
-
-    const updateTimer = () => {
-      const now = Date.now();
-      const diff = Math.max(0, Math.floor((expiresAt - now) / 1000));
-      setRemainingSeconds(diff);
-      if (diff <= 0) {
-        setIsOrderExpired(true);
-        if (activePollerRef.current) {
-          clearInterval(activePollerRef.current);
-          activePollerRef.current = null;
-        }
-        if (countdownTimerRef.current) {
-          clearInterval(countdownTimerRef.current);
-          countdownTimerRef.current = null;
-        }
-      }
-    };
-
-    updateTimer();
-    countdownTimerRef.current = setInterval(updateTimer, 1000);
-
-    return () => {
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
-    };
-  }, [isWaitingPayment, activeOrder]);
-
-  // Lock navigation for guest user while an active order is waiting for payment
-  useEffect(() => {
-    if (!isWaitingPayment || currentUser || isOrderExpired) return;
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [isWaitingPayment, currentUser, isOrderExpired]);
 
   // Fetch product detail
   useEffect(() => {
@@ -417,7 +328,6 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
   const handleFormValidation = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    setSuccessMessage('');
 
     if (!product) return;
 
@@ -501,157 +411,18 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
       const orderData = json.data;
 
-      // Save order info to localStorage for easy lookup
-      if (typeof window !== 'undefined') {
+      // Persist only the lookup email; the payment token is retrieved from our
+      // authenticated order endpoint on the next page, never from the URL.
+      try {
         localStorage.setItem(`order_email_${orderData.order_code}`, customerEmail.trim());
+      } catch {
+        // The order page also accepts the checkout email manually when storage is disabled.
       }
-
-      setActiveOrder(orderData);
-      setIsWaitingPayment(true);
-
-      // Real-Time Live Watcher: check payment status every 1.5s and auto-redirect upon settlement
-      if (activePollerRef.current) clearInterval(activePollerRef.current);
-      activePollerRef.current = setInterval(async () => {
-        try {
-          const vRes = await fetch('/api/orders/verify-payment', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
-          });
-          const vJson = await vRes.json();
-          if (vJson.success && vJson.data) {
-            const st = vJson.data.payment_status;
-            const ost = vJson.data.order_status;
-            if (
-              st === 'paid' ||
-              st === 'paid_manual' ||
-              st === 'settlement' ||
-              st === 'capture' ||
-              ost === 'completed' ||
-              ost === 'processing' ||
-              vJson.data.delivery_status === 'delivered'
-            ) {
-              if (activePollerRef.current) clearInterval(activePollerRef.current);
-              window.location.href = `/order/success/${orderData.order_code}`;
-            } else if (st === 'cancelled' || ost === 'cancelled' || st === 'expired' || ost === 'expired') {
-              if (activePollerRef.current) clearInterval(activePollerRef.current);
-              setIsOrderExpired(true);
-            }
-          }
-        } catch {}
-      }, 1500);
-
-      const snapToken = orderData.snap_token || orderData.provider_invoice_id;
-
-      // Use Snap.js popup if SDK loaded
-      if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
-        setSubmitting(false);
-        window.snap.pay(snapToken, {
-          onSuccess: async (result?: any) => {
-            if (activePollerRef.current) clearInterval(activePollerRef.current);
-            try {
-              await fetch('/api/orders/verify-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
-              });
-            } catch {}
-            window.location.href = `/order/success/${orderData.order_code}`;
-          },
-          onPending: async (result?: any) => {
-            if (result?.transaction_status === 'settlement' || result?.status_code === '200') {
-              try {
-                await fetch('/api/orders/verify-payment', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
-                });
-              } catch {}
-            }
-          },
-          onError: () => {
-            if (activePollerRef.current) clearInterval(activePollerRef.current);
-            window.location.href = `/check-order?order_code=${orderData.order_code}&status=error`;
-          },
-          onClose: async () => {
-            // Check status immediately upon close
-            try {
-              const vRes = await fetch('/api/orders/verify-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order_code: orderData.order_code, email: customerEmail.trim() }),
-              });
-              const vJson = await vRes.json();
-              if (
-                vJson.success &&
-                (vJson.data?.payment_status === 'paid' ||
-                  vJson.data?.payment_status === 'paid_manual' ||
-                  vJson.data?.payment_status === 'settlement' ||
-                  vJson.data?.order_status === 'completed' ||
-                  vJson.data?.order_status === 'processing')
-              ) {
-                if (activePollerRef.current) clearInterval(activePollerRef.current);
-                window.location.href = `/order/success/${orderData.order_code}`;
-              }
-            } catch {}
-          },
-        });
-      } else if (orderData.payment_url) {
-        window.location.href = orderData.payment_url;
-      } else {
-        setErrorMessage('URL pembayaran tidak tersedia. Silakan coba lagi.');
-        resetTurnstile();
-        setSubmitting(false);
-        setIsWaitingPayment(false);
-      }
+      window.location.assign(`/order/success/${encodeURIComponent(orderData.order_code)}`);
     } catch {
       setErrorMessage('Terjadi kesalahan jaringan saat checkout.');
       resetTurnstile();
       setSubmitting(false);
-      setIsWaitingPayment(false);
-    }
-  };
-
-  const handleCancelActiveOrder = async () => {
-    if (!activeOrder?.order_code || !customerEmail.trim()) return;
-
-    setCancellingOrder(true);
-    setCancelOrderError('');
-
-    try {
-      const res = await fetch('/api/orders/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_code: activeOrder.order_code,
-          email: customerEmail.trim().toLowerCase(),
-        }),
-      });
-      const json = await res.json();
-
-      if (!res.ok || !json.success) {
-        setCancelOrderError(json.message || 'Pesanan belum dapat dibatalkan.');
-        return;
-      }
-
-      if (activePollerRef.current) {
-        clearInterval(activePollerRef.current);
-        activePollerRef.current = null;
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
-      setShowCancelOrderConfirm(false);
-      setIsWaitingPayment(false);
-      setActiveOrder(null);
-      setIsOrderExpired(false);
-      setSubmitting(false);
-      setSuccessMessage(`Pesanan ${json.data.order_code} berhasil dibatalkan.`);
-    } catch {
-      setCancelOrderError('Terjadi gangguan jaringan saat membatalkan pesanan.');
-    } finally {
-      setCancellingOrder(false);
     }
   };
 
@@ -731,13 +502,6 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
           <div className="p-4 rounded-none bg-rose-950/70 border border-rose-600/60 text-xs text-rose-200 flex items-center gap-2.5 font-medium shadow-md">
             <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
             <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {successMessage && (
-          <div className="p-4 rounded-none bg-emerald-950/70 border border-emerald-600/60 text-xs text-emerald-200 flex items-center gap-2.5 font-medium shadow-md">
-            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-            <span>{successMessage}</span>
           </div>
         )}
 
@@ -1372,7 +1136,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               </button>
 
               <p className="text-[10px] text-center text-neutral-400">
-                🔒 Data transaksi dilindungi dengan enkripsi SSL 256-bit dan diproses resmi oleh Midtrans.
+                🔒 Pembayaran diproses oleh Midtrans melalui koneksi HTTPS.
               </p>
             </div>
 
@@ -1407,7 +1171,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
 
             {/* Instruction Description */}
             <p className="text-xs text-neutral-300 leading-relaxed font-normal">
-              Anda akan diarahkan ke portal pembayaran <span className="text-white font-medium">Midtrans</span> untuk menyelesaikan pembayaran. Pastikan data pesanan Anda sudah benar:
+              Setelah pesanan dibuat, instruksi pembayaran <span className="text-white font-medium">Midtrans</span> akan muncul di halaman status pesanan. Pastikan data berikut benar:
             </p>
 
             {/* Key-Value Details List */}
@@ -1503,7 +1267,7 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
               <p className="text-xs text-amber-200/90 text-justify leading-relaxed">
                 {isCustomSkinProduct
                   ? 'Setelah membayar, notifikasi akan langsung masuk ke email Anda dan desainer kami akan mulai membuat skin impian Anda (~5 menit).'
-                  : 'Setelah membayar di Midtrans, Anda akan otomatis kembali ke toko kami dan data akun game langsung tampil di layar Anda.'}
+                  : 'Setelah pembayaran dikonfirmasi Midtrans dan pengiriman siap, data produk akan muncul di halaman pesanan dan dikirim ke email Anda.'}
               </p>
             </div>
 
@@ -1540,204 +1304,6 @@ export default function CheckoutPage({ params }: { params: { slug: string } }) {
         </div>
       )}
 
-      {/* Waiting for Payment & Live Watcher Modal */}
-      {isWaitingPayment && activeOrder && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-[#181818] border border-emerald-500/40 rounded-2xl max-w-md w-full p-6 text-center space-y-5 shadow-2xl">
-            {isOrderExpired ? (
-              <>
-                <div className="w-14 h-14 rounded-full bg-rose-950/80 border border-rose-500/50 flex items-center justify-center mx-auto text-rose-400">
-                  <Clock className="w-7 h-7" />
-                </div>
-
-                <div className="space-y-1.5">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-300 border border-rose-500/30">
-                    <span>Waktu Pembayaran Habis</span>
-                  </span>
-                  <h3 className="text-lg font-bold text-white uppercase tracking-wide">
-                    Pesanan Kedaluwarsa
-                  </h3>
-                  <p className="text-xs text-neutral-300 leading-relaxed">
-                    Batas waktu pembayaran 15 menit telah habis. Pesanan{' '}
-                    <span className="font-mono font-bold text-rose-400">
-                      #{activeOrder.order_code}
-                    </span>{' '}
-                    telah dibatalkan secara otomatis.
-                  </p>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsWaitingPayment(false);
-                      setActiveOrder(null);
-                      setIsOrderExpired(false);
-                      if (activePollerRef.current) {
-                        clearInterval(activePollerRef.current);
-                        activePollerRef.current = null;
-                      }
-                      if (countdownTimerRef.current) {
-                        clearInterval(countdownTimerRef.current);
-                        countdownTimerRef.current = null;
-                      }
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
-                  >
-                    Buat Pesanan Baru
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="w-14 h-14 rounded-full bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center mx-auto text-emerald-400">
-                  <Loader2 className="w-7 h-7 animate-spin" />
-                </div>
-
-                <div className="space-y-1.5">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Sinkronisasi Otomatis Real-time</span>
-                  </span>
-                  <h3 className="text-lg font-bold text-white uppercase tracking-wide">
-                    Menunggu Pembayaran
-                  </h3>
-                  <p className="text-xs text-neutral-300">
-                    Kode Pesanan:{' '}
-                    <span className="font-mono font-bold text-emerald-400">
-                      {activeOrder.order_code}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 text-xs text-left space-y-2.5">
-                  <div className="flex justify-between items-center text-neutral-400">
-                    <span>Total Tagihan:</span>
-                    <span className="font-mono font-bold text-white text-sm">
-                      {formatIDR(activeOrder.total_amount)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-neutral-400 pt-2 border-t border-neutral-800 text-[11px]">
-                    <span className="flex items-center gap-1.5 text-amber-400 font-semibold">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Batas Waktu Bayar (15 Menit):</span>
-                    </span>
-                    <span className="font-mono font-bold text-amber-300 text-xs">
-                      {Math.floor(remainingSeconds / 60)
-                        .toString()
-                        .padStart(2, '0')}
-                      :
-                      {(remainingSeconds % 60).toString().padStart(2, '0')}
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] text-neutral-400 leading-relaxed pt-2 border-t border-neutral-800">
-                    ℹ️ <strong>Status Otomatis Terverifikasi:</strong> Setelah pembayaran Anda selesai (QRIS / transfer), sistem akan memverifikasi dan menampilkan detail pesanan secara otomatis tanpa perlu konfirmasi manual.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const snapToken = activeOrder.snap_token || activeOrder.provider_invoice_id;
-                      if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function' && snapToken) {
-                        window.snap.pay(snapToken, {
-                          onSuccess: () => {
-                            window.location.href = `/order/success/${activeOrder.order_code}`;
-                          },
-                          onError: () => {
-                            window.location.href = `/check-order?order_code=${activeOrder.order_code}&status=error`;
-                          },
-                        });
-                      } else if (activeOrder.payment_url) {
-                        window.open(activeOrder.payment_url, '_blank');
-                      }
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
-                  >
-                    Bayar Sekarang
-                  </button>
-
-                  {/* Cek Status Pesanan Saya: Khusus untuk pengguna yang login */}
-                  {currentUser && (
-                    <Link
-                      href="/account?tab=orders"
-                      className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs uppercase tracking-wider transition-colors block text-center"
-                    >
-                      Cek Status Pesanan Saya
-                    </Link>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCancelOrderConfirm(true);
-                      setCancelOrderError('');
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-700 text-rose-200 font-bold text-xs uppercase tracking-wider transition-colors"
-                  >
-                    Batalkan Pesanan
-                  </button>
-
-                  {showCancelOrderConfirm && (
-                    <div className="mt-2 p-3 rounded-xl bg-[#111111] border border-rose-700/70 text-left space-y-3">
-                      <p className="text-xs text-rose-100 leading-relaxed">
-                        Yakin ingin membatalkan pesanan ini? Pesanan yang sudah dibayar tidak dapat dibatalkan dari halaman ini.
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCancelActiveOrder}
-                          disabled={cancellingOrder}
-                          className="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold text-[11px] uppercase"
-                        >
-                          {cancellingOrder ? 'Memproses...' : 'Ya, Batalkan'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowCancelOrderConfirm(false);
-                            setCancelOrderError('');
-                          }}
-                          disabled={cancellingOrder}
-                          className="py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-60 text-neutral-200 font-bold text-[11px] uppercase"
-                        >
-                          Kembali
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {cancelOrderError && (
-                    <p className="text-left text-xs text-rose-300 flex items-start gap-2 mt-1">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>{cancelOrderError}</span>
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Midtrans Snap JS SDK */}
-      <Script
-        src={
-          process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === 'true'
-            ? 'https://app.midtrans.com/snap/snap.js'
-            : 'https://app.sandbox.midtrans.com/snap/snap.js'
-        }
-        data-client-key={
-          process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ''
-        }
-        strategy="afterInteractive"
-        onError={() => {
-          setErrorMessage('SDK pembayaran Midtrans gagal dimuat. Silakan muat ulang halaman atau hubungi admin.');
-        }}
-      />
     </div>
   );
 }

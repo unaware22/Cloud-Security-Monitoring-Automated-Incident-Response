@@ -3,8 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { isDatabaseOnline, inMemoryOrders } from '@/lib/db-store';
 import { decrementProductStock, dispatchProductDelivery } from '@/lib/products-store';
 import { sendDigitalDelivery, sendCustomSkinProcessingEmail } from '@/lib/email';
-import { checkMidtransTransactionStatus, checkMidtransSnapTokenStatus } from '@/lib/midtrans';
+import { checkMidtransTransactionStatus, isConfirmedMidtransPayment } from '@/lib/midtrans';
 import { invalidatePublicProductCatalog } from '@/lib/public-product-catalog';
+import { getProductImageUrl } from '@/lib/product-image';
 import { z } from 'zod';
 import { getClientIp } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
@@ -60,39 +61,18 @@ export async function POST(req: NextRequest) {
 
   // 1. Try to verify with Midtrans API directly (order status)
   let paymentPaid = false;
-  try {
-    const midtransStatus = await checkMidtransTransactionStatus(orderCode);
-    if (midtransStatus) {
-      const ts = midtransStatus.transaction_status;
-      const fs = midtransStatus.fraud_status;
-      if (ts === 'settlement' || (ts === 'capture' && fs === 'accept')) {
-        paymentPaid = true;
-      }
-    }
-  } catch (err) {
-    console.warn('Midtrans status check error:', err);
-  }
-
-  // 1b. Try to verify via Midtrans Snap Token if order status is not available
-  if (!paymentPaid) {
+  if (matchingOrder.paymentStatus === 'pending' || matchingOrder.paymentStatus === 'expired') {
     try {
-      let snapToken: string | null = null;
-      if (dbOnline) {
-        const ord = await prisma.order.findFirst({
-          where: { id: matchingOrder.id, ...accessWhere },
-          include: { paymentTransactions: true },
-        });
-        snapToken = ord?.paymentTransactions?.[0]?.providerInvoiceId || null;
+      const midtransStatus = await checkMidtransTransactionStatus(orderCode);
+      if (midtransStatus) {
+        paymentPaid = isConfirmedMidtransPayment(
+          midtransStatus,
+          orderCode,
+          matchingOrder.totalAmount
+        );
       }
-
-      if (snapToken) {
-        const snapStatus = await checkMidtransSnapTokenStatus(snapToken);
-        if (snapStatus.isPaid) {
-          paymentPaid = true;
-        }
-      }
-    } catch (errSnap) {
-      console.warn('Midtrans Snap verification error:', errSnap);
+    } catch (err) {
+      console.warn('Midtrans status check error:', err);
     }
   }
 
@@ -110,7 +90,7 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        if (order && order.paymentStatus !== 'paid') {
+        if (order && (order.paymentStatus === 'pending' || order.paymentStatus === 'expired')) {
           const mainItem = order.orderItems[0];
           const product = mainItem?.product;
           const isManualCustom =
@@ -118,6 +98,20 @@ export async function POST(req: NextRequest) {
             product?.serviceTag === 'pembuatan-cepat' ||
             product?.subCategory1 === 'skins' ||
             product?.slug?.includes('skin');
+
+          // The webhook and this endpoint may run at the same time. Only the
+          // handler that atomically claims the pending order may deliver it.
+          const claim = await prisma.order.updateMany({
+            where: { id: order.id, paymentStatus: { in: ['pending', 'expired'] } },
+            data: {
+              paymentStatus: 'paid',
+              orderStatus: isManualCustom ? 'processing' : 'completed',
+              deliveryStatus: isManualCustom ? 'processing' : 'delivered',
+              paidAt: now,
+            },
+          });
+
+          if (claim.count === 1) {
 
           let txPayload: any = {};
           try {
@@ -128,16 +122,6 @@ export async function POST(req: NextRequest) {
 
           if (isManualCustom) {
             // Manual delivery: set status to processing (wait for admin craft)
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                paymentStatus: 'paid',
-                orderStatus: 'processing',
-                deliveryStatus: 'processing',
-                paidAt: now,
-              },
-            });
-
             // Update payment transaction
             await prisma.paymentTransaction
               .updateMany({
@@ -159,16 +143,6 @@ export async function POST(req: NextRequest) {
             } catch {}
           } else {
             // Automatic instant delivery
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                paymentStatus: 'paid',
-                orderStatus: 'completed',
-                deliveryStatus: 'delivered',
-                paidAt: now,
-              },
-            });
-
             const qty = mainItem?.quantity || 1;
             const rawLines = (mainItem?.product?.deliveryContent || '')
               .split(/\r?\n/)
@@ -230,6 +204,7 @@ export async function POST(req: NextRequest) {
                 deliveryContent,
               });
             } catch {}
+          }
           }
         }
       } catch (dbErr) {
@@ -311,18 +286,6 @@ export async function POST(req: NextRequest) {
       });
 
       if (order) {
-        if (order.paymentStatus === 'pending' && order.expiredAt && new Date() > order.expiredAt) {
-          await prisma.order.update({
-            where: { id: order.id },
-            data: {
-              paymentStatus: 'expired',
-              orderStatus: 'cancelled',
-            },
-          }).catch(() => {});
-          order.paymentStatus = 'expired';
-          order.orderStatus = 'cancelled';
-        }
-
         const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_manual';
         const deliveryContent = deliveredContent(order);
 
@@ -350,13 +313,18 @@ export async function POST(req: NextRequest) {
             delivery_content: deliveryContent,
             payment_method: order.paymentMethod,
             payment_url: paymentTx?.paymentUrl || null,
+            snap_token: order.paymentStatus === 'pending' ? paymentTx?.providerInvoiceId || null : null,
             product_name: order.orderItems?.[0]?.productNameSnapshot || 'Produk Digital',
+            product_image_url: order.orderItems?.[0]?.product
+              ? getProductImageUrl(order.orderItems[0].product.id, order.orderItems[0].product.updatedAt)
+              : null,
             quantity: order.orderItems?.[0]?.quantity || 1,
             delivery_type: (order.orderItems?.[0]?.product as any)?.deliveryType || ((order.orderItems?.[0]?.product as any)?.serviceTag === 'pembuatan-cepat' ? 'manual' : 'automatic'),
             customer_notes: txPayload?.customer_notes || null,
             custom_skin_details: txPayload?.custom_skin_details || null,
             created_at: order.createdAt,
             paid_at: order.paidAt,
+            expired_at: order.expiredAt,
           },
         });
       }
@@ -401,10 +369,15 @@ export async function POST(req: NextRequest) {
         custom_skin_details: memOrder.customSkinDetails || null,
         payment_method: memOrder.paymentMethod,
         payment_url: memOrder.paymentUrl || null,
+        snap_token: memOrder.paymentStatus === 'pending' ? memOrder.providerInvoiceId || null : null,
         product_name: memOrder.orderItems?.[0]?.productNameSnapshot || memOrder.items?.[0]?.product_name || 'Produk Digital',
+        product_image_url: memOrder.orderItems?.[0]?.productId
+          ? getProductImageUrl(memOrder.orderItems[0].productId)
+          : null,
         quantity: qty,
         created_at: memOrder.createdAt,
         paid_at: memOrder.paidAt,
+        expired_at: memOrder.expiredAt,
       },
     });
   }

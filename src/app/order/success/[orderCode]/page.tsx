@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import {
   CheckCircle2,
   AlertCircle,
@@ -13,7 +12,6 @@ import {
   Eye,
   EyeOff,
   Check,
-  Radio,
   RefreshCw,
   ExternalLink,
   Sparkles,
@@ -22,8 +20,13 @@ import {
   MessageSquare,
   Palette,
   Image as ImageIcon,
+  ShoppingBag,
+  CreditCard,
+  PackageCheck,
+  ShieldCheck,
 } from 'lucide-react';
 import { formatIDR, formatDate } from '@/lib/utils';
+import MidtransEmbeddedPayment from '@/components/checkout/MidtransEmbeddedPayment';
 
 interface CustomSkinDetails {
   description?: string;
@@ -46,10 +49,13 @@ interface OrderData {
   delivery_type?: string;
   payment_method?: string;
   payment_url?: string | null;
+  snap_token?: string | null;
   product_name?: string;
+  product_image_url?: string | null;
   quantity?: number;
   created_at?: string;
   paid_at?: string | null;
+  expired_at?: string | null;
   delivery_content?: string | null;
   customer_notes?: string | null;
   custom_skin_details?: CustomSkinDetails | null;
@@ -57,40 +63,78 @@ interface OrderData {
 
 import { parseDeliveryContent, ParsedDeliveryItem } from '@/lib/delivery-parser';
 
+function OrderProgress({ paid, delivered }: { paid: boolean; delivered: boolean }) {
+  const steps = [
+    { label: 'Dibuat', icon: ShoppingBag },
+    { label: 'Dibayar', icon: CreditCard },
+    { label: 'Diproses', icon: PackageCheck },
+    { label: 'Selesai', icon: CheckCircle2 },
+  ];
+  const completedStep = delivered ? 3 : paid ? 1 : 0;
+  const activeStep = delivered ? 3 : paid ? 2 : 1;
+
+  return (
+    <section className="rounded-[28px] border border-white/10 bg-[#191d1b] p-5 sm:p-7">
+      <h2 className="text-base font-bold text-white sm:text-lg">Progress transaksi</h2>
+      <div className="relative mt-6 grid grid-cols-4 gap-1 text-center">
+        <div className="absolute left-[12%] right-[12%] top-[21px] h-1 rounded-full bg-neutral-700">
+          <div
+            className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+            style={{ width: `${(completedStep / 3) * 100}%` }}
+          />
+        </div>
+        {steps.map(({ label, icon: Icon }, index) => (
+          <div key={label} className="relative z-10 flex flex-col items-center gap-2">
+            <div className={`flex h-11 w-11 items-center justify-center rounded-full border-2 transition-colors ${
+              index <= completedStep
+                ? 'border-emerald-400 bg-emerald-500 text-[#082b18]'
+                : index === activeStep
+                  ? 'border-amber-300 bg-amber-400 text-[#312006]'
+                : 'border-neutral-600 bg-[#242927] text-neutral-400'
+            }`}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <span className={`text-[10px] font-semibold sm:text-xs ${index <= completedStep ? 'text-emerald-300' : index === activeStep ? 'text-amber-300' : 'text-neutral-500'}`}>
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function OrderSuccessPage({
   params,
 }: {
   params: { orderCode: string };
 }) {
   const orderCode = params.orderCode;
-  const searchParams = useSearchParams();
-  const isFailedParam = searchParams.get('status') === 'failed';
 
   const [order, setOrder] = useState<OrderData | null>(null);
   const [loading, setLoading] = useState(true);
   const [polling, setPolling] = useState(true);
   const [pollAttempts, setPollAttempts] = useState(0);
+  const [orderEmail, setOrderEmail] = useState('');
+  const [lookupEmail, setLookupEmail] = useState('');
+  const [emailReady, setEmailReady] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [cancelError, setCancelError] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const fetchAndVerifyOrder = async (isManual = false) => {
+  const fetchAndVerifyOrder = useCallback(async (isManual = false) => {
+    if (!orderEmail) return;
     if (isManual) setLoading(true);
-
-    const orderEmail = window.localStorage.getItem(`order_email_${orderCode}`)?.trim().toLowerCase();
-    if (!orderEmail) {
-      setPolling(false);
-      setLoading(false);
-      setErrorMsg('Untuk melindungi data pesanan, masukkan email checkout melalui halaman Cek Pesanan.');
-      return;
-    }
 
     try {
       const res = await fetch('/api/orders/verify-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
         body: JSON.stringify({
           order_code: orderCode,
           email: orderEmail,
@@ -103,50 +147,101 @@ export default function OrderSuccessPage({
         setErrorMsg('');
 
         if (
-          json.data.payment_status === 'paid' ||
-          json.data.payment_status === 'settlement' ||
-          json.data.payment_status === 'capture' ||
-          json.data.payment_status === 'paid_manual' ||
-          json.data.order_status === 'completed'
+          (json.data.delivery_status === 'delivered' && Boolean(json.data.delivery_content)) ||
+          ['failed', 'expired', 'cancelled', 'rejected'].includes(json.data.payment_status)
         ) {
           setPolling(false);
         }
-      } else if (!order) {
-        setErrorMsg(json.error || 'Pesanan tidak ditemukan');
+      } else {
+        setErrorMsg(res.status === 429
+          ? 'Pemeriksaan terlalu sering. Tunggu sebentar lalu cek status lagi.'
+          : 'Pesanan tidak ditemukan atau akses ditolak. Periksa kode dan email checkout.');
+        if (res.status === 429) setPolling(false);
       }
     } catch {
-      if (!order) setErrorMsg('Gagal memuat status pesanan');
+      setErrorMsg('Gagal memuat status pesanan. Coba periksa koneksi lalu muat ulang.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [orderCode, orderEmail]);
 
   useEffect(() => {
-    fetchAndVerifyOrder();
-    const quickTimer = setTimeout(() => {
-      fetchAndVerifyOrder();
-    }, 800);
-    return () => clearTimeout(quickTimer);
+    let savedEmail = '';
+    try {
+      savedEmail = localStorage.getItem(`order_email_${orderCode}`)?.trim().toLowerCase() || '';
+    } catch {
+      // An email form below is the fallback when browser storage is disabled.
+    }
+    setOrderEmail(savedEmail);
+    setLookupEmail(savedEmail);
+    setEmailReady(true);
+    if (!savedEmail) setLoading(false);
   }, [orderCode]);
 
   useEffect(() => {
-    if (!polling) return;
+    if (emailReady && orderEmail) void fetchAndVerifyOrder();
+  }, [emailReady, orderEmail, fetchAndVerifyOrder]);
 
-    pollTimerRef.current = setInterval(() => {
-      setPollAttempts((prev) => {
-        if (prev >= 60) {
-          setPolling(false);
-          return prev;
-        }
-        fetchAndVerifyOrder();
-        return prev + 1;
+  useEffect(() => {
+    if (!polling || !orderEmail || pollAttempts >= 75) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      setPollAttempts((count) => count + 1);
+      void fetchAndVerifyOrder();
+    }, 12000);
+    return () => clearInterval(timer);
+  }, [polling, orderEmail, pollAttempts >= 75, fetchAndVerifyOrder]);
+
+  useEffect(() => {
+    if (pollAttempts >= 75) setPolling(false);
+  }, [pollAttempts]);
+
+  useEffect(() => {
+    if (!order || order.payment_status !== 'pending') return;
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [order?.payment_status, order?.expired_at]);
+
+  const handleEmailLookup = (event: React.FormEvent) => {
+    event.preventDefault();
+    const email = lookupEmail.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      setErrorMsg('Masukkan email yang digunakan saat checkout.');
+      return;
+    }
+    try {
+      localStorage.setItem(`order_email_${orderCode}`, email);
+    } catch {}
+    setErrorMsg('');
+    setLoading(true);
+    setPolling(true);
+    setOrderEmail(email);
+  };
+
+  const handleCancelOrder = async () => {
+    if (!order || !orderEmail) return;
+    setCancellingOrder(true);
+    setCancelError('');
+    try {
+      const response = await fetch('/api/orders/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_code: orderCode, email: orderEmail }),
       });
-    }, 1500);
-
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
-  }, [polling, orderCode]);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        setCancelError(result.message || 'Pesanan belum dapat dibatalkan.');
+        return;
+      }
+      setOrder((current) => current ? { ...current, ...result.data } : current);
+      setPolling(false);
+      setShowCancelConfirm(false);
+    } catch {
+      setCancelError('Gagal menghubungi server. Coba lagi.');
+    } finally {
+      setCancellingOrder(false);
+    }
+  };
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -158,30 +253,45 @@ export default function OrderSuccessPage({
     order?.payment_status === 'paid' ||
     order?.payment_status === 'settlement' ||
     order?.payment_status === 'capture' ||
-    order?.payment_status === 'paid_manual' ||
-    order?.order_status === 'completed' ||
-    order?.delivery_status === 'delivered' ||
-    order?.order_status === 'processing';
+    order?.payment_status === 'paid_manual';
 
   const isCustomSkin =
     order?.custom_skin_details != null ||
     order?.delivery_type === 'manual' ||
     order?.product_name?.toLowerCase().includes('skin');
 
-  const isDelivered = order?.delivery_status === 'delivered';
+  const isDelivered = order?.delivery_status === 'delivered' && Boolean(order?.delivery_content?.trim());
+  const isComplete = isPaid && isDelivered;
+  const isPaymentFailed = Boolean(order && ['failed', 'expired', 'cancelled', 'rejected'].includes(order.payment_status));
+  const expiryMs = order?.expired_at ? Date.parse(order.expired_at) : NaN;
+  const remainingSeconds = Number.isFinite(expiryMs)
+    ? Math.max(0, Math.ceil((expiryMs - nowMs) / 1000))
+    : null;
+  const awaitingExpiryConfirmation = order?.payment_status === 'pending' && remainingSeconds === 0;
 
   const qty = order?.quantity || 1;
   const rawDelivery = order?.delivery_content || '';
   const parsedAccounts: ParsedDeliveryItem[] = parseDeliveryContent(rawDelivery).slice(0, qty);
+  const paymentMethodLabel: Record<string, string> = {
+    qris: 'QRIS', gopay: 'GoPay', shopeepay: 'ShopeePay', dana: 'DANA', ovo: 'OVO',
+    va_bca: 'BCA Virtual Account', va_bri: 'BRI Virtual Account',
+    va_bni: 'BNI Virtual Account', va_mandiri: 'Mandiri Virtual Account',
+    va_bsi: 'BSI Virtual Account', alfamart: 'Alfamart', indomaret: 'Indomaret',
+  };
 
   return (
-    <div className="min-h-screen bg-[#111111] text-white flex flex-col justify-between selection:bg-[#367723] selection:text-white">
+    <div className="min-h-screen bg-[#101413] text-white selection:bg-emerald-500 selection:text-[#092517]">
       
       {/* Main Content Area */}
-      <div className="flex-1 w-full max-w-xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+      <div className="w-full max-w-3xl mx-auto space-y-6 px-4 py-8 sm:px-6 sm:py-12">
+
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/" className="text-sm font-black tracking-[0.2em] text-emerald-300">SALADINSHOP</Link>
+          <Link href="/check-order" className="text-xs font-semibold text-neutral-400 hover:text-white">Cek pesanan</Link>
+        </div>
 
         {/* Initial Loading Screen */}
-        {loading && !order && (
+        {loading && !order && (!emailReady || orderEmail) && (
           <div className="p-12 rounded-none bg-[#181818] border border-neutral-700 text-center space-y-4 shadow-2xl">
             <Loader2 className="w-10 h-10 text-[#367723] animate-spin mx-auto" />
             <h2 className="text-xl font-bold text-white uppercase tracking-wider">Memeriksa Pembayaran</h2>
@@ -189,13 +299,38 @@ export default function OrderSuccessPage({
           </div>
         )}
 
+        {emailReady && !orderEmail && (
+          <form onSubmit={handleEmailLookup} className="space-y-4 rounded-[28px] border border-white/10 bg-[#191d1b] p-6 sm:p-8">
+            <ShieldCheck className="h-8 w-8 text-emerald-400" />
+            <h1 className="text-xl font-bold">Buka detail pesanan</h1>
+            <p className="text-sm text-neutral-400">Masukkan email yang digunakan saat checkout untuk melihat pembayaran dan pengiriman pesanan {orderCode}.</p>
+            <label htmlFor="order-email" className="block text-xs font-semibold text-neutral-300">Email checkout</label>
+            <input
+              id="order-email"
+              type="email"
+              autoComplete="email"
+              required
+              value={lookupEmail}
+              onChange={(event) => setLookupEmail(event.target.value)}
+              className="w-full rounded-xl border border-neutral-600 bg-[#101413] px-4 py-3 text-sm text-white outline-none focus:border-emerald-400"
+            />
+            {errorMsg && <p className="text-xs text-rose-300">{errorMsg}</p>}
+            <button type="submit" className="w-full rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-[#092517] hover:bg-emerald-400">
+              Lihat pesanan
+            </button>
+          </form>
+        )}
+
         {/* Error Screen */}
-        {errorMsg && !order && (
+        {errorMsg && !order && Boolean(orderEmail) && !loading && (
           <div className="p-8 rounded-none bg-[#181818] border border-rose-600/60 text-center space-y-4 shadow-2xl">
             <AlertCircle className="w-10 h-10 text-rose-400 mx-auto" />
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider">Pesanan Tidak Ditemukan</h2>
+            <h2 className="text-xl font-bold text-white uppercase tracking-wider">Belum dapat memuat pesanan</h2>
             <p className="text-xs text-neutral-400">{errorMsg}</p>
             <div className="flex justify-center gap-3 pt-2">
+              <button type="button" onClick={() => fetchAndVerifyOrder(true)} className="px-5 py-2.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white uppercase">
+                Coba lagi
+              </button>
               <Link
                 href="/check-order"
                 className="px-5 py-2.5 rounded-none text-xs font-semibold bg-[#111111] hover:bg-neutral-800 border border-neutral-700 text-white uppercase"
@@ -214,24 +349,70 @@ export default function OrderSuccessPage({
 
         {order && (
           <>
+            <section className={`relative overflow-hidden rounded-[32px] px-6 py-12 text-center shadow-2xl sm:px-12 sm:py-16 ${
+              isComplete
+                ? 'bg-[#1ec765] text-[#064728]'
+                : isPaymentFailed
+                  ? 'border border-rose-500/30 bg-gradient-to-br from-[#452328] to-[#201a1c] text-white'
+                  : isPaid
+                    ? 'border border-emerald-400/20 bg-gradient-to-br from-[#19583b] to-[#123026] text-white'
+                    : 'border border-amber-400/20 bg-gradient-to-br from-[#344a2b] to-[#17261e] text-white'
+            }`}>
+              <span aria-hidden="true" className="absolute left-[15%] top-[20%] h-3 w-3 rotate-12 rounded-sm border-4 border-current opacity-25" />
+              <span aria-hidden="true" className="absolute right-[18%] top-[32%] h-4 w-4 rotate-45 rounded-sm bg-amber-300 opacity-70" />
+              <span aria-hidden="true" className="absolute bottom-[18%] left-[24%] h-2 w-2 rounded-full bg-emerald-100 opacity-70" />
+              <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-black/10 sm:h-28 sm:w-28">
+                {isComplete ? <CheckCircle2 className="h-14 w-14" strokeWidth={2.4} />
+                  : isPaymentFailed ? <AlertCircle className="h-12 w-12 text-rose-300" />
+                    : isPaid ? <PackageCheck className="h-12 w-12 text-emerald-300" />
+                      : <Clock className="h-12 w-12 text-amber-300" />}
+              </div>
+              <h1 className="relative mt-7 text-3xl font-black tracking-tight sm:text-5xl">
+                {isComplete ? 'Pesanan Selesai!' : isPaymentFailed ? 'Pembayaran Belum Selesai'
+                  : isPaid ? 'Pembayaran Berhasil' : awaitingExpiryConfirmation ? 'Batas Waktu Terlewati' : 'Menunggu Pembayaran'}
+              </h1>
+              <p className="relative mx-auto mt-3 max-w-lg text-sm font-medium opacity-80 sm:text-base">
+                {isComplete ? 'Pembayaran terverifikasi. Data produk digitalmu tersedia di bawah.'
+                  : isPaymentFailed ? 'Pesanan ini tidak dapat dilanjutkan. Kamu bisa membuat pesanan baru.'
+                    : isPaid ? 'Pembayaran sudah aman; pesananmu sedang diproses untuk dikirim.'
+                      : awaitingExpiryConfirmation ? 'Kami sedang memastikan status akhir pembayaran dengan Midtrans. Jangan lakukan transfer baru untuk pesanan ini.'
+                        : 'Selesaikan pembayaran melalui instruksi Midtrans di bawah. Status akan diperbarui otomatis.'}
+              </p>
+              <div className="relative mt-6 inline-flex rounded-full bg-black/15 px-4 py-2 font-mono text-xs font-bold tracking-wide">
+                #{order.order_code}
+              </div>
+            </section>
+
+            {!isPaymentFailed && <OrderProgress paid={isPaid} delivered={isComplete} />}
+
+            <section className="rounded-[28px] border border-white/10 bg-[#191d1b] p-5 sm:p-7">
+              <div className="flex items-start gap-4">
+                {order.product_image_url ? (
+                  <img src={order.product_image_url} alt="" className="h-20 w-20 flex-shrink-0 rounded-2xl object-cover sm:h-24 sm:w-24" />
+                ) : (
+                  <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300 sm:h-24 sm:w-24">
+                    <ShoppingBag className="h-9 w-9" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Informasi pesanan</p>
+                  <h2 className="mt-1 text-base font-bold text-white sm:text-lg">{order.product_name || 'Produk Digital'}</h2>
+                  <p className="mt-1 text-xs text-neutral-400">{order.quantity || 1} item · {paymentMethodLabel[order.payment_method || ''] || order.payment_method || 'Midtrans'}</p>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 text-sm sm:grid-cols-2">
+                <div><p className="text-xs text-neutral-500">Kode pesanan</p><p className="mt-1 break-all font-mono text-neutral-100">{order.order_code}</p></div>
+                <div><p className="text-xs text-neutral-500">Dibuat</p><p className="mt-1 text-neutral-100">{order.created_at ? formatDate(order.created_at) : '—'}</p></div>
+                <div><p className="text-xs text-neutral-500">Total pembayaran</p><p className="mt-1 text-lg font-black text-emerald-300">{formatIDR(order.total_amount)}</p></div>
+                {!isPaid && order.expired_at && (
+                  <div><p className="text-xs text-neutral-500">Batas pembayaran</p><p className="mt-1 font-semibold text-amber-300">{formatDate(order.expired_at)}</p></div>
+                )}
+              </div>
+            </section>
+
             {/* ================= SUCCESS / PAID STATE ================= */}
             {isPaid ? (
               <div className="space-y-6 animate-fadeIn">
-                
-                {/* 1. Top Success Badge & Titles */}
-                <div className="text-center space-y-2">
-                  <div className="w-14 h-14 rounded-none bg-[#181818] border-2 border-emerald-500 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                    <CheckCircle2 className="w-7 h-7 text-emerald-400" />
-                  </div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                    Pembayaran Berhasil!
-                  </h1>
-                  <p className="text-xs sm:text-sm text-neutral-400 max-w-sm mx-auto">
-                    {isCustomSkin
-                      ? 'Pembayaran telah dikonfirmasi. Skin impian Anda sedang dalam antrean pengerjaan.'
-                      : 'Transaksi berhasil. Data aset digital Anda telah siap di bawah ini.'}
-                  </p>
-                </div>
 
                 {/* ================= SPECIAL CUSTOM SKIN PROCESSING / DELIVERY CARD ================= */}
                 {isCustomSkin ? (
@@ -358,7 +539,18 @@ export default function OrderSuccessPage({
                       </h2>
                     </div>
 
-                    {parsedAccounts.map((item, accIdx) => (
+                    {!isDelivered && (
+                      <div className="rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm text-amber-100">
+                        Pembayaran sudah terverifikasi. Data produk sedang disiapkan; halaman ini akan memperbarui status otomatis.
+                      </div>
+                    )}
+                    {isDelivered && parsedAccounts.length === 0 && (
+                      <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/5 p-4 text-sm text-neutral-300">
+                        Pengiriman sudah tercatat, tetapi detail belum tersedia di halaman ini. Periksa email pesanan atau hubungi admin.
+                      </div>
+                    )}
+
+                    {isDelivered && parsedAccounts.map((item, accIdx) => (
                       <div key={accIdx} className="space-y-4">
                         
                         {/* ================= CATEGORY 1: AKUN GAME (Email + Password + Catatan) ================= */}
@@ -699,65 +891,25 @@ export default function OrderSuccessPage({
                       </div>
                     ))}
 
-                    <div className="bg-[#111111] border border-neutral-700 rounded-none p-3.5 text-xs text-neutral-300 flex items-start gap-2.5">
+                    {isDelivered && parsedAccounts.length > 0 && <div className="bg-[#111111] border border-neutral-700 rounded-none p-3.5 text-xs text-neutral-300 flex items-start gap-2.5">
                       <Info className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                       <p className="leading-relaxed">
                         Harap segera simpan data produk digital Anda atau ikuti petunjuk pengiriman di atas. Bukti transaksi dan detail ini juga telah dikirimkan ke email Anda.
                       </p>
-                    </div>
+                    </div>}
                   </div>
                 )}
 
-                {/* 2. Order Summary Card */}
-                <div className="bg-[#181818] border border-neutral-700/80 rounded-none p-6 space-y-4 shadow-xl">
-                  <h2 className="text-base sm:text-lg font-bold text-white uppercase tracking-wider">
-                    Ringkasan Transaksi
-                  </h2>
-
-                  <div className="space-y-3.5 text-xs sm:text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-neutral-400 font-medium">Kode Transaksi</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="bg-[#111111] border border-neutral-700 rounded-none px-2.5 py-1 text-xs font-mono text-neutral-200 font-semibold">
-                          {order.order_code}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(order.order_code, 'order_code')}
-                          className="p-1 rounded-none bg-[#111111] hover:bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-white transition-colors"
-                          title="Salin Kode Transaksi"
-                        >
-                          {copiedKey === 'order_code' ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start justify-between gap-4">
-                      <span className="text-neutral-400 font-medium">Produk</span>
-                      <span className="font-semibold text-white text-right">
-                        {order.product_name || 'Custom Skin Minecraft HD 3D'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-neutral-400 font-medium">Waktu Transaksi</span>
-                      <span className="text-neutral-300">
-                        {formatDate(order.paid_at || order.created_at)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-neutral-800">
-                      <span className="text-neutral-400 font-medium">Total Pembayaran</span>
-                      <span className="text-lg sm:text-xl font-mono font-bold text-emerald-400">
-                        {formatIDR(order.total_amount)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                {!isComplete && (
+                  <button
+                    type="button"
+                    onClick={() => fetchAndVerifyOrder(true)}
+                    disabled={loading}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 px-4 py-3 text-xs font-bold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
+                  >
+                    <RefreshCw className="h-4 w-4" /> Perbarui status pengiriman
+                  </button>
+                )}
 
                 {/* 3. Action Buttons */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
@@ -777,71 +929,68 @@ export default function OrderSuccessPage({
                 </div>
 
               </div>
-            ) : isFailedParam || order.payment_status === 'failed' || order.payment_status === 'expired' ? (
+            ) : isPaymentFailed ? (
               /* ================= FAILED STATE ================= */
               <div className="space-y-6 animate-fadeIn">
-                <div className="p-8 rounded-none bg-[#181818] border border-rose-500/60 text-center space-y-4 shadow-2xl">
-                  <AlertCircle className="w-12 h-12 text-rose-400 mx-auto" />
-                  <h1 className="text-2xl font-bold text-white uppercase tracking-wider">Pembayaran Dibatalkan / Gagal</h1>
-                  <p className="text-xs text-rose-200 max-w-md mx-auto leading-relaxed">
-                    Transaksi dengan kode <span className="font-mono font-bold text-white">{order.order_code}</span> belum terselesaikan atau telah dibatalkan.
-                  </p>
-
-                  <div className="flex flex-col sm:flex-row justify-center gap-3 pt-3">
-                    {order.payment_url && (
-                      <a
-                        href={order.payment_url}
-                        className="px-6 py-3.5 rounded-none text-xs font-black uppercase tracking-wider bg-[#ffc825] hover:bg-[#ffcf3d] border-b-4 border-[#b87e00] text-black"
-                      >
-                        Lanjutkan Pembayaran &rarr;
-                      </a>
-                    )}
-                    <Link
-                      href="/"
-                      className="px-6 py-3.5 rounded-none text-xs font-semibold uppercase tracking-wider bg-[#111111] hover:bg-neutral-800 border border-neutral-700 text-white"
-                    >
-                      Pilih Produk Lain
-                    </Link>
-                  </div>
+                <div className="rounded-[28px] border border-rose-500/30 bg-[#191d1b] p-6 text-center sm:p-8">
+                  <p className="text-sm text-neutral-300">Status pesanan: <span className="font-bold text-rose-300">{order.payment_status}</span>. Jika masih ingin membeli, buat pesanan baru agar mendapat instruksi pembayaran yang aktif.</p>
+                  <Link href="/" className="mt-5 inline-flex rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-[#082b18] hover:bg-emerald-400">
+                    Kembali ke toko
+                  </Link>
                 </div>
               </div>
             ) : (
-              /* ================= PENDING / VERIFYING STATE ================= */
+              /* ================= PENDING PAYMENT STATE ================= */
               <div className="space-y-6 animate-fadeIn">
-                <div className="p-8 sm:p-10 rounded-none bg-[#181818] border border-neutral-700 shadow-2xl text-center space-y-6">
-                  
-                  {/* Radar Animation */}
-                  <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                    <div className="absolute inset-0 rounded-none border-2 border-[#367723]/40 animate-ping" />
-                    <div className="absolute inset-2 rounded-none border-2 border-[#367723]/70 animate-pulse" />
-                    <div className="w-12 h-12 rounded-none bg-[#111111] border-2 border-[#367723] flex items-center justify-center shadow-lg">
-                      <Radio className="w-6 h-6 text-[#367723] animate-pulse" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 max-w-md mx-auto">
-                    <h2 className="text-xl sm:text-2xl font-bold text-white uppercase tracking-wider">
-                      Memverifikasi Pembayaran...
-                    </h2>
-                    <p className="text-xs text-neutral-400 leading-relaxed">
-                      Sistem sedang memverifikasi status pembayaran transaksi{' '}
-                      <span className="font-mono font-bold text-white">{order.order_code}</span> secara otomatis...
-                    </p>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="max-w-xs mx-auto space-y-1.5">
-                    <div className="w-full bg-[#111111] h-2 rounded-none overflow-hidden border border-neutral-700">
-                      <div
-                        className="bg-[#367723] h-full transition-all duration-300"
-                        style={{ width: `${Math.min((pollAttempts / 40) * 100, 100)}%` }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-neutral-500 font-mono">
-                      Sinkronisasi otomatis ({pollAttempts}/40)...
-                    </p>
-                  </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-amber-500/20 bg-amber-500/5 px-5 py-4 text-sm">
+                  <span className="flex items-center gap-2 font-semibold text-amber-200">
+                    <Clock className="h-4 w-4" /> Menunggu konfirmasi Midtrans
+                  </span>
+                  {remainingSeconds !== null && (
+                    <span className="font-mono font-bold text-amber-300">
+                      {remainingSeconds > 0
+                        ? `${Math.floor(remainingSeconds / 60).toString().padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')} tersisa`
+                        : 'Waktu habis — periksa status'}
+                    </span>
+                  )}
                 </div>
+
+                {!awaitingExpiryConfirmation && (
+                  <MidtransEmbeddedPayment
+                    token={order.snap_token || null}
+                    paymentUrl={order.payment_url || null}
+                    onPaymentActivity={() => void fetchAndVerifyOrder()}
+                  />
+                )}
+
+                <div className="rounded-[20px] border border-white/10 bg-[#191d1b] p-5 text-xs leading-relaxed text-neutral-400">
+                  Jangan transfer ke rekening pribadi. QRIS/VA pada panel Midtrans terikat pada pesanan ini; data produk hanya muncul setelah pembayaran terverifikasi di server.
+                </div>
+
+                {errorMsg && <p className="text-center text-xs text-amber-300">{errorMsg}</p>}
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button type="button" onClick={() => fetchAndVerifyOrder(true)} disabled={loading} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 px-4 py-3 text-xs font-bold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50">
+                    <RefreshCw className="h-4 w-4" /> Perbarui status
+                  </button>
+                  <button type="button" onClick={() => setShowCancelConfirm(true)} className="flex-1 rounded-xl border border-rose-500/30 px-4 py-3 text-xs font-bold text-rose-300 hover:bg-rose-500/10">
+                    Batalkan pesanan
+                  </button>
+                </div>
+
+                {showCancelConfirm && (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-5">
+                    <p className="text-sm text-neutral-200">Yakin ingin membatalkan? Pesanan yang sudah dibayar tidak dapat dibatalkan di halaman ini.</p>
+                    {cancelError && <p className="mt-3 text-xs text-rose-300">{cancelError}</p>}
+                    <div className="mt-4 flex gap-3">
+                      <button type="button" onClick={handleCancelOrder} disabled={cancellingOrder} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                        {cancellingOrder ? 'Memproses...' : 'Ya, batalkan'}
+                      </button>
+                      <button type="button" onClick={() => { setShowCancelConfirm(false); setCancelError(''); }} className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-semibold text-neutral-300">
+                        Kembali
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>

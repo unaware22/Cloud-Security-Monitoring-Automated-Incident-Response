@@ -33,6 +33,7 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('all');
+  const [viewFilter, setViewFilter] = useState<'active' | 'history'>('active');
   const [deliveryFilter, setDeliveryFilter] = useState('all');
 
   // Detail Modal
@@ -57,6 +58,7 @@ export default function AdminOrdersPage() {
     try {
       const query = new URLSearchParams();
       if (search.trim()) query.set('search', search.trim());
+      query.set('view', viewFilter);
       if (paymentFilter !== 'all') query.set('payment_status', paymentFilter);
       if (deliveryFilter !== 'all') query.set('delivery_status', deliveryFilter);
 
@@ -75,7 +77,7 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     const timer = setTimeout(fetchOrders, 200);
     return () => clearTimeout(timer);
-  }, [search, paymentFilter, deliveryFilter]);
+  }, [search, paymentFilter, deliveryFilter, viewFilter]);
 
   const handleResendDelivery = async (orderId: string) => {
     setResendingId(orderId);
@@ -278,6 +280,22 @@ export default function AdminOrdersPage() {
 
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-xl border border-surface-border overflow-hidden text-xs" aria-label="Tampilan pesanan">
+          <button
+            type="button"
+            onClick={() => { setViewFilter('active'); setPaymentFilter('all'); }}
+            className={`px-3 py-2 ${viewFilter === 'active' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-surface text-gray-400'}`}
+          >
+            Pesanan aktif
+          </button>
+          <button
+            type="button"
+            onClick={() => { setViewFilter('history'); setPaymentFilter('all'); }}
+            className={`px-3 py-2 ${viewFilter === 'history' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-surface text-gray-400'}`}
+          >
+            Riwayat gagal/batal
+          </button>
+        </div>
         <div className="relative w-full sm:w-72">
           <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input

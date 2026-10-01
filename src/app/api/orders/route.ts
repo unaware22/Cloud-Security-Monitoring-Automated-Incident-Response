@@ -14,6 +14,7 @@ import { fallbackStore } from '@/lib/products-store';
 import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 import { getCustomerSession } from '@/lib/user-auth';
+import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
 
 export const dynamic = 'force-dynamic';
 
@@ -298,7 +299,7 @@ export async function POST(req: NextRequest) {
 
       if (voucher.singleUsePerAccount) {
         const used = await prisma.voucherUsage.findFirst({
-          where: { voucherId: voucher.id, userId: customerSession.userId },
+          where: blockingVoucherUsageWhere(voucher.id, customerSession.userId),
         });
         if (used) {
           return NextResponse.json(
@@ -475,6 +476,7 @@ export async function POST(req: NextRequest) {
     deliveryStatus: 'pending',
     paymentMethod: payment_method,
     paymentUrl: paymentUrl,
+    providerInvoiceId,
     expiredAt: expiredAt.toISOString(),
     createdAt: new Date().toISOString(),
     items: [

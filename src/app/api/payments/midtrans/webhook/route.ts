@@ -64,8 +64,9 @@ export async function POST(req: NextRequest) {
 
   // 2. Determine Paid Condition
   const isPaid =
-    transaction_status === 'settlement' ||
-    (transaction_status === 'capture' && fraud_status === 'accept');
+    status_code === '200' &&
+    (fraud_status == null || fraud_status === 'accept') &&
+    (transaction_status === 'settlement' || transaction_status === 'capture');
 
   const isFailed =
     transaction_status === 'deny' ||
@@ -122,7 +123,9 @@ export async function POST(req: NextRequest) {
         // retries from delivering the same digital product more than once.
         const paymentClaim = isPaid
           ? await prisma.order.updateMany({
-              where: { id: order.id, paymentStatus: 'pending' },
+              // A late but valid payment notification must not be lost if the
+              // expiry worker marked this order expired just beforehand.
+              where: { id: order.id, paymentStatus: { in: ['pending', 'expired'] } },
               data: {
                 paymentStatus: 'paid',
                 orderStatus: isManual ? 'processing' : 'completed',
@@ -216,18 +219,21 @@ export async function POST(req: NextRequest) {
             } catch {}
           }
         } else if (isFailed && order.paymentStatus === 'pending') {
-          await prisma.order.update({
-            where: { id: order.id },
-            data: {
-              paymentStatus: 'failed',
-              orderStatus: 'cancelled',
-            },
+          await prisma.$transaction(async (tx) => {
+            const failed = await tx.order.updateMany({
+              where: { id: order.id, paymentStatus: 'pending' },
+              data: {
+                paymentStatus: 'failed',
+                orderStatus: 'cancelled',
+                deliveryStatus: 'cancelled',
+              },
+            });
+            if (failed.count !== 1) return;
+            await tx.paymentTransaction.updateMany({
+              where: { orderId: order.id },
+              data: { status: 'failed' },
+            });
           });
-
-          await prisma.paymentTransaction.updateMany({
-            where: { orderId: order.id },
-            data: { status: 'failed' },
-          }).catch(() => {});
         }
       }
     } catch (dbErr) {
