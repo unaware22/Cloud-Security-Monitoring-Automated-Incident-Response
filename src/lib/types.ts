@@ -105,7 +105,12 @@ export type SecurityEventType =
   | 'user_password_reset_abuse'
   | 'unauthorized_order_access'
   | 'unauthorized_object_access_attempt'
-  | 'voucher_abuse_attempt';
+  | 'voucher_abuse_attempt'
+  | 'device_banned'
+  | 'account_banned'
+  | 'banned_device_request'
+  | 'banned_account_request'
+  | 'penalty_lifted';
 
 export interface SecurityEventLog {
   event_type: SecurityEventType | string;
@@ -120,6 +125,7 @@ export interface SecurityEventLog {
   created_at: string;
   account_ref?: string;
   auth_method?: 'password' | 'google';
+  device_ref?: string;
 }
 
 export interface AdminSessionPayload {

@@ -23,6 +23,21 @@ function getUserJwtSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+export async function getActiveAccountBan(userId: string) {
+  try {
+    return await prisma.securityPenalty.findFirst({
+      where: { kind: 'account', subject: userId, liftedAt: null, expiresAt: { gt: new Date() } },
+      select: { id: true, expiresAt: true },
+    });
+  } catch {
+    return null; // fail open on database errors
+  }
+}
+
+async function hasActiveAccountBan(userId: string): Promise<boolean> {
+  return Boolean(await getActiveAccountBan(userId));
+}
+
 /**
  * Creates and signs a JWT for an authenticated customer
  */
@@ -117,6 +132,9 @@ export async function getCustomerSession(req?: NextRequest): Promise<CustomerSes
     ) {
       return null;
     }
+
+    // A temporarily banned account behaves as logged out until the ban expires.
+    if (await hasActiveAccountBan(user.id)) return null;
 
     return {
       userId: user.id,

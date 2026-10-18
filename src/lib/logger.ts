@@ -77,6 +77,7 @@ export function logSecurityEventToFile(event: SecurityEventLog): void {
       created_at: event.created_at || new Date().toISOString(),
       ...(event.account_ref ? { account_ref: event.account_ref } : {}),
       ...(event.auth_method ? { auth_method: event.auth_method } : {}),
+      ...(event.device_ref ? { device_ref: event.device_ref } : {}),
     };
 
     const jsonLine = JSON.stringify(cleanEvent) + '\n';

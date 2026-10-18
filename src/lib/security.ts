@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 import { logSecurityEventToFile, sanitizeForLogs } from './logger';
 import { SecurityEventType, SecuritySeverity, SecurityEventLog } from './types';
+import { applyPenaltiesForEvent, resolveEventSubjects } from './device-ban';
 
 // Sensitive paths reconnaissance pattern
 const SENSITIVE_PATH_PATTERNS = [
@@ -152,8 +153,13 @@ export async function recordSecurityEvent(params: {
   requestId?: string;
   accountRef?: string;
   authMethod?: 'password' | 'google';
+  /** Signed-cookie device id when the caller already knows it (e.g. the middleware relay). */
+  deviceId?: string;
+  /** Set by the ban logic itself so ban events can never trigger another ban. */
+  skipPenalty?: boolean;
 }): Promise<void> {
   const createdAt = new Date().toISOString();
+  const subjects = await resolveEventSubjects({ deviceId: params.deviceId });
   const requestId = params.requestId || `req-${crypto.randomBytes(6).toString('hex')}`;
   const sanitizedSnippet = sanitizeForLogs(params.payloadSnippet || '');
 
@@ -171,9 +177,21 @@ export async function recordSecurityEvent(params: {
     created_at: createdAt,
     ...(params.accountRef ? { account_ref: params.accountRef } : {}),
     ...(params.authMethod ? { auth_method: params.authMethod } : {}),
+    ...(subjects.deviceRef ? { device_ref: subjects.deviceRef } : {}),
   };
 
   logSecurityEventToFile(fileLogEntry);
+
+  if (!params.skipPenalty) {
+    await applyPenaltiesForEvent({
+      eventType: params.eventType,
+      ipAddress: params.ipAddress || '127.0.0.1',
+      userAgent: params.userAgent,
+      description: params.description,
+      requestId,
+      deviceId: subjects.deviceId,
+    });
+  }
 
   // 2. Persist to PostgreSQL database asynchronously (non-blocking)
   prisma.securityEvent

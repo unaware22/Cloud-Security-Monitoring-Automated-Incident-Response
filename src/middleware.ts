@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
+import {
+  DEVICE_COOKIE_MAX_AGE_SECONDS,
+  DEVICE_COOKIE_NAME,
+  DEVICE_HEADER_NAME,
+  issueDeviceCookie,
+  verifyDeviceCookie,
+} from '@/lib/device-id';
 
 const SENSITIVE_PATH_PATTERNS = [
   /^\/\.env/i,
@@ -57,6 +64,48 @@ function getSecurityRelayToken(): string | null {
   return token && token.length >= 32 ? token : null;
 }
 
+// The Edge runtime cannot reach Prisma, so bans are looked up through a
+// token-protected internal endpoint and cached briefly per process.
+const DEVICE_CACHE_TTL_MS = 10_000;
+const BANNED_LOG_THROTTLE_MS = 60_000;
+const deviceBanCache = new Map<string, { banned: boolean; expiresAt?: string; checkedAt: number }>();
+const bannedLogThrottle = new Map<string, number>();
+
+async function lookupDeviceBan(
+  req: NextRequest,
+  deviceId: string,
+  ip: string,
+  relayToken: string | null
+): Promise<{ banned: boolean; expiresAt?: string }> {
+  const now = Date.now();
+  const cached = deviceBanCache.get(deviceId);
+  if (cached && now - cached.checkedAt < DEVICE_CACHE_TTL_MS) {
+    if (!cached.banned || (cached.expiresAt && new Date(cached.expiresAt).getTime() > now)) {
+      return cached;
+    }
+  }
+  if (!relayToken) return { banned: false };
+
+  try {
+    const url = new URL('/api/internal/security/device-check', req.url);
+    url.searchParams.set('device', deviceId);
+    url.searchParams.set('ip', ip);
+    const response = await fetch(url, {
+      headers: { 'x-security-event-token': relayToken },
+      cache: 'no-store',
+    });
+    if (!response.ok) return { banned: false };
+    const result = (await response.json()) as { banned?: boolean; expiresAt?: string };
+    const entry = { banned: Boolean(result.banned), expiresAt: result.expiresAt, checkedAt: now };
+    deviceBanCache.set(deviceId, entry);
+    if (deviceBanCache.size > 5000) deviceBanCache.clear();
+    return entry;
+  } catch {
+    // Fail open: never lock customers out because the check itself failed.
+    return { banned: false };
+  }
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const forwardedFor = req.headers.get('x-forwarded-for');
@@ -76,6 +125,94 @@ export async function middleware(req: NextRequest) {
   ) {
     return NextResponse.next();
   }
+
+  // Internal, token-protected endpoints are called by this middleware itself.
+  if (pathname.startsWith('/api/internal/') || pathname === '/api/security-log-relay') {
+    return NextResponse.next();
+  }
+
+  // 0. Signed device cookie: identifies the browser even when the IP changes
+  // (VPN, mobile data). An invalid or missing cookie simply yields a new device.
+  let deviceId = await verifyDeviceCookie(req.cookies.get(DEVICE_COOKIE_NAME)?.value);
+  let newDeviceCookie: string | null = null;
+  if (!deviceId) {
+    const issued = await issueDeviceCookie();
+    if (issued) {
+      deviceId = issued.deviceId;
+      newDeviceCookie = issued.cookieValue;
+    }
+  }
+
+  const withDevice = (res: NextResponse): NextResponse => {
+    if (newDeviceCookie) {
+      res.cookies.set(DEVICE_COOKIE_NAME, newDeviceCookie, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: req.headers.get('x-forwarded-proto') === 'https',
+        path: '/',
+        maxAge: DEVICE_COOKIE_MAX_AGE_SECONDS,
+      });
+    }
+    return res;
+  };
+
+  if (deviceId && !newDeviceCookie) {
+    const ban = await lookupDeviceBan(req, deviceId, ip, relayToken);
+    if (ban.banned) {
+      const retryAfter = ban.expiresAt
+        ? Math.max(1, Math.ceil((new Date(ban.expiresAt).getTime() - Date.now()) / 1000))
+        : 1800;
+
+      const lastLogged = bannedLogThrottle.get(deviceId) ?? 0;
+      if (Date.now() - lastLogged > BANNED_LOG_THROTTLE_MS) {
+        bannedLogThrottle.set(deviceId, Date.now());
+        if (bannedLogThrottle.size > 5000) bannedLogThrottle.clear();
+        try {
+          await fetch(new URL('/api/security-log-relay', req.url), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(relayToken ? { 'x-security-event-token': relayToken } : {}),
+            },
+            body: JSON.stringify({
+              eventType: 'banned_device_request',
+              severity: 'medium',
+              ipAddress: ip,
+              method: req.method,
+              endpoint: pathname,
+              userAgent,
+              payloadSnippet: `device_banned_until=${ban.expiresAt ?? 'unknown'}`,
+              statusCode: 403,
+              description: 'Request from a temporarily banned device (possible IP/VPN change)',
+              requestId,
+              deviceId,
+            }),
+          }).catch(() => {});
+        } catch {}
+      }
+
+      return new NextResponse(
+        JSON.stringify({
+          error: 'Forbidden',
+          message: 'Akses perangkat ini dibatasi sementara karena aktivitas mencurigakan. Coba lagi nanti.',
+          request_id: requestId,
+        }),
+        {
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(retryAfter),
+            'x-request-id': requestId,
+          },
+        }
+      );
+    }
+  }
+
+  // Forward the verified device id to route handlers (overrides any client-sent header).
+  const forwardedHeaders = new Headers(req.headers);
+  forwardedHeaders.delete(DEVICE_HEADER_NAME);
+  if (deviceId) forwardedHeaders.set(DEVICE_HEADER_NAME, deviceId);
 
   // 1. Check for Sensitive Path Scanning
   const isSensitivePath = SENSITIVE_PATH_PATTERNS.some((p) => p.test(pathname));
@@ -99,17 +236,20 @@ export async function middleware(req: NextRequest) {
           statusCode: 404,
           description: 'Reconnaissance probe for sensitive files or admin portals',
           requestId,
+          deviceId,
         }),
       }).catch(() => {});
     } catch {}
 
-    return new NextResponse('Not Found', {
-      status: 404,
-      headers: {
-        'x-request-id': requestId,
-        'Content-Type': 'text/plain',
-      },
-    });
+    return withDevice(
+      new NextResponse('Not Found', {
+        status: 404,
+        headers: {
+          'x-request-id': requestId,
+          'Content-Type': 'text/plain',
+        },
+      })
+    );
   }
 
   // 2. Check for SQLi / XSS in Query String
@@ -139,23 +279,26 @@ export async function middleware(req: NextRequest) {
             statusCode: 400,
             description: `Suspicious pattern detected in query parameters (${eventType})`,
             requestId,
+            deviceId,
           }),
         }).catch(() => {});
       } catch {}
 
-      return new NextResponse(
-        JSON.stringify({
-          error: 'Bad Request',
-          message: 'Malicious or invalid request query parameters detected',
-          request_id: requestId,
-        }),
-        {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-request-id': requestId,
-          },
-        }
+      return withDevice(
+        new NextResponse(
+          JSON.stringify({
+            error: 'Bad Request',
+            message: 'Malicious or invalid request query parameters detected',
+            request_id: requestId,
+          }),
+          {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-request-id': requestId,
+            },
+          }
+        )
       );
     }
   }
@@ -185,12 +328,12 @@ export async function middleware(req: NextRequest) {
     if (!isValid) {
       const loginUrl = new URL('/admin/login', req.url);
       loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
+      return withDevice(NextResponse.redirect(loginUrl));
     }
   }
 
   // 4. Set Response with Security Headers
-  const response = NextResponse.next();
+  const response = withDevice(NextResponse.next({ request: { headers: forwardedHeaders } }));
   response.headers.set('x-request-id', requestId);
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'SAMEORIGIN');

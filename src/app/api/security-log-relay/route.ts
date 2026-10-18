@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       statusCode,
       description,
       requestId,
+      deviceId,
     } = body;
 
     await recordSecurityEvent({
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
       statusCode: Number(statusCode) || 400,
       description: description || '',
       requestId,
+      deviceId: typeof deviceId === 'string' ? deviceId : undefined,
     });
 
     return NextResponse.json({ success: true });

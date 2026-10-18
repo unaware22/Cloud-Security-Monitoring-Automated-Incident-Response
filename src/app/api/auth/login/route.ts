@@ -9,7 +9,7 @@ import {
   detectXSS,
 } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES, resetRateLimit } from '@/lib/rate-limiter';
-import { createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
+import { createUserToken, CUSTOMER_COOKIE_NAME, getActiveAccountBan } from '@/lib/user-auth';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 import { createAccountReference } from '@/lib/account-reference';
 import {
@@ -260,6 +260,32 @@ export async function POST(req: NextRequest) {
           email: user.email,
         },
         { status: 403 }
+      );
+    }
+
+    const accountBan = await getActiveAccountBan(user.id);
+    if (accountBan) {
+      await recordSecurityEvent({
+        eventType: 'banned_account_request',
+        severity: 'medium',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        userAgent,
+        payloadSnippet: `account_banned_until=${accountBan.expiresAt.toISOString()}`,
+        statusCode: 403,
+        description: 'Login attempt on a temporarily banned account',
+        requestId,
+        accountRef,
+        authMethod: 'password',
+      });
+      const retryAfter = Math.max(1, Math.ceil((accountBan.expiresAt.getTime() - Date.now()) / 1000));
+      return NextResponse.json(
+        {
+          error: 'Forbidden',
+          message: 'Akun ini dibatasi sementara karena aktivitas mencurigakan. Silakan coba lagi nanti.',
+        },
+        { status: 403, headers: { 'Retry-After': String(retryAfter) } }
       );
     }
 

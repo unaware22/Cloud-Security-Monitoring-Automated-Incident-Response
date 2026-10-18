@@ -220,6 +220,33 @@ model IpControlAction {
   @@map("ip_control_actions")
 }
 
+// Temporary device/account penalties. They complement the Nginx IP deny list:
+// a VPN or new IP does not clear a ban that is attached to the device cookie
+// or to the authenticated customer account.
+model SecurityPenalty {
+  id         String    @id @default(uuid())
+  kind       String // device, account
+  subject    String // device id (UUID) or user id
+  subjectRef String    @map("subject_ref") // short non-secret reference shown in logs/UI
+  label      String? // account email for kind=account, for the admin UI
+  eventType  String    @map("event_type")
+  reason     String
+  ipAddress  String    @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  strike     Int       @default(1)
+  expiresAt  DateTime  @map("expires_at")
+  liftedAt   DateTime? @map("lifted_at")
+  liftedBy   String?   @map("lifted_by")
+  hitCount   Int       @default(0) @map("hit_count")
+  lastHitAt  DateTime? @map("last_hit_at")
+  lastHitIp  String?   @map("last_hit_ip")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([kind, subject, expiresAt])
+  @@index([createdAt])
+  @@map("security_penalties")
+}
+
 model User {
   id                     String                   @id @default(uuid())
   name                   String
