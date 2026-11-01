@@ -260,6 +260,16 @@ export async function POST(req: NextRequest) {
     const affectedItems = Array.isArray(wazuhResult?.data?.affected_items)
       ? wazuhResult.data.affected_items.map(String)
       : [];
+    // Wazuh answered but sent the command to no agent (e.g. error 1652, command
+    // not defined): no callback will ever come, so this is a failure, not pending.
+    if (wazuhResult && wazuhResult.error !== 0 && affectedItems.length === 0) {
+      const failedMessage =
+        wazuhResult.data?.failed_items?.[0]?.error?.message || wazuhResult.message || 'unknown';
+      throw new Error(
+        `Wazuh rejected the command: ${failedMessage} | ${compactDetail(responseBody)}`
+      );
+    }
+
     const confirmed = wazuhResult?.error === 0 && affectedItems.includes('001');
     const status = confirmed ? (action === 'block' ? 'blocked' : 'unblocked') : 'pending';
     const completedAt = confirmed ? new Date() : null;
