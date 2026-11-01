@@ -3,16 +3,19 @@ const CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD = 5;
 const ACCOUNT_TAKEOVER_IP_THRESHOLD = 5;
 const SUSPICIOUS_SUCCESS_THRESHOLD = 3;
 
-interface DetectionBucket {
-  values: Set<string>;
-  resetAt: number;
-  alerted: boolean;
+// Sliding windows: every check counts what happened in the last
+// DETECTION_WINDOW_MS before *this* attempt. A fixed window anchored at the
+// first failure let a series straddle the boundary (e.g. 4 accounts at the end
+// of one window and the 5th just after it reset the count back to 1).
+
+interface DistinctBucket {
+  lastSeen: Map<string, number>; // value -> last time it was seen
+  alertedUntil: number; // no repeat alert for this key before this time
 }
 
 interface FailureBucket {
-  count: number;
-  resetAt: number;
-  alerted: boolean;
+  times: number[];
+  alertedUntil: number;
 }
 
 export interface CredentialFailureResult {
@@ -33,85 +36,100 @@ export interface LoginSuccessAssessment {
   distinctIpCount: number;
 }
 
-const accountsByIp = new Map<string, DetectionBucket>();
-const ipsByAccount = new Map<string, DetectionBucket>();
+const accountsByIp = new Map<string, DistinctBucket>();
+const ipsByAccount = new Map<string, DistinctBucket>();
 const failuresByIpAndAccount = new Map<string, FailureBucket>();
 
-function getBucket(store: Map<string, DetectionBucket>, key: string, now: number): DetectionBucket {
-  const existing = store.get(key);
-  if (existing && existing.resetAt > now) return existing;
+function pruneDistinct(bucket: DistinctBucket, now: number): void {
+  for (const [value, seenAt] of bucket.lastSeen) {
+    if (now - seenAt >= DETECTION_WINDOW_MS) bucket.lastSeen.delete(value);
+  }
+}
 
-  const bucket: DetectionBucket = {
-    values: new Set<string>(),
-    resetAt: now + DETECTION_WINDOW_MS,
-    alerted: false,
-  };
-  store.set(key, bucket);
+function touchDistinct(
+  store: Map<string, DistinctBucket>,
+  key: string,
+  value: string,
+  now: number
+): DistinctBucket {
+  let bucket = store.get(key);
+  if (!bucket) {
+    bucket = { lastSeen: new Map(), alertedUntil: 0 };
+    store.set(key, bucket);
+  }
+  pruneDistinct(bucket, now);
+  bucket.lastSeen.set(value, now);
   return bucket;
 }
 
-function getFailureBucket(key: string, now: number): FailureBucket {
-  const existing = failuresByIpAndAccount.get(key);
-  if (existing && existing.resetAt > now) return existing;
+function activeDistinctCount(
+  store: Map<string, DistinctBucket>,
+  key: string,
+  now: number
+): number {
+  const bucket = store.get(key);
+  if (!bucket) return 0;
+  pruneDistinct(bucket, now);
+  return bucket.lastSeen.size;
+}
 
-  const bucket: FailureBucket = {
-    count: 0,
-    resetAt: now + DETECTION_WINDOW_MS,
-    alerted: false,
-  };
-  failuresByIpAndAccount.set(key, bucket);
+function touchFailures(key: string, now: number): FailureBucket {
+  let bucket = failuresByIpAndAccount.get(key);
+  if (!bucket) {
+    bucket = { times: [], alertedUntil: 0 };
+    failuresByIpAndAccount.set(key, bucket);
+  }
+  bucket.times = bucket.times.filter((t) => now - t < DETECTION_WINDOW_MS);
+  bucket.times.push(now);
   return bucket;
+}
+
+// An alert fires once when the threshold is crossed, then stays quiet for one
+// window so a continuing attack does not flood Wazuh with duplicate events.
+function shouldAlert(count: number, threshold: number, bucket: { alertedUntil: number }, now: number) {
+  if (count < threshold || now < bucket.alertedUntil) return false;
+  bucket.alertedUntil = now + DETECTION_WINDOW_MS;
+  return true;
 }
 
 export function recordCredentialFailure(
   ipAddress: string,
-  accountRef: string
+  accountRef: string,
+  now: number = Date.now()
 ): CredentialFailureResult {
-  const now = Date.now();
-  const ipBucket = getBucket(accountsByIp, ipAddress, now);
-  const accountBucket = getBucket(ipsByAccount, accountRef, now);
-  const failureBucket = getFailureBucket(`${ipAddress}:${accountRef}`, now);
+  const ipBucket = touchDistinct(accountsByIp, ipAddress, accountRef, now);
+  const accountBucket = touchDistinct(ipsByAccount, accountRef, ipAddress, now);
+  const failureBucket = touchFailures(`${ipAddress}:${accountRef}`, now);
 
-  ipBucket.values.add(accountRef);
-  accountBucket.values.add(ipAddress);
-  failureBucket.count += 1;
-
-  const credentialStuffingDetected =
-    ipBucket.values.size >= CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD && !ipBucket.alerted;
-  const credentialStuffingActive =
-    ipBucket.values.size >= CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD;
-  const bruteForceDetected =
-    failureBucket.count >= CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD && !failureBucket.alerted;
-  const bruteForceActive =
-    failureBucket.count >= CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD;
-  const accountTakeoverDetected =
-    accountBucket.values.size >= ACCOUNT_TAKEOVER_IP_THRESHOLD && !accountBucket.alerted;
-
-  if (credentialStuffingDetected) ipBucket.alerted = true;
-  if (bruteForceDetected) failureBucket.alerted = true;
-  if (accountTakeoverDetected) accountBucket.alerted = true;
+  const distinctAccountCount = ipBucket.lastSeen.size;
+  const distinctIpCount = accountBucket.lastSeen.size;
+  const failuresForAccount = failureBucket.times.length;
 
   return {
-    credentialStuffingDetected,
-    credentialStuffingActive,
-    bruteForceDetected,
-    bruteForceActive,
-    accountTakeoverDetected,
-    distinctAccountCount: ipBucket.values.size,
-    distinctIpCount: accountBucket.values.size,
-    failuresForAccount: failureBucket.count,
+    credentialStuffingDetected: shouldAlert(
+      distinctAccountCount, CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD, ipBucket, now
+    ),
+    credentialStuffingActive: distinctAccountCount >= CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD,
+    bruteForceDetected: shouldAlert(
+      failuresForAccount, CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD, failureBucket, now
+    ),
+    bruteForceActive: failuresForAccount >= CREDENTIAL_STUFFING_ACCOUNT_THRESHOLD,
+    accountTakeoverDetected: shouldAlert(
+      distinctIpCount, ACCOUNT_TAKEOVER_IP_THRESHOLD, accountBucket, now
+    ),
+    distinctAccountCount,
+    distinctIpCount,
+    failuresForAccount,
   };
 }
 
 export function assessSuccessfulLogin(
   ipAddress: string,
-  accountRef: string
+  accountRef: string,
+  now: number = Date.now()
 ): LoginSuccessAssessment {
-  const now = Date.now();
-  const ipBucket = accountsByIp.get(ipAddress);
-  const accountBucket = ipsByAccount.get(accountRef);
-  const distinctAccountCount = ipBucket && ipBucket.resetAt > now ? ipBucket.values.size : 0;
-  const distinctIpCount = accountBucket && accountBucket.resetAt > now ? accountBucket.values.size : 0;
+  const distinctAccountCount = activeDistinctCount(accountsByIp, ipAddress, now);
+  const distinctIpCount = activeDistinctCount(ipsByAccount, accountRef, now);
 
   return {
     suspicious:
@@ -126,14 +144,17 @@ export function assessSuccessfulLogin(
 
 const cleanupTimer = setInterval(() => {
   const now = Date.now();
-  for (const [key, bucket] of accountsByIp) {
-    if (bucket.resetAt <= now) accountsByIp.delete(key);
-  }
-  for (const [key, bucket] of ipsByAccount) {
-    if (bucket.resetAt <= now) ipsByAccount.delete(key);
+  for (const store of [accountsByIp, ipsByAccount]) {
+    for (const [key, bucket] of store) {
+      pruneDistinct(bucket, now);
+      if (bucket.lastSeen.size === 0 && bucket.alertedUntil <= now) store.delete(key);
+    }
   }
   for (const [key, bucket] of failuresByIpAndAccount) {
-    if (bucket.resetAt <= now) failuresByIpAndAccount.delete(key);
+    bucket.times = bucket.times.filter((t) => now - t < DETECTION_WINDOW_MS);
+    if (bucket.times.length === 0 && bucket.alertedUntil <= now) {
+      failuresByIpAndAccount.delete(key);
+    }
   }
 }, 60_000);
 
