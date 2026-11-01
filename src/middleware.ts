@@ -64,6 +64,16 @@ function getSecurityRelayToken(): string | null {
   return token && token.length >= 32 ? token : null;
 }
 
+// Internal calls go straight to the Next.js process, not through the public
+// domain. Behind Nginx, req.url is http://<domain>; Nginx answers that with a
+// 301 to HTTPS and fetch then turns the relay POST into a body-less GET, so
+// events from the middleware were silently lost.
+function internalUrl(path: string): URL {
+  const origin =
+    process.env.INTERNAL_APP_ORIGIN || `http://127.0.0.1:${process.env.PORT || 3000}`;
+  return new URL(path, origin);
+}
+
 // The Edge runtime cannot reach Prisma, so bans are looked up through a
 // token-protected internal endpoint and cached briefly per process.
 const DEVICE_CACHE_TTL_MS = 10_000;
@@ -87,7 +97,7 @@ async function lookupDeviceBan(
   if (!relayToken) return { banned: false };
 
   try {
-    const url = new URL('/api/internal/security/device-check', req.url);
+    const url = internalUrl('/api/internal/security/device-check');
     url.searchParams.set('device', deviceId);
     url.searchParams.set('ip', ip);
     const response = await fetch(url, {
@@ -168,7 +178,7 @@ export async function middleware(req: NextRequest) {
         bannedLogThrottle.set(deviceId, Date.now());
         if (bannedLogThrottle.size > 5000) bannedLogThrottle.clear();
         try {
-          await fetch(new URL('/api/security-log-relay', req.url), {
+          await fetch(internalUrl('/api/security-log-relay'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -219,7 +229,7 @@ export async function middleware(req: NextRequest) {
   if (isSensitivePath) {
     // Notify security logger endpoint via internal fetch or trigger event
     try {
-      await fetch(new URL('/api/security-log-relay', req.url), {
+      await fetch(internalUrl('/api/security-log-relay'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -262,7 +272,7 @@ export async function middleware(req: NextRequest) {
       const severity = isSQLi ? 'high' : 'medium';
 
       try {
-        await fetch(new URL('/api/security-log-relay', req.url), {
+        await fetch(internalUrl('/api/security-log-relay'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
