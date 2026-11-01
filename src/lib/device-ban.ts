@@ -41,6 +41,10 @@ const DEVICE_ONLY_EVENT_TYPES = new Set<string>([
 const EVENT_THRESHOLDS: Record<string, number> = {
   unauthorized_object_access_attempt: 3,
   unauthorized_order_access: 3,
+  // A real customer can hit the pending-order limit once or let a CAPTCHA
+  // expire once; only repetition looks like a bot or checkout abuse.
+  checkout_abuse: 3,
+  bot_order_attempt: 3,
 };
 const THRESHOLD_WINDOW_MS = 10 * 60 * 1000;
 const thresholdCounters = new Map<string, { count: number; resetAt: number }>();
