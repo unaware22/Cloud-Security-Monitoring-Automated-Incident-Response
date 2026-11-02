@@ -8,6 +8,7 @@ import {
   issueDeviceCookie,
   verifyDeviceCookie,
 } from '@/lib/device-id';
+import { decodedQueryVariants, inspectQueryString } from '@/lib/query-inspection';
 
 const SENSITIVE_PATH_PATTERNS = [
   /^\/\.env/i,
@@ -28,27 +29,6 @@ const SENSITIVE_PATH_PATTERNS = [
   /^\/actuator/i,
   /^\/telescope/i,
   /^\/debug\/default\/view/i,
-];
-
-const SQLI_PATTERNS = [
-  /(\b(select|union|insert|delete|update|drop|truncate|alter|create|load_file|outfile)\b[\s\S]+\b(from|into|table|database|schema)\b)/i,
-  /(\bunion\b[\s\S]+\bselect\b)/i,
-  /((\%27)|(')|(\-\-)|(\%23)|(#))(\s)*(or|and|exec|execute|union)\b/i,
-  /(\b(or|and)\b\s+[\w\d'"]+\s*=\s*[\w\d'"]+)/i,
-  /(\b(sleep|benchmark|waitfor|pg_sleep)\s*\(\s*\d+\s*\))/i,
-  /('[\s\S]*--)|(;[\s\S]*--)/i,
-];
-
-const XSS_PATTERNS = [
-  /<script[\s\S]*?>[\s\S]*?<\/script>/i,
-  /<script[\s\S]*?>/i,
-  /javascript\s*:/i,
-  /onload\s*=\s*['"]?[^'"]*['"]?/i,
-  /onerror\s*=\s*['"]?[^'"]*['"]?/i,
-  /<iframe[\s\S]*?>/i,
-  /<img[\s\S]+?onerror/i,
-  /<svg[\s\S]+?onload/i,
-  /document\.cookie/i,
 ];
 
 const ADMIN_TOKEN_ISSUER = 'saladinshop';
@@ -264,12 +244,10 @@ export async function middleware(req: NextRequest) {
 
   // 2. Check for SQLi / XSS in Query String
   if (search) {
-    const isSQLi = SQLI_PATTERNS.some((p) => p.test(search));
-    const isXSS = XSS_PATTERNS.some((p) => p.test(search));
+    const eventType = inspectQueryString(search);
 
-    if (isSQLi || isXSS) {
-      const eventType = isSQLi ? 'sql_injection_attempt' : 'xss_attempt';
-      const severity = isSQLi ? 'high' : 'medium';
+    if (eventType) {
+      const severity = eventType === 'sql_injection_attempt' ? 'high' : 'medium';
 
       try {
         await fetch(internalUrl('/api/security-log-relay'), {
@@ -285,7 +263,8 @@ export async function middleware(req: NextRequest) {
             method: req.method,
             endpoint: `${pathname}${search}`,
             userAgent,
-            payloadSnippet: decodeURIComponent(search).substring(0, 300),
+            // Last decoded variant; decodeURIComponent alone throws on a malformed `%`.
+            payloadSnippet: decodedQueryVariants(search).at(-1)!.substring(0, 300),
             statusCode: 400,
             description: `Suspicious pattern detected in query parameters (${eventType})`,
             requestId,
