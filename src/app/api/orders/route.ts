@@ -459,7 +459,9 @@ export async function POST(req: NextRequest) {
             // The earlier usage check ran outside this transaction, so two
             // parallel checkouts could both pass it. Serialize per
             // voucher+account and check again while holding the lock.
-            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`voucher:${appliedVoucher.id}:${customerSession.userId}`}))`;
+            // pg_advisory_xact_lock returns `void`, which Prisma cannot
+            // deserialize, so select a constant from it instead.
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`voucher:${appliedVoucher.id}:${customerSession.userId}`}))`;
             const claimed = await tx.voucherUsage.findFirst({
               where: blockingVoucherUsageWhere(appliedVoucher.id, customerSession.userId),
               select: { id: true },
