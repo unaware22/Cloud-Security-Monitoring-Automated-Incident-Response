@@ -16,6 +16,11 @@ import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/tur
 import { getCustomerSession } from '@/lib/user-auth';
 import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
 import { findPendingCheckoutLimit } from '@/lib/checkout-abuse';
+import { recordVoucherRejection } from '@/lib/voucher-abuse';
+
+// Thrown inside the order transaction when another checkout claimed the same
+// single-use voucher first.
+class VoucherAlreadyClaimedError extends Error {}
 
 export const dynamic = 'force-dynamic';
 
@@ -282,6 +287,10 @@ export async function POST(req: NextRequest) {
 
       const now = new Date();
       if (!voucher || !voucher.isActive || now < voucher.startDate || now > voucher.endDate) {
+        await recordVoucherRejection({
+          reason: 'invalid_code', code: requestedVoucherCode, ipAddress: ip,
+          endpoint: '/api/orders', userAgent, requestId, statusCode: 400,
+        });
         return NextResponse.json(
           { error: 'Bad Request', message: 'Kode voucher tidak valid atau telah kedaluwarsa.' },
           { status: 400 }
@@ -303,6 +312,10 @@ export async function POST(req: NextRequest) {
           where: blockingVoucherUsageWhere(voucher.id, customerSession.userId),
         });
         if (used) {
+          await recordVoucherRejection({
+            reason: 'reuse', code: voucher.code, ipAddress: ip,
+            endpoint: '/api/orders', userAgent, requestId, statusCode: 400,
+          });
           return NextResponse.json(
             { error: 'Bad Request', message: `Voucher ${voucher.code} sudah pernah Anda gunakan sebelumnya.` },
             { status: 400 }
@@ -442,6 +455,18 @@ export async function POST(req: NextRequest) {
         });
 
         if (appliedVoucher && customerSession) {
+          if (appliedVoucher.singleUsePerAccount) {
+            // The earlier usage check ran outside this transaction, so two
+            // parallel checkouts could both pass it. Serialize per
+            // voucher+account and check again while holding the lock.
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`voucher:${appliedVoucher.id}:${customerSession.userId}`}))`;
+            const claimed = await tx.voucherUsage.findFirst({
+              where: blockingVoucherUsageWhere(appliedVoucher.id, customerSession.userId),
+              select: { id: true },
+            });
+            if (claimed) throw new VoucherAlreadyClaimedError();
+          }
+
           await tx.voucherUsage.create({
             data: {
               voucherId: appliedVoucher.id,
@@ -508,6 +533,21 @@ export async function POST(req: NextRequest) {
         { status: 201 }
       );
     } catch (dbErr) {
+      if (dbErr instanceof VoucherAlreadyClaimedError) {
+        // The Midtrans Snap transaction created above is left unpaid and
+        // expires on its own; no order or voucher usage was written.
+        await recordVoucherRejection({
+          reason: 'concurrent_reuse', code: appliedVoucher?.code || '', ipAddress: ip,
+          endpoint: '/api/orders', userAgent, requestId, statusCode: 409,
+        });
+        return NextResponse.json(
+          {
+            error: 'Conflict',
+            message: `Voucher ${appliedVoucher?.code} sudah dipakai pada pesanan lain dari akun Anda.`,
+          },
+          { status: 409 }
+        );
+      }
       console.error('DB transaction failed while creating order:', dbErr);
       if (!allowInMemoryFallback) {
         return NextResponse.json(

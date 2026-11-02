@@ -4,6 +4,7 @@ import { getCustomerSession } from '@/lib/user-auth';
 import { getClientIp } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
+import { recordVoucherRejection } from '@/lib/voucher-abuse';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const reject = (reason: 'invalid_code' | 'reuse', statusCode: number) =>
+    recordVoucherRejection({
+      reason,
+      code,
+      ipAddress: ip,
+      endpoint: '/api/vouchers/validate',
+      userAgent,
+      requestId,
+      statusCode,
+    });
+
   try {
     // 2. Query Voucher from DB
     const voucher = await prisma.voucher.findUnique({
@@ -51,6 +63,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!voucher || !voucher.isActive) {
+      await reject('invalid_code', 404);
       return NextResponse.json(
         { valid: false, error: 'NOT_FOUND', message: 'Kode voucher tidak ditemukan atau sudah tidak aktif.' },
         { status: 404 }
@@ -60,6 +73,7 @@ export async function POST(req: NextRequest) {
     // 3. Check Validity Dates
     const now = new Date();
     if (now < voucher.startDate || now > voucher.endDate) {
+      await reject('invalid_code', 400);
       return NextResponse.json(
         { valid: false, error: 'EXPIRED', message: 'Masa berlaku voucher telah berakhir.' },
         { status: 400 }
@@ -98,6 +112,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (existingUsage) {
+        await reject('reuse', 400);
         return NextResponse.json(
           {
             valid: false,

@@ -8,8 +8,8 @@ import { DEVICE_HEADER_NAME, deviceReference } from './device-id';
 
 // Event types that justify a temporary device/account ban. Noisy signals such
 // as a single failed login or a plain rate-limit hit are intentionally absent.
-// Checkout abuse and bot orders (S06) are only limited by the checkout itself
-// (Turnstile, rate limit, pending-order cap) and monitored by Wazuh: those
+// Checkout abuse, bot orders (S06) and voucher abuse (S07) are only limited
+// by the checkout/voucher rules themselves and monitored by Wazuh: those
 // customers are restricted, never banned.
 const BAN_EVENT_TYPES = new Set<string>([
   'sql_injection_attempt',
@@ -23,7 +23,6 @@ const BAN_EVENT_TYPES = new Set<string>([
   'unauthorized_order_access',
   'unauthorized_object_access_attempt',
   'order_cancellation_abuse',
-  'voucher_abuse_attempt',
   'user_password_reset_abuse',
 ]);
 
