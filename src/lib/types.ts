@@ -106,6 +106,7 @@ export type SecurityEventType =
   | 'unauthorized_order_access'
   | 'unauthorized_object_access_attempt'
   | 'voucher_abuse_attempt'
+  | 'checkout_tampering_attempt'
   | 'device_banned'
   | 'account_banned'
   | 'banned_device_request'

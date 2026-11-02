@@ -11,7 +11,7 @@ Voucher abuse merugikan toko tanpa membobol sistem: menebak kode voucher, memaka
 | **A. Tebak kode** | Mencoba banyak kode acak di `POST /api/vouchers/validate` | Kode harus ada & aktif; rate limit 20/menit per IP | 404 per kode salah; 429 setelah 20/menit |
 | **B. Pakai ulang** | Akun yang sudah memakai voucher sekali-pakai mencoba lagi | Cek pemakaian per akun (pesanan dibayar atau pending aktif) | 400 "sudah pernah digunakan" |
 | **C. Race condition** | Dua checkout **bersamaan** dengan voucher yang sama dari akun sama | Kunci transaksi per voucher+akun lalu cek ulang (`pg_advisory_xact_lock`) | Satu 201, satu **409**; hanya 1 pemakaian tercatat |
-| **D. Manipulasi diskon** | Menyisipkan `discount_amount`/`total_amount` palsu di body checkout | Diskon dan total **dihitung server** dari data voucher di database; field asing diabaikan | Total pesanan tetap sesuai harga − diskon resmi |
+| **D. Manipulasi diskon** | Menyisipkan `discount_amount`/`total_amount` palsu di body checkout | Diskon dan total **dihitung server** dari database; request yang membawa field harga **ditolak dan dicatat** (`checkout_tampering_attempt`) | 400 + alert 110524; tanpa field palsu, total tetap harga − diskon resmi |
 
 Syarat voucher lain yang selalu diperiksa server: wajib login, masa berlaku, minimal subtotal. Voucher pada pesanan yang kedaluwarsa/dibatalkan tidak dihitung terpakai (pelanggan boleh memakainya lagi).
 
@@ -89,10 +89,17 @@ Tambahkan setelah grup terakhir yang sudah ditutup (jangan menimpa ID yang sudah
     <description>SALADINSHOP: Repeated voucher rejections (possible code guessing) from $(ip_address)</description>
     <group>business_logic,voucher_abuse,voucher_guessing,</group>
   </rule>
+
+  <rule id="110524" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="event_type" type="pcre2">^checkout_tampering_attempt$</field>
+    <description>SALADINSHOP: Checkout price/discount tampering rejected from $(ip_address)</description>
+    <group>business_logic,price_tampering,</group>
+  </rule>
 </group>
 ```
 
-Lalu tambahkan `110520,110521,110522,110523` ke `<rule_id>` blok `<integration>` custom-n8n. **Jangan** masukkan ke `<rules_id>` Active Response.
+Lalu tambahkan `110520,110521,110522,110523,110524` ke `<rule_id>` blok `<integration>` custom-n8n. **Jangan** masukkan ke `<rules_id>` Active Response.
 
 ```bash
 sudo /var/ossec/bin/wazuh-analysisd -t && sudo systemctl restart wazuh-manager
@@ -115,6 +122,7 @@ Tambahkan output Switch (format sama seperti sebelumnya) lalu sambungkan ke **Se
 | 110521 | `110521 — Voucher Reuse` |
 | 110522 | `110522 — Voucher Race Blocked` |
 | 110523 | `110523 — Voucher Guessing` |
+| 110524 | `110524 — Price Tampering` |
 
 Opsional: untuk mengurangi spam, 110520 (penolakan tunggal) boleh tidak disambungkan ke Telegram — cukup terlihat di dashboard Wazuh.
 
@@ -265,9 +273,19 @@ Gunakan akun lain yang belum memakai HEMAT5K (atau akun E setelah pesanan varian
 })();
 ```
 
-**Hasil yang diharapkan:** 201 dengan `total_amount` = harga produk − Rp5.000 + biaya admin — **bukan** Rp1.000. Field `discount_amount`, `total_amount`, `price` dari klien diabaikan. Cocokkan di dashboard admin (detail pesanan) dan halaman Midtrans Sandbox.
+**Hasil yang diharapkan (versi kode terbaru):** **400** "Data pesanan tidak valid." — pesanan **tidak** dibuat. Event `checkout_tampering_attempt` dengan `fields=total_amount,discount,...` beserta nilai palsunya, alert **110524**, Telegram "Price Tampering". Tidak ada blokir (kebijakan S07).
 
-> [Screenshot: body request berisi nilai palsu, respons total yang benar, detail pesanan admin, nominal di Midtrans.]
+Cek di APP:
+
+```bash
+grep -F 'checkout_tampering_attempt' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 2 | cut -c1-260
+```
+
+**Pembanding (kontrol):** jalankan script yang sama **tanpa** baris `discount_amount, total_amount, price` → **201** dengan `total_amount` = harga − Rp5.000 + biaya admin (Rp750 + 0,7%). Contoh pengujian 3 November 2026 pada versi sebelumnya (field palsu masih diabaikan diam-diam): produk Rp199.000 → subtotal Rp194.000 + biaya Rp2.108 = **Rp196.108**, bukan Rp1.000. Cocokkan di dashboard admin dan halaman Midtrans Sandbox.
+
+> [Screenshot: body request berisi nilai palsu + respons 400, event + alert 110524 + Telegram, dan pembanding 201 dengan total yang benar.]
+
+Untuk laporan: versi sebelumnya sudah **mencegah** manipulasi (server menghitung sendiri), tetapi **tidak memantaunya** — percobaan tidak meninggalkan jejak di Wazuh. Versi terbaru menambah deteksi dan notifikasi.
 
 ## 7. Kontrol normal (false positive)
 

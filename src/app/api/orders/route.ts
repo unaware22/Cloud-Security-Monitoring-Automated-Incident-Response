@@ -18,6 +18,23 @@ import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
 import { findPendingCheckoutLimit } from '@/lib/checkout-abuse';
 import { recordVoucherRejection } from '@/lib/voucher-abuse';
 
+// Prices, discounts and totals are always computed on the server. The
+// checkout page never sends these fields, so their presence means the request
+// was crafted by hand to manipulate the amount.
+const PRICE_TAMPERING_FIELDS = [
+  'price',
+  'unit_price',
+  'subtotal',
+  'total',
+  'total_amount',
+  'gross_amount',
+  'amount',
+  'discount',
+  'discount_amount',
+  'admin_fee',
+  'fee',
+];
+
 // Thrown inside the order transaction when another checkout claimed the same
 // single-use voucher first.
 class VoucherAlreadyClaimedError extends Error {}
@@ -98,6 +115,32 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       { error: 'Bad Request', message: 'Invalid or prohibited characters detected' },
+      { status: 400 }
+    );
+  }
+
+  // 2b. Reject client-supplied amounts (server computes every price)
+  const tamperedFields =
+    body && typeof body === 'object'
+      ? PRICE_TAMPERING_FIELDS.filter((field) => Object.prototype.hasOwnProperty.call(body, field))
+      : [];
+  if (tamperedFields.length > 0) {
+    await recordSecurityEvent({
+      eventType: 'checkout_tampering_attempt',
+      severity: 'high',
+      ipAddress: ip,
+      method: 'POST',
+      endpoint: '/api/orders',
+      userAgent,
+      payloadSnippet: `fields=${tamperedFields.join(',')}; ${tamperedFields
+        .map((f) => `${f}=${String(body[f]).slice(0, 20)}`)
+        .join('; ')}`,
+      statusCode: 400,
+      description: 'Checkout request carried client-side price/discount fields',
+      requestId,
+    });
+    return NextResponse.json(
+      { error: 'Bad Request', message: 'Data pesanan tidak valid.' },
       { status: 400 }
     );
   }
