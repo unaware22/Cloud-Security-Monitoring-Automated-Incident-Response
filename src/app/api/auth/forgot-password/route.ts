@@ -14,6 +14,18 @@ import { generateOpaqueToken } from '@/lib/auth-tokens';
 
 export const dynamic = 'force-dynamic';
 
+// Registered emails trigger extra database work (token reset, audit log)
+// before the response. Answering both cases no earlier than this floor
+// (plus jitter) keeps response time from revealing whether an email exists.
+const MIN_RESPONSE_MS = 900;
+const RESPONSE_JITTER_MS = 200;
+
+async function waitForResponseFloor(startedAt: number): Promise<void> {
+  const target = MIN_RESPONSE_MS + Math.floor(Math.random() * RESPONSE_JITTER_MS);
+  const remaining = target - (Date.now() - startedAt);
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+}
+
 const ForgotSchema = z.object({
   email: z.string().trim().email('Format email tidak valid').max(150),
   turnstile_token: z.string().trim().optional(),
@@ -49,9 +61,10 @@ export async function POST(req: NextRequest) {
   // 2. Attack Pattern Detection
   const rawString = JSON.stringify(body);
   if (detectSQLi(rawString) || detectXSS(rawString)) {
+    const isSQLi = detectSQLi(rawString);
     await recordSecurityEvent({
-      eventType: 'sql_injection_attempt',
-      severity: 'high',
+      eventType: isSQLi ? 'sql_injection_attempt' : 'xss_attempt',
+      severity: isSQLi ? 'high' : 'medium',
       ipAddress: ip,
       method: 'POST',
       endpoint: '/api/auth/forgot-password',
@@ -110,6 +123,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const lookupStartedAt = Date.now();
   try {
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -150,7 +164,8 @@ export async function POST(req: NextRequest) {
       }).catch((err) => console.error('[Forgot Password] Email send error:', err));
     }
 
-    // Always respond with identical message to prevent user enumeration
+    // Always respond with identical message and similar timing to prevent user enumeration
+    await waitForResponseFloor(lookupStartedAt);
     return NextResponse.json({
       success: true,
       message: 'Jika alamat email Anda terdaftar, kami telah mengirimkan tautan untuk mengatur ulang kata sandi ke kotak masuk Anda.',

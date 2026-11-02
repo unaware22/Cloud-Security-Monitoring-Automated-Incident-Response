@@ -58,9 +58,10 @@ export async function POST(req: NextRequest) {
   // 2. Attack Pattern Detection
   const rawString = JSON.stringify(body);
   if (detectSQLi(rawString) || detectXSS(rawString)) {
+    const isSQLi = detectSQLi(rawString);
     await recordSecurityEvent({
-      eventType: 'sql_injection_attempt',
-      severity: 'high',
+      eventType: isSQLi ? 'sql_injection_attempt' : 'xss_attempt',
+      severity: isSQLi ? 'high' : 'medium',
       ipAddress: ip,
       method: 'POST',
       endpoint: '/api/auth/reset-password',
@@ -117,7 +118,22 @@ export async function POST(req: NextRequest) {
       include: { user: true },
     });
 
+    const recordInvalidToken = (reason: 'unknown_token' | 'used_token' | 'expired_token', statusCode: number) =>
+      recordSecurityEvent({
+        eventType: 'user_password_reset_abuse',
+        severity: 'low',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/reset-password',
+        userAgent,
+        payloadSnippet: `reason=${reason}; token=[REDACTED]`,
+        statusCode,
+        description: `Password reset rejected: ${reason}`,
+        requestId,
+      });
+
     if (!resetRecord || resetRecord.usedAt !== null) {
+      await recordInvalidToken(resetRecord ? 'used_token' : 'unknown_token', 400);
       return NextResponse.json(
         { error: 'Bad Request', message: 'Tautan reset kata sandi tidak valid atau telah digunakan sebelumnya.' },
         { status: 400 }
@@ -125,6 +141,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (resetRecord.expiresAt < new Date()) {
+      await recordInvalidToken('expired_token', 410);
       await prisma.passwordResetToken.deleteMany({ where: { id: resetRecord.id } });
       return NextResponse.json(
         { error: 'Gone', message: 'Tautan reset kata sandi telah kedaluwarsa. Silakan minta tautan baru.' },

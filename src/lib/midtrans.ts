@@ -348,8 +348,21 @@ export function verifyMidtransSignature(params: {
   signatureKey: string;
 }): boolean {
   const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
-  const rawPayload = `${params.orderId}${params.statusCode}${params.grossAmount}${serverKey}`;
-  const expectedHash = crypto.createHash('sha512').update(rawPayload).digest('hex');
+  // Without a server key the "signature" would be a hash of attacker-supplied
+  // fields only, so anyone could forge a paid notification.
+  if (!serverKey) return false;
+  if (
+    typeof params.signatureKey !== 'string' ||
+    typeof params.orderId !== 'string' ||
+    typeof params.statusCode !== 'string' ||
+    typeof params.grossAmount !== 'string'
+  ) {
+    return false;
+  }
 
-  return expectedHash.toLowerCase() === params.signatureKey.toLowerCase();
+  const rawPayload = `${params.orderId}${params.statusCode}${params.grossAmount}${serverKey}`;
+  const expected = Buffer.from(crypto.createHash('sha512').update(rawPayload).digest('hex'));
+  const supplied = Buffer.from(params.signatureKey.toLowerCase());
+
+  return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
 }

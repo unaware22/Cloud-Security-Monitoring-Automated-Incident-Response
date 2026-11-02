@@ -11,11 +11,11 @@ Panduan ini menggabungkan langkah yang tersebar di minggu 3, 5, 7, 9, dan 10 (`1
 | S03 | Brute force customer & admin | **Siap** | Minggu 9 |
 | S04 | Credential stuffing | **Siap** | Minggu 9 |
 | S05 | BOLA / akses pesanan tanpa hak | **Siap** | Minggu 10 |
-| S06 | Bot, fake order, checkout abuse | Sebagian — kontrol aplikasi (429, batas pending) sudah, jalur Wazuh/n8n (rule 110510) belum tervalidasi | Minggu 11.7 |
-| S07 | Voucher abuse | Belum — event ada di kode, rule/alur belum didokumentasikan | — |
-| S08 | XSS | Belum didokumentasikan (deteksi `xss_attempt` sudah ada di kode) | — |
-| S09 | Manipulasi webhook pembayaran | Belum didokumentasikan (event `invalid_payment_callback` ada) | — |
-| S10 | Forgot/reset & enumeration | Belum didokumentasikan | — |
+| S06 | Bot, fake order, checkout abuse | Panduan tersedia (batasi + notifikasi) | `16-PANDUAN-UJI-S06-CHECKOUT-ABUSE.md` |
+| S07 | Voucher abuse | Panduan tersedia (batasi + notifikasi) | `17-PANDUAN-UJI-S07-VOUCHER-ABUSE.md` |
+| S08 | XSS | Panduan tersedia (blokir) | `18-PANDUAN-UJI-S08-XSS.md` |
+| S09 | Manipulasi webhook pembayaran | Panduan tersedia (tolak + alert prioritas tinggi) | `19-PANDUAN-UJI-S09-WEBHOOK-PEMBAYARAN.md` |
+| S10 | Forgot/reset & enumeration | Panduan tersedia (batasi + notifikasi) | `20-PANDUAN-UJI-S10-RESET-PASSWORD-ENUMERATION.md` |
 
 ## A. Persiapan umum (lakukan sekali sebelum seri uji)
 
