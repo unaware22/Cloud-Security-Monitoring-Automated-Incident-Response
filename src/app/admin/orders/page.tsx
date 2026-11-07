@@ -350,6 +350,7 @@ export default function AdminOrdersPage() {
                   <th className="py-3 px-4">Order Code</th>
                   <th className="py-3 px-4">Pelanggan</th>
                   <th className="py-3 px-4">Produk</th>
+                  <th className="py-3 px-4">Catatan</th>
                   <th className="py-3 px-4">Total</th>
                   <th className="py-3 px-4">Status Bayar</th>
                   <th className="py-3 px-4">Status Kirim</th>
@@ -385,6 +386,19 @@ export default function AdminOrdersPage() {
                         <span className="text-gray-300 line-clamp-1 max-w-[180px]">
                           {order.orderItems?.[0]?.productNameSnapshot || 'Digital Item'}
                         </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {/* Rendered as JSX text, so any HTML in the note is escaped, never executed. */}
+                        {order.customerNotes || order.notes ? (
+                          <span
+                            className="block max-w-[200px] truncate text-amber-200"
+                            title={order.customerNotes || order.notes}
+                          >
+                            {order.customerNotes || order.notes}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 font-mono font-bold text-emerald-400">
                         {formatIDR(order.totalAmount)}

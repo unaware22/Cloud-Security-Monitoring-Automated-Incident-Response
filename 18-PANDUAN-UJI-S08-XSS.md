@@ -60,7 +60,7 @@ Tambahkan `110110` ke `<rules_id>` Active Response **timeout 1800** dan ke `<rul
 ## 3. Bukti tambahan (1×) — Output encoding
 
 1. Login akun uji, checkout produk Sandbox, isi **catatan pesanan**: `<b>TEBAL-UJI</b> <i>miring</i>` (tanpa script/event handler, sehingga tidak ditolak deteksi).
-2. Pesanan dibuat. Buka dashboard admin → detail pesanan.
+2. Pesanan dibuat. Buka dashboard admin → **Semua Pesanan**, lihat kolom **Catatan** pada baris pesanan tersebut (atau klik baris untuk melihat kotak "Catatan Khusus dari Pembeli" di detail). Buka sebelum 15 menit; setelah kedaluwarsa pesanan pindah ke filter riwayat.
    **Hasil:** teks tampil **apa adanya** termasuk `<b>` dan `</b>`, **bukan** huruf tebal. Inspect elemen: `&lt;b&gt;TEBAL-UJI&lt;/b&gt;`.
 
 Ini membuktikan pencegahan utama ada pada output encoding; deteksi pola adalah lapisan pemantauan.
