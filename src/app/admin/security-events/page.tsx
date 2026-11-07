@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { wazuhRulesForEvent } from '@/lib/wazuh-rule-map';
 import {
   ShieldAlert,
   Search,
@@ -154,6 +155,12 @@ export default function AdminSecurityEventsPage() {
                 <tr>
                   <th className="pb-3 font-semibold">Severity</th>
                   <th className="pb-3 font-semibold">Event Type</th>
+                  <th
+                    className="pb-3 font-semibold"
+                    title="Rule Wazuh yang dikonfigurasi untuk event ini (pemetaan). Bukti alert ada di dashboard Wazuh."
+                  >
+                    Rule Wazuh*
+                  </th>
                   <th className="pb-3 font-semibold">Attacker IP</th>
                   <th className="pb-3 font-semibold">Endpoint / Method</th>
                   <th className="pb-3 font-semibold">Payload Snippet</th>
@@ -169,6 +176,25 @@ export default function AdminSecurityEventsPage() {
                     </td>
                     <td className="py-3.5 font-bold text-white">
                       {evt.eventType}
+                    </td>
+                    <td className="py-3.5">
+                      {(() => {
+                        const rules = wazuhRulesForEvent(evt.eventType, evt.payloadSnippet);
+                        return rules.length > 0 ? (
+                          <span className="flex flex-wrap gap-1">
+                            {rules.map((ruleId) => (
+                              <span
+                                key={ruleId}
+                                className="px-1.5 py-0.5 rounded bg-indigo-950/70 border border-indigo-700/50 text-[10px] text-indigo-200"
+                              >
+                                {ruleId}
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        );
+                      })()}
                     </td>
                     <td className="py-3.5 text-blue-300">
                       {evt.ipAddress}
@@ -215,6 +241,11 @@ export default function AdminSecurityEventsPage() {
                 ))}
               </tbody>
             </table>
+            <p className="mt-4 text-[10px] text-gray-500 font-sans">
+              * Rule Wazuh = rule yang dikonfigurasi untuk mencocokkan event ini (pemetaan). Bukti alert yang benar-benar
+              terpicu ada di dashboard Wazuh. Rule korelasi pola berulang (mis. 110501, 110511, 110523) tidak ditampilkan per
+              event.
+            </p>
           </div>
         ) : (
           <div className="py-16 text-center text-gray-500 text-xs">
