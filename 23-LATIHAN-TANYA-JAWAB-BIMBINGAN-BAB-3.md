@@ -85,6 +85,22 @@ Cara memakainya:
 
 ---
 
+## 4b. "PCI DSS itu apa, dan kenapa kamu pakai sebagai rujukan?"
+
+**Jawaban singkat:**
+> "PCI DSS adalah standar keamanan data kartu pembayaran yang disusun oleh PCI Security Standards Council, yang dibentuk oleh merek kartu besar seperti Visa dan Mastercard. Standar ini berlaku untuk pihak yang menyimpan, memproses, atau mengirim data kartu. Saya memakainya sebagai rujukan praktik industri untuk keamanan toko online, khususnya Requirement 8.3.4 yang menyebut penguncian setelah percobaan login gagal berulang minimal 30 menit. Saya tidak mengklaim toko saya wajib patuh PCI DSS, karena data kartu ditangani Midtrans."
+
+**Kalau dosen bertanya "berarti 8.3.4 berlaku untuk akun pelanggan tokomu?":**
+> "Tidak langsung. Dokumen PCI DSS versi 4.0.1 menyatakan Requirement 8 tidak berlaku untuk akun konsumen. Requirement itu untuk akun karyawan, administrator, dan pihak ketiga. Yang paling dekat dengan sistem saya adalah login admin. Untuk sumber serangan seperti IP dan perangkat, saya mengadaptasinya, jadi saya sebut sebagai acuan praktik, bukan kewajiban."
+
+**Kalau ditanya "angka 30 menit itu dari mana persisnya?":**
+> "Dari Requirement 8.3.4 di PCI DSS v4.0.1 halaman 189: setelah paling banyak 10 percobaan gagal, akun dikunci dengan durasi minimal 30 menit atau sampai identitas pengguna dikonfirmasi. Alasannya di dokumen itu: tanpa penguncian, penyerang bisa menebak password terus-menerus lewat alat otomatis, dan penguncian memaksanya berhenti sementara."
+
+**Rujukan lain yang dipakai:**
+- Requirement **11.5.2** (halaman 286): mekanisme deteksi perubahan seperti FIM, yang memberi peringatan atas perubahan tanpa izin pada file penting dan membandingkan file penting minimal sekali seminggu. Ini dasar uji FIM.
+
+---
+
 ## 5. "Pengujianmu mencakup 7 layer OSI yang mana saja?"
 
 **Jawaban singkat:**

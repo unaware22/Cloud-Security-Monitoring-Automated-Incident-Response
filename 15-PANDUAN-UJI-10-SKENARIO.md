@@ -30,7 +30,7 @@ Konsep besar yang dipakai semua skenario (siapa yang memblokir, identitas penyer
 
 ### Mengapa blokir 30 menit
 
-- **Ada acuan standar:** PCI DSS v4.0 Req. 8.3.4 menetapkan penguncian minimal 30 menit setelah percobaan gagal berulang. Dipakai sebagai acuan praktik industri pembayaran, bukan kewajiban kepatuhan (data kartu ditangani Midtrans), dan aslinya untuk akun, di sini diterapkan pada sumber serangan.
+- **Ada acuan standar:** PCI DSS v4.0.1 Req. 8.3.4 (hal. 189) menetapkan penguncian minimal 30 menit setelah paling banyak 10 percobaan gagal. Dipakai sebagai acuan praktik industri pembayaran, bukan kewajiban: Requirement 8 mengatur akun pengguna sistem dan menyatakan tidak berlaku untuk akun konsumen (hal. 175), dan data kartu ditangani Midtrans.
 - **Lebih lama dari jendela deteksi (10 menit)**, kalau tidak penyerang bisa kembali sebelum hitungannya habis.
 - **Pulih sendiri**, jadi salah blokir tidak permanen. Blokir permanen hanya manual oleh admin karena IP bukan identitas tetap (CGNAT, VPN bersama).
 
@@ -1067,7 +1067,7 @@ done
 
 Dipakai bila S02 tetap "web defacement/FIM", atau sebagai **bukti tambahan 1×** untuk S02 pemindaian jalur.
 
-**Kenapa bisa terjadi.** Server tidak bisa dijangkau orang luar langsung (akses hanya lewat Tailscale). File tetap bisa berubah tanpa izin bila perangkat atau kredensial admin dikuasai, kode berbahaya masuk lewat library (*supply chain*), atau ada celah eksekusi kode di aplikasi. Prinsipnya *assume breach*: kalau pertahanan di depan gagal, perubahan harus tetap ketahuan. PCI DSS v4.0 Req. 11.5.2 mewajibkan mekanisme deteksi perubahan pada file penting (cek nomornya ke dokumen asli).
+**Kenapa bisa terjadi.** Server tidak bisa dijangkau orang luar langsung (akses hanya lewat Tailscale). File tetap bisa berubah tanpa izin bila perangkat atau kredensial admin dikuasai, kode berbahaya masuk lewat library (*supply chain*), atau ada celah eksekusi kode di aplikasi. Prinsipnya *assume breach*: kalau pertahanan di depan gagal, perubahan harus tetap ketahuan. PCI DSS v4.0.1 Req. 11.5.2 (hal. 286) mewajibkan mekanisme deteksi perubahan (misalnya FIM) yang memberi peringatan atas perubahan tanpa izin pada file penting dan membandingkan file penting minimal sekali seminggu.
 
 **Model penyerang.** Pihak yang **sudah memiliki akses ke server**. Karena itu skenario ini menguji **deteksi pasca-kompromi**, bukan cara penyerang masuk. Simulasinya oleh admin pada folder uji `fim-test`.
 
@@ -1182,6 +1182,42 @@ Halaman **Device & Akun Ban** menampilkan referensi 12 karakter (`subjectRef`), 
 Tujuan: membuktikan dengan data bahwa server mengenali perangkat dari **cookie**, bukan dari IP, sehingga VPN di browser yang sama tetap terblokir sedangkan browser lain lolos.
 
 **Persiapan:** Chrome dan Firefox (atau jendela incognito), aplikasi VPN, akses SSH ke EC2 App. Tuliskan hasil di tabel pengamatan di akhir lampiran ini. **Jangan menampilkan nilai cookie penuh** di screenshot; cukup 8 karakter pertama.
+
+### D.0 Cara membuka dan membaca cookie, langkah demi langkah
+
+Cookie adalah catatan kecil yang disimpan **di dalam browser** untuk setiap website. Server memberi cookie itu, lalu browser mengirimnya kembali di setiap request. Cookie `sv_did` adalah "nomor identitas perangkat" yang diberikan server pada kunjungan pertama.
+
+**Di Chrome atau Edge**
+
+1. Buka website di browser (alamat HTTPS biasa), tunggu halaman termuat.
+2. Tekan **F12** (atau klik kanan di halaman, pilih **Inspect**). Sebuah panel terbuka di samping atau di bawah halaman.
+3. Di deretan tab bagian atas panel (Elements, Console, Sources, Network, ...) klik **Application**. Jika tab itu tidak terlihat, klik tanda **»** di ujung kanan deretan tab.
+4. Di daftar sebelah kiri, cari bagian **Storage**, klik panah di sebelah **Cookies**, lalu klik alamat website (mis. `https://saladinshop.duckdns.org`).
+5. Muncul tabel berisi cookie. Cari baris yang kolom **Name**-nya `sv_did`.
+6. **Klik baris itu.** Di bagian bawah tabel muncul kotak **Cookie Value** yang menampilkan isi lengkapnya.
+7. Isinya berbentuk `UUID.tandatangan`, contoh `0e602530-ec94-402d-b583-511dbbef2475.DniRtlrcMm0Tz...`. **UUID adalah bagian sebelum tanda titik.** Salin bagian itu saja, dan catat 8 karakter pertamanya (mis. `0e602530`).
+8. Lihat juga kolom di sebelah kanan: **HttpOnly** (harus tercentang), **Secure** (tercentang), **SameSite** (`Lax`), dan **Expires** (sekitar 30 hari ke depan). Ambil screenshot tabelnya.
+
+**Di Firefox**
+
+1. Buka website, tekan **F12**.
+2. Klik tab **Storage** (jika tidak terlihat, klik **»**).
+3. Di daftar kiri, buka **Cookies**, lalu klik alamat website.
+4. Cari baris `sv_did`, klik barisnya. Panel di sebelah kanan menampilkan **Value**. Salin UUID sebelum tanda titik.
+
+**Jika baris `sv_did` tidak ada:** muat ulang halaman (F5) sambil panel terbuka, dan pastikan website dibuka lewat HTTPS. Jika tetap tidak ada, cookie diblokir browser, atau server belum diberi kunci rahasia (`CUSTOMER_JWT_SECRET` atau `DEVICE_COOKIE_SECRET` kosong atau kurang dari 32 karakter).
+
+**Membandingkan cookie setelah ganti IP (VPN):**
+
+1. Biarkan panel DevTools tetap terbuka, nyalakan VPN, lalu muat ulang halaman (F5).
+2. Di tab Application, klik tombol **refresh** kecil di atas tabel cookie (Chrome tidak memperbarui tabel otomatis).
+3. Lihat lagi baris `sv_did`: nilainya **sama** dengan sebelumnya. Itulah bukti bahwa VPN hanya mengganti IP, bukan cookie.
+
+**Membandingkan dengan browser lain:** buka website yang sama di Firefox (atau jendela incognito Chrome), lalu baca cookie `sv_did` dengan langkah yang sama. Nilainya **berbeda** karena tiap browser punya tempat penyimpanan cookie sendiri.
+
+**Tes keamanan `HttpOnly`:** di tab **Console** ketik `document.cookie`, tekan Enter. `sv_did` **tidak muncul** di hasilnya karena cookie ber-HttpOnly tidak bisa dibaca JavaScript.
+
+**Catatan privasi:** untuk screenshot laporan, cukup perlihatkan 8 karakter pertama nilai cookie. Cookie sesi login (`customer_session_token`, `admin_session_token`) adalah kunci masuk akun, jangan ditampilkan.
 
 ### D.1 Mencatat identitas sebelum serangan
 
