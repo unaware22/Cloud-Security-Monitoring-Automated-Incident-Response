@@ -30,7 +30,7 @@ Konsep besar yang dipakai semua skenario (siapa yang memblokir, identitas penyer
 
 ### Mengapa blokir 30 menit
 
-- **Ada acuan standar:** PCI DSS v4.0 Req. 8.3.4 menetapkan penguncian minimal 30 menit setelah percobaan gagal berulang. Toko ini memproses pembayaran, jadi standar itu relevan (aslinya untuk akun, di sini diterapkan pada sumber serangan).
+- **Ada acuan standar:** PCI DSS v4.0 Req. 8.3.4 menetapkan penguncian minimal 30 menit setelah percobaan gagal berulang. Dipakai sebagai acuan praktik industri pembayaran, bukan kewajiban kepatuhan (data kartu ditangani Midtrans), dan aslinya untuk akun, di sini diterapkan pada sumber serangan.
 - **Lebih lama dari jendela deteksi (10 menit)**, kalau tidak penyerang bisa kembali sebelum hitungannya habis.
 - **Pulih sendiri**, jadi salah blokir tidak permanen. Blokir permanen hanya manual oleh admin karena IP bukan identitas tetap (CGNAT, VPN bersama).
 
@@ -748,3 +748,72 @@ Dijalankan pada skenario yang memblokir (S01, S03, S04, S05, S08).
 4. Dibandingkan dengan **V1** (hanya blokir IP): penyerang yang ganti IP langsung kembali mengakses.
 
 Versi eksperimen: **V1** = blokir IP saja, **V2** = ditambah ban perangkat dan akun.
+
+---
+
+## Lampiran C — Memeriksa cookie di browser (untuk demo dan penjelasan)
+
+Cookie adalah bukti paling mudah untuk menjelaskan **kenapa VPN di browser yang sama tetap terblokir**. Tunjukkan langsung ke dosen.
+
+### Cara membuka daftar cookie
+
+| Browser | Langkah |
+|---|---|
+| **Chrome / Edge** | Buka website, tekan **F12**, tab **Application**, menu kiri **Storage → Cookies**, pilih `https://saladinshop.duckdns.org` |
+| **Firefox** | Buka website, tekan **F12**, tab **Storage**, menu kiri **Cookies**, pilih domain website |
+| Cara cepat (Chrome) | Klik ikon gembok di sebelah alamat → **Cookies and site data** → **Manage on-device site data** |
+
+### Kolom yang perlu dilihat
+
+| Kolom | Arti | Nilai yang diharapkan pada `sv_did` |
+|---|---|---|
+| **Name** | Nama cookie | `sv_did` (perangkat), `customer_session_token` (sesi login customer), `admin_session_token` (sesi admin) |
+| **Value** | Isi cookie | `UUID.tandatangan`, mis. `0e602530-ec94-….DniRtl…` |
+| **HttpOnly** | Tidak bisa dibaca JavaScript | Tercentang |
+| **Secure** | Hanya dikirim lewat HTTPS | Tercentang |
+| **SameSite** | Pembatas pengiriman lintas situs | `Lax` |
+| **Expires** | Masa berlaku | Sekitar 30 hari ke depan untuk `sv_did`; sekitar 7 hari untuk sesi login |
+
+Sensor nilai cookie di screenshot untuk laporan. Cookie sesi (`customer_session_token`, `admin_session_token`) adalah kunci masuk akun, **jangan pernah dibagikan**.
+
+### Demo 1: cookie perangkat tetap sama walaupun IP berubah
+
+1. Buka website di Chrome, lihat `sv_did`, **salin 8 karakter pertama** nilainya (hanya untuk perbandingan).
+2. Buka `https://ifconfig.me` di tab lain, catat IP (IP-A).
+3. Lakukan serangan yang memblokir (mis. S08 XSS). Muat ulang daftar cookie: `sv_did` **tidak berubah**.
+4. Nyalakan VPN, buka `https://ifconfig.me`: IP **berubah** (IP-B).
+5. Buka website lagi, periksa cookie: `sv_did` **masih sama**, dan website menjawab **403**.
+
+Kesimpulan yang bisa disebut: IP berubah, cookie tidak, dan server mengenali perangkat dari cookie.
+
+### Demo 2: beda browser berarti beda cookie
+
+1. Di Chrome catat 8 karakter pertama `sv_did`.
+2. Buka website yang sama di Firefox atau di jendela incognito, lalu lihat cookie-nya: `sv_did` **berbeda**. Browser lain tidak membawa cookie Chrome.
+3. Dari browser lain itu (tanpa login), website bisa dibuka lagi, selama IP-nya tidak sedang diblokir. Itulah batasan yang ditulis jujur di skripsi.
+
+### Demo 3: menghapus cookie
+
+1. Di daftar cookie, klik kanan `sv_did` → **Delete**, lalu muat ulang halaman.
+2. Muncul `sv_did` **baru dengan nilai berbeda**. Perangkat dianggap baru, sehingga ban perangkat tidak berlaku lagi (kecuali IP-nya masih diblokir atau penyerang login ke akun yang sudah diban).
+
+### Demo 4: `HttpOnly` melindungi cookie dari JavaScript
+
+Di tab **Console** ketik `document.cookie` lalu Enter. `sv_did` dan cookie sesi **tidak muncul** di hasilnya, karena bertanda `HttpOnly`. Artinya, kalaupun ada celah XSS, skrip penyerang tidak bisa membaca cookie tersebut.
+
+### Memeriksa lewat terminal (Kali)
+
+```bash
+# Lihat cookie yang dikirim server (nilai jangan dibagikan)
+curl -sI https://saladinshop.duckdns.org/ | grep -i '^set-cookie'
+
+# Simpan dan pakai ulang cookie, meniru browser yang sama
+curl -s -c /tmp/jar.txt -o /dev/null https://saladinshop.duckdns.org/
+cat /tmp/jar.txt
+```
+
+Perhatikan baris `sv_did` di `jar.txt`. Tanpa `-b /tmp/jar.txt` pada permintaan berikutnya, `curl` dianggap perangkat baru setiap kali.
+
+### Hubungan dengan dashboard
+
+Halaman **Device & Akun Ban** menampilkan referensi 12 karakter (`subjectRef`), yaitu hash dari ID perangkat, **bukan** isi cookie, sehingga tidak bisa dicocokkan langsung dengan nilai di browser. Cocokkan lewat **waktu** kejadian dan **IP awal**.

@@ -111,7 +111,7 @@ Yang **berbeda antar-browser** adalah isi penyimpanan cookie (`sv_did`, sesi), U
 
 | Rujukan | Isi yang relevan | Penerapan di sistem |
 |---|---|---|
-| **PCI DSS v4.0, Requirement 8.3.4** (standar keamanan industri pembayaran kartu) | Percobaan autentikasi gagal dibatasi dengan mengunci identitas setelah paling banyak 10 percobaan, dengan **durasi kunci minimal 30 menit** atau sampai identitas dikonfirmasi | Durasi dasar blokir otomatis **30 menit (1800 detik)**. Relevan karena sistem ini e-commerce yang memproses pembayaran. Standar ini aslinya untuk penguncian akun, lalu diterapkan pada sumber serangan |
+| **PCI DSS v4.0, Requirement 8.3.4** (standar keamanan industri pembayaran kartu) | Percobaan autentikasi gagal dibatasi dengan mengunci identitas setelah paling banyak 10 percobaan, dengan **durasi kunci minimal 30 menit** atau sampai identitas dikonfirmasi | Durasi dasar blokir otomatis **30 menit (1800 detik)**, dipakai sebagai acuan praktik industri pembayaran (bukan kewajiban kepatuhan). Standar ini aslinya untuk penguncian akun, lalu diterapkan pada sumber serangan |
 | **NIST SP 800-63B**, bagian pembatasan percobaan (*throttling*) | Percobaan gagal berturut-turut harus dibatasi, dan waktu tunggu yang bertambah lebih disarankan daripada penguncian permanen | Eskalasi: ban perangkat/akun **30 menit**, naik jadi **60 menit** jika mengulang dalam 24 jam |
 | **OWASP Authentication Cheat Sheet** dan **Credential Stuffing Prevention Cheat Sheet** | Penguncian permanen bisa disalahgunakan untuk mengunci pengguna sah | Tidak ada blokir permanen otomatis |
 | **Fail2ban** (bawaan `jail.conf`) | `bantime = 10m`, `findtime = 10m`, `maxretry = 5`, praktik umum pada perangkat lunak pemblokir IP | Jendela deteksi **10 menit** dan ambang **5 percobaan** pada detektor brute force dan credential stuffing |
@@ -150,7 +150,7 @@ Durasi blokir adalah **keputusan kebijakan** (menimbang untung rugi), bukan angk
 
 **Alasan memilih 30 menit, secara ringkas:**
 
-1. **Ada standar yang menjadi acuan.** PCI DSS v4.0 Req. 8.3.4 menetapkan penguncian minimal 30 menit setelah percobaan gagal berulang. Penelitian ini memakai aplikasi e-commerce, sehingga standar itu relevan. Perlu diakui bahwa standar tersebut mengatur penguncian *akun*, sedangkan sistem ini memakainya untuk sumber serangan (IP, perangkat, akun).
+1. **Ada praktik standar yang dijadikan acuan.** PCI DSS v4.0 Req. 8.3.4 menyebut penguncian minimal 30 menit setelah percobaan autentikasi gagal berulang (cek teks aslinya sebelum dikutip). Perlu dinyatakan jujur: (a) standar itu mengatur penguncian *akun pengguna sistem*, sedangkan sistem ini memakainya untuk sumber serangan (IP, perangkat, akun); (b) standar itu **bukan kewajiban kepatuhan** bagi penelitian ini, karena data kartu ditangani Midtrans. Jadi PCI DSS dipakai sebagai **acuan praktik industri** untuk memilih angka 30 menit, bukan sebagai syarat yang harus dipenuhi.
 2. **Sejalan dengan jendela deteksi.** Deteksi menghitung kejadian dalam 10 menit. Blokir harus lebih lama dari itu, kalau tidak penyerang bisa kembali sebelum hitungannya selesai.
 3. **Bisa pulih sendiri.** Blokir berakhir otomatis tanpa campur tangan admin (`wazuh:auto-expire`), sehingga salah blokir tidak menjadi kerugian permanen.
 4. **Satu angka untuk semua skenario.** Lebih mudah dijelaskan dan diuji ulang. Perbedaan perlakuan antarskenario ditentukan oleh **jenis respons** (blokir, batasi, atau tolak), bukan oleh durasi.

@@ -72,7 +72,7 @@ Cara memakainya:
 ## 4. "Kenapa blokirnya 30 menit? Kenapa tidak selamanya?"
 
 **Jawaban singkat:**
-> "Saya memilih 30 menit karena tiga alasan. Pertama, ada acuan standar: PCI DSS untuk pembayaran menetapkan penguncian minimal 30 menit setelah percobaan gagal berulang. Karena ini e-commerce, saya mengadaptasinya. Kedua, jendela deteksi saya 10 menit, jadi blokir harus lebih lama dari itu, kalau tidak penyerang bisa kembali sebelum hitungannya habis. Ketiga, blokirnya berakhir sendiri, jadi kalau ada pengguna sah yang salah terblokir, dia tidak terkunci selamanya."
+> "Saya memilih 30 menit karena tiga alasan. Pertama, ada acuan standar: standar keamanan pembayaran PCI DSS menyebut penguncian minimal 30 menit setelah percobaan gagal berulang. Saya memakainya sebagai acuan praktik industri, bukan sebagai kewajiban, karena data kartu ditangani Midtrans. Kedua, jendela deteksi saya 10 menit, jadi blokir harus lebih lama dari itu, kalau tidak penyerang bisa kembali sebelum hitungannya habis. Ketiga, blokirnya berakhir sendiri, jadi kalau ada pengguna sah yang salah terblokir, dia tidak terkunci selamanya."
 
 **Kalau ditanya "kenapa tidak permanen?":**
 > "Karena IP bukan identitas yang tetap. Banyak pengguna seluler di Indonesia berbagi satu IP publik, dan IP VPN dipakai banyak orang. Kalau saya blokir permanen, orang yang tidak bersalah ikut terkunci. Penyerang juga tinggal ganti IP. Jadi blokir permanen tidak diputuskan otomatis. Itu keputusan admin lewat dashboard setelah meninjau alert."
