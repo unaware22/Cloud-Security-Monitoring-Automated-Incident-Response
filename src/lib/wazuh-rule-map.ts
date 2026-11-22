@@ -1,38 +1,38 @@
 // Maps an application security event to the Wazuh rule(s) configured to match
 // it (see 15-PANDUAN-UJI-10-SKENARIO.md). This is the configured mapping, not proof
 // that Wazuh fired: the admin Security Events page reads the app database, not
-// Wazuh alerts. Correlation rules that fire on a series of events (e.g. 100201,
-// 100501) are not listed per event.
+// Wazuh alerts. Correlation rules that fire on a series of events (e.g. 110131,
+// 110501) are not listed per event.
 
 const BASE_RULES: Record<string, string> = {
-  sql_injection_attempt: '100100',
-  sensitive_path_scan: '100200',
-  xss_attempt: '100800',
-  user_bruteforce_attempt: '100300',
-  admin_bruteforce_attempt: '100301',
-  credential_stuffing_attempt: '100400',
-  account_takeover_attempt: '100401',
-  unauthorized_object_access_attempt: '100500',
-  checkout_abuse: '100600',
-  bot_order_attempt: '100601',
-  voucher_abuse_attempt: '100700',
-  checkout_tampering_attempt: '100702',
-  invalid_payment_callback: '100900',
-  user_password_reset_abuse: '101000',
-  device_banned: '101100',
-  account_banned: '101101',
-  banned_device_request: '101102',
-  banned_account_request: '101103',
+  sql_injection_attempt: '110100',
+  sensitive_path_scan: '110130',
+  xss_attempt: '110110',
+  user_bruteforce_attempt: '110401',
+  admin_bruteforce_attempt: '110411',
+  credential_stuffing_attempt: '110420',
+  account_takeover_attempt: '110421',
+  unauthorized_object_access_attempt: '110500',
+  checkout_abuse: '110510',
+  bot_order_attempt: '110512',
+  voucher_abuse_attempt: '110520',
+  checkout_tampering_attempt: '110524',
+  invalid_payment_callback: '110530',
+  user_password_reset_abuse: '110540',
+  device_banned: '110601',
+  account_banned: '110602',
+  banned_device_request: '110603',
+  banned_account_request: '110604',
 };
 
 // Child rules that refine the base rule from the payload snippet.
 const CHILD_RULES: Array<{ eventType: string; pattern: RegExp; ruleId: string }> = [
-  { eventType: 'voucher_abuse_attempt', pattern: /reason=reuse/, ruleId: '100701' },
-  { eventType: 'invalid_payment_callback', pattern: /gross_amount=/, ruleId: '100901' },
+  { eventType: 'voucher_abuse_attempt', pattern: /reason=reuse/, ruleId: '110521' },
+  { eventType: 'invalid_payment_callback', pattern: /gross_amount=/, ruleId: '110531' },
   {
     eventType: 'user_password_reset_abuse',
     pattern: /Exceeded rate limit for forgot_password/,
-    ruleId: '101001',
+    ruleId: '110541',
   },
 ];
 

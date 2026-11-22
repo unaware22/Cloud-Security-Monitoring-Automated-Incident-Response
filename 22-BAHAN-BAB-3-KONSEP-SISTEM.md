@@ -33,8 +33,8 @@ Ada satu lapisan tambahan yang **tidak lewat Wazuh**, yaitu blokir perangkat dan
 | 3 | Event `xss_attempt` ditulis ke `security_events.log` dan RDS | Next.js | < 1 detik |
 | 4 | Aplikasi mencatat **ban perangkat** 30 menit (berdasarkan cookie `sv_did`) | Next.js + RDS | < 1 detik |
 | 5 | Agent membaca baris log baru dan mengirimnya ke manager | Wazuh Agent | sekitar 1–5 detik |
-| 6 | Manager mencocokkan **rule 100800** dan menghasilkan alert | Wazuh Manager | < 1 detik |
-| 7 | Rule 100800 terdaftar di Active Response, sehingga manager mengirim perintah `block` ke agent dengan `timeout 1800` | Wazuh Manager | < 1 detik |
+| 6 | Manager mencocokkan **rule 110110** dan menghasilkan alert | Wazuh Manager | < 1 detik |
+| 7 | Rule 110110 terdaftar di Active Response, sehingga manager mengirim perintah `block` ke agent dengan `timeout 1800` | Wazuh Manager | < 1 detik |
 | 8 | Script memeriksa IP, menulis `deny`, menjalankan `nginx -t`, memuat ulang Nginx, dan mencatat hasil | Agent + script | sekitar 1–2 detik |
 | 9 | Alert diteruskan ke n8n, lalu pesan masuk ke Telegram admin | Wazuh → n8n → Telegram | sekitar 1–5 detik |
 | 10 | Request berikutnya dari IP itu ditolak **Nginx (403)**. Dari IP lain tetapi browser sama, ditolak **middleware (403)** karena ban perangkat | Nginx / Next.js | — |
@@ -160,14 +160,14 @@ Durasi blokir adalah **keputusan kebijakan** (menimbang untung rugi), bukan angk
 
 ### Menyamakan konfigurasi Wazuh (SQLi saat ini masih 10 menit)
 
-Konfigurasi aktif sebelum migrasi memakai `timeout 600` untuk rule SQL injection (ID lama 110100, kini 100100; lihat Lampiran E di dokumen 15) dan `1800` untuk rule lain. Supaya sesuai keputusan di atas, lakukan di **EC2 Wazuh**:
+Konfigurasi aktif memakai `timeout 600` untuk rule 110100 (SQL injection) dan `1800` untuk rule lain. Supaya sesuai keputusan di atas, lakukan di **EC2 Wazuh**:
 
 ```bash
 sudo cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.backup-timeout
 sudo nano /var/ossec/etc/ossec.conf
 ```
 
-Cari blok Active Response yang berisi `<rules_id>100100</rules_id>`, lalu ubah `<timeout>600</timeout>` menjadi `<timeout>1800</timeout>`. Setelah itu:
+Cari blok Active Response yang berisi `<rules_id>110100</rules_id>`, lalu ubah `<timeout>600</timeout>` menjadi `<timeout>1800</timeout>`. Setelah itu:
 
 ```bash
 sudo /var/ossec/bin/wazuh-analysisd -t && sudo systemctl restart wazuh-manager
@@ -185,7 +185,7 @@ Aplikasi web modern sebenarnya lebih pas digambarkan dengan model TCP/IP, yang m
 
 | Lapisan OSI | Yang diuji atau diamankan | Tools | Parameter | Skenario / status |
 |---|---|---|---|---|
-| **7 Application** | Serangan pada logika dan input aplikasi (SQLi, XSS, brute force, credential stuffing, BOLA, fake order, voucher, webhook, enumeration) dan keutuhan file web | Next.js (validasi Zod, deteksi pola, cek kepemilikan data), Cloudflare Turnstile, pembatas request aplikasi, Wazuh rules, Wazuh FIM, n8n, Telegram | Rule 100100–101001; batas request (login 30 per 15 menit, checkout 10 per menit, voucher 20 per menit, lupa password 5 per 10 menit); pesanan menunggu bayar 3 per akun dan 5 per IP; FIM mode `realtime` | **S01–S10** |
+| **7 Application** | Serangan pada logika dan input aplikasi (SQLi, XSS, brute force, credential stuffing, BOLA, fake order, voucher, webhook, enumeration) dan keutuhan file web | Next.js (validasi Zod, deteksi pola, cek kepemilikan data), Cloudflare Turnstile, pembatas request aplikasi, Wazuh rules, Wazuh FIM, n8n, Telegram | Rule 110100–110541; batas request (login 30 per 15 menit, checkout 10 per menit, voucher 20 per menit, lupa password 5 per 10 menit); pesanan menunggu bayar 3 per akun dan 5 per IP; FIM mode `realtime` | **S01–S10** |
 | **6 Presentation** | Enkripsi, encoding data, dan tanda tangan data | TLS di Nginx, output encoding React, decode URL (`%3C` menjadi `<`) sebelum deteksi, HMAC-SHA256 untuk cookie perangkat, SHA-512 untuk tanda tangan webhook Midtrans | HTTPS 443; decode sampai 3 putaran; kunci HMAC minimal 32 karakter; SHA-512 + server key | S08 (encoding), S09 (tanda tangan), varian VPN (cookie bertanda tangan) |
 | **5 Session** | Sesi login dan pencabutannya | JWT HS256 (`jose`), cookie `HttpOnly`/`SameSite=Lax`/`Secure`, `sessionVersion` | Sesi 7 hari; ban akun menaikkan `sessionVersion`; reset password mencabut semua sesi | S05 (sesi akun B), S10, ban akun |
 | **4 Transport** | Port yang terbuka ke internet | AWS Security Group | 80/443 terbuka; 22 hanya dari IP pemilik; 5432 (RDS) hanya dari SG aplikasi; 1514/1515 (agent) hanya antar-EC2 | **Pemeriksaan konfigurasi** (bukan skenario serangan): RDS tidak bisa dijangkau dari internet |
@@ -231,16 +231,16 @@ Setiap skenario dijelaskan dalam empat tahap: **pencegahan** (oleh aplikasi atau
 
 | ID | Pencegahan (tools dan parameter) | Deteksi (event → rule) | Respons (pelaksana dan parameter) | Lapisan OSI |
 |---|---|---|---|---|
-| **S01 SQL injection** | Next.js mendeteksi pola SQL di query dan form (URL di-decode dulu) lalu menjawab 400. Query database memakai Prisma yang terparameter | `sql_injection_attempt` → **100100** | **Nginx deny** lewat Wazuh AR (timeout 1800 detik) + **ban perangkat** 30 menit (middleware) | 7, 3 |
-| **S02 Defacement** | — (simulasi perubahan file di server) | Wazuh **FIM realtime** pada folder web → **100210** (diubah) / **100211** (ditambah), mencatat hash MD5/SHA1/SHA256 dan isi perubahan | Notifikasi. Pemulihan dilakukan admin secara manual | 7 (host) |
-| **S03 Brute force** | Pembatas login (customer 30 per 15 menit; admin 5 per 15 menit + Nginx 5 per menit burst 3), Turnstile | Detektor: 5 kegagalan ke 1 akun dalam 10 menit (sliding window) → `user_bruteforce_attempt` → **100300**; admin → **100301** | Nginx deny 1800 detik + ban **perangkat** saja (akun korban tidak diban) | 7, 5, 3 |
-| **S04 Credential stuffing** | Turnstile. Login dengan password benar pun ditolak (429) bila IP yang sama baru saja mencoba 5 akun berbeda dalam 10 menit | 5 email berbeda dari 1 IP dalam 10 menit → `credential_stuffing_attempt` → **100400** | Nginx deny 1800 detik + ban perangkat | 7, 3 |
-| **S05 BOLA** | Setiap query pesanan mensyaratkan **pemilik = akun yang login**, sehingga akun lain hanya mendapat 404 tanpa data | `unauthorized_object_access_attempt` → **100500**; berulang dari IP yang sama → **100501** (`frequency` dan `timeframe` sesuai rule aktif; panduan: 3 kali dalam 300 detik) | Nginx deny 1800 detik (100501) + ban **perangkat dan akun** setelah 3 kali dalam 10 menit | 7, 5, 3 |
-| **S06 Fake order** | Maksimal 3 pesanan menunggu bayar per akun dan 5 per IP; kedaluwarsa 15 menit; Turnstile; Nginx `checkout_limit` 10 per menit burst 5 | `checkout_abuse` → **100600**; `bot_order_attempt` → **100601** | Pembatasan (429/400) + notifikasi, **tanpa blokir** | 7 |
-| **S07 Voucher** | Server memeriksa login, masa berlaku, minimal belanja, **sekali pakai per akun**, dan mengunci transaksi. Diskon dihitung server | `voucher_abuse_attempt` (`reason=reuse`) → **100700** dan **100701** | Penolakan (400) + notifikasi, tanpa blokir | 7 |
-| **S08 XSS** | Deteksi pola XSS (URL di-decode) lalu 400, ditambah **output encoding React** | `xss_attempt` → **100800** | Nginx deny 1800 detik + ban perangkat 30 menit | 7, 6, 3 |
-| **S09 Webhook** | Tanda tangan **SHA-512** (order_id + status_code + gross_amount + server key) dibandingkan secara aman terhadap serangan waktu, nominal dicocokkan, status pesanan diklaim sekali | `invalid_payment_callback` → **100900** (tanda tangan) / **100901** (nominal) | Penolakan (403/400) + alert prioritas tinggi, **tanpa blokir otomatis** (supaya IP Midtrans tidak ikut terblokir jika terjadi salah konfigurasi) | 7, 6 |
-| **S10 Enumeration** | Pesan respons sama untuk semua email, waktu respons minimum sekitar 0,9–1,1 detik, pembatas 5 per 10 menit, Turnstile | `user_password_reset_abuse` → **101000**; banjir → **101001** | Pembatasan (429) + notifikasi, tanpa blokir | 7 |
+| **S01 SQL injection** | Next.js mendeteksi pola SQL di query dan form (URL di-decode dulu) lalu menjawab 400. Query database memakai Prisma yang terparameter | `sql_injection_attempt` → **110100** | **Nginx deny** lewat Wazuh AR (timeout 1800 detik) + **ban perangkat** 30 menit (middleware) | 7, 3 |
+| **S02 Defacement** | — (simulasi perubahan file di server) | Wazuh **FIM realtime** pada folder web → **110200** (diubah) / **110201** (ditambah), mencatat hash MD5/SHA1/SHA256 dan isi perubahan | Notifikasi. Pemulihan dilakukan admin secara manual | 7 (host) |
+| **S03 Brute force** | Pembatas login (customer 30 per 15 menit; admin 5 per 15 menit + Nginx 5 per menit burst 3), Turnstile | Detektor: 5 kegagalan ke 1 akun dalam 10 menit (sliding window) → `user_bruteforce_attempt` → **110401**; admin → **110411** | Nginx deny 1800 detik + ban **perangkat** saja (akun korban tidak diban) | 7, 5, 3 |
+| **S04 Credential stuffing** | Turnstile. Login dengan password benar pun ditolak (429) bila IP yang sama baru saja mencoba 5 akun berbeda dalam 10 menit | 5 email berbeda dari 1 IP dalam 10 menit → `credential_stuffing_attempt` → **110420** | Nginx deny 1800 detik + ban perangkat | 7, 3 |
+| **S05 BOLA** | Setiap query pesanan mensyaratkan **pemilik = akun yang login**, sehingga akun lain hanya mendapat 404 tanpa data | `unauthorized_object_access_attempt` → **110500**; berulang dari IP yang sama → **110501** (`frequency` dan `timeframe` sesuai rule aktif; panduan: 3 kali dalam 300 detik) | Nginx deny 1800 detik (110501) + ban **perangkat dan akun** setelah 3 kali dalam 10 menit | 7, 5, 3 |
+| **S06 Fake order** | Maksimal 3 pesanan menunggu bayar per akun dan 5 per IP; kedaluwarsa 15 menit; Turnstile; Nginx `checkout_limit` 10 per menit burst 5 | `checkout_abuse` → **110510**; `bot_order_attempt` → **110512** | Pembatasan (429/400) + notifikasi, **tanpa blokir** | 7 |
+| **S07 Voucher** | Server memeriksa login, masa berlaku, minimal belanja, **sekali pakai per akun**, dan mengunci transaksi. Diskon dihitung server | `voucher_abuse_attempt` (`reason=reuse`) → **110520** dan **110521** | Penolakan (400) + notifikasi, tanpa blokir | 7 |
+| **S08 XSS** | Deteksi pola XSS (URL di-decode) lalu 400, ditambah **output encoding React** | `xss_attempt` → **110110** | Nginx deny 1800 detik + ban perangkat 30 menit | 7, 6, 3 |
+| **S09 Webhook** | Tanda tangan **SHA-512** (order_id + status_code + gross_amount + server key) dibandingkan secara aman terhadap serangan waktu, nominal dicocokkan, status pesanan diklaim sekali | `invalid_payment_callback` → **110530** (tanda tangan) / **110531** (nominal) | Penolakan (403/400) + alert prioritas tinggi, **tanpa blokir otomatis** (supaya IP Midtrans tidak ikut terblokir jika terjadi salah konfigurasi) | 7, 6 |
+| **S10 Enumeration** | Pesan respons sama untuk semua email, waktu respons minimum sekitar 0,9–1,1 detik, pembatas 5 per 10 menit, Turnstile | `user_password_reset_abuse` → **110540**; banjir → **110541** | Pembatasan (429) + notifikasi, tanpa blokir | 7 |
 
 **Respons bertingkat.** Serangan teknis yang jelas bermaksud jahat (S01, S03, S04, S05, S08) **diblokir**. Perilaku yang juga bisa dilakukan pelanggan biasa (S06, S07, S10) **dibatasi dan dilaporkan**. Webhook pembayaran (S09) **ditolak dan dilaporkan** tanpa blokir otomatis.
 
