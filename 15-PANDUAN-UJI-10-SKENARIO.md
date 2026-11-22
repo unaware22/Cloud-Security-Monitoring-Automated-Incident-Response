@@ -86,7 +86,7 @@ sudo grep -E 'Monitoring path' /var/ossec/logs/ossec.log | tail -n 12
 Rule untuk SQLi (110100), auth (110401, 110411, 110420, 110421), BOLA (110500, 110501), dan FIM (110200, 110201) sudah ada dari minggu-minggu sebelumnya. Yang baru ditambahkan:
 
 ```bash
-sudo grep -R -n -E 'id="(110130|110131|110510|110511|110512|110513|110520|110521|110524|110110|110530|110531|110540|110541|110601|110602|110603|110604)"' /var/ossec/etc/rules
+sudo grep -R -n -E 'id="(110130|110131|110510|110511|110512|110513|110520|110521|110524|110110|110530|110531|110540|110541|110542|110543|110601|110602|110603|110604)"' /var/ossec/etc/rules
 sudo cp /var/ossec/etc/rules/saladinshop_rules.xml /var/ossec/etc/rules/saladinshop_rules.xml.backup-skenario
 sudo nano /var/ossec/etc/rules/saladinshop_rules.xml
 ```
@@ -195,6 +195,18 @@ Jika perintah `grep` menampilkan ID yang sudah ada, jangan menimpa: sesuaikan no
     <description>SALADINSHOP: Password reset flooding from $(ip_address)</description>
     <group>authentication,password_reset,reset_flood,</group>
   </rule>
+  <rule id="110542" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="event_type" type="pcre2">^registration_existing_email$</field>
+    <description>SALADINSHOP: Registration attempted with an existing email from $(ip_address)</description>
+    <group>authentication,account_enumeration,</group>
+  </rule>
+  <rule id="110543" level="8" frequency="3" timeframe="900">
+    <if_matched_sid>110542</if_matched_sid>
+    <same_field>ip_address</same_field>
+    <description>SALADINSHOP: Repeated registrations with existing emails from $(ip_address)</description>
+    <group>authentication,account_enumeration,repeated_abuse,</group>
+  </rule>
 
   <!-- Blokir perangkat/akun oleh aplikasi (pemantauan) -->
   <rule id="110601" level="10">
@@ -239,9 +251,9 @@ Di `/var/ossec/etc/ossec.conf`:
    Ini sekaligus menaikkan timeout SQLi (110100) dari 600 ke 1800 detik, sesuai keputusan di dokumen 22. Pastikan blok lama ber-timeout 600 dihapus atau tidak lagi memuat 110100. **Jangan** memasukkan rule S06, S07, S09, dan S10 ke Active Response.
 
 2. **Integrasi n8n.** Tambahkan semua rule baru ke `<rule_id>` blok `<integration>` custom-n8n:
-   `110110,110131,110511,110513,110521,110524,110530,110531,110541,110601,110602,110603,110604`.
+   `110110,110131,110511,110513,110521,110524,110530,110531,110541,110543,110601,110602,110603,110604`.
 
-   **Mengapa tidak semua rule dikirim ke Telegram:** rule kejadian tunggal **110130** (satu jalur sensitif), **110510** (satu penolakan checkout), **110512** (satu checkout tanpa CAPTCHA), **110520** (satu voucher ditolak), dan **110540** (satu reset ditolak) sengaja **tidak** dimasukkan ke integrasi. Kejadiannya tetap tercatat dan terlihat di dashboard Wazuh, tetapi tidak mengirim pesan. Telegram hanya untuk **pola berulang** (110131, 110511, 110513) dan **kejadian yang jelas mencurigakan** (110521 pakai ulang voucher, 110541 banjir reset, serangan yang memblokir). Tujuannya supaya admin tidak kebanjiran notifikasi dan tidak terbiasa mengabaikannya (*alert fatigue*).
+   **Mengapa tidak semua rule dikirim ke Telegram:** rule kejadian tunggal **110130** (satu jalur sensitif), **110510** (satu penolakan checkout), **110512** (satu checkout tanpa CAPTCHA), **110520** (satu voucher ditolak), **110540** (satu reset ditolak), dan **110542** (satu pendaftaran dengan email yang sudah ada) sengaja **tidak** dimasukkan ke integrasi. Kejadiannya tetap tercatat dan terlihat di dashboard Wazuh, tetapi tidak mengirim pesan. Telegram hanya untuk **pola berulang** (110131, 110511, 110513, 110543) dan **kejadian yang jelas mencurigakan** (110521 pakai ulang voucher, 110541 banjir reset, serangan yang memblokir). Tujuannya supaya admin tidak kebanjiran notifikasi dan tidak terbiasa mengabaikannya (*alert fatigue*).
 
 ```bash
 sudo cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.backup-skenario
@@ -253,7 +265,7 @@ sudo grep -F 'saladinshop-ip-control' /var/ossec/etc/shared/ar.conf
 
 ### 2.5 n8n (homelab)
 
-- **Workflow pertama** (Webhook → Edit Fields → Switch → Telegram): tambahkan satu output Switch per rule baru, lalu sambungkan ke **Send a text message**. Nama output yang disarankan: `110110 — XSS Attempt`, `110131 — Repeated Path Scan`, `110511 — Repeated Checkout Limit`, `110513 — Repeated Bot Orders`, `110521 — Voucher Reuse`, `110524 — Price Tampering`, `110530 — Fake Payment Webhook`, `110531 — Payment Amount Mismatch`, `110541 — Reset Flood`, `110603 — Banned Device Returned`.
+- **Workflow pertama** (Webhook → Edit Fields → Switch → Telegram): tambahkan satu output Switch per rule baru, lalu sambungkan ke **Send a text message**. Nama output yang disarankan: `110110 — XSS Attempt`, `110131 — Repeated Path Scan`, `110511 — Repeated Checkout Limit`, `110513 — Repeated Bot Orders`, `110521 — Voucher Reuse`, `110524 — Price Tampering`, `110530 — Fake Payment Webhook`, `110531 — Payment Amount Mismatch`, `110541 — Reset Flood`, `110543 — Repeated Existing-Email Registration`, `110603 — Banned Device Returned`.
 - **Workflow kedua** (kontrol IP dari dashboard): node `HTTP Request1` memakai `"command": "!saladinshop-ip-control.py"`.
 
 ---
@@ -1008,53 +1020,77 @@ p.order.findUnique({ where: { orderCode: process.argv[1] }, select: { paymentSta
 
 ---
 
-### S10 — Lupa Password dan Account Enumeration
+### S10 — Account Enumeration (Lupa Password, Daftar, dan Kirim Ulang Verifikasi)
 
-**Apa dan kenapa bisa terjadi.** Jika form lupa password menjawab berbeda untuk email yang terdaftar dan yang tidak ("email tidak ditemukan"), atau menjawab dengan **waktu** yang berbeda, penyerang bisa mengecek email mana yang punya akun. Daftar itu dipakai untuk credential stuffing (S04) dan phishing. Akar masalahnya: **respons yang membedakan** (isi atau waktu).
+**Apa dan kenapa bisa terjadi.** *Account enumeration* adalah upaya **mencari tahu email mana yang sudah punya akun**. Caranya dengan membandingkan jawaban website untuk email yang terdaftar dan yang tidak. Ada tiga "pintu" yang biasa dipakai:
+
+| Pintu | Jawaban yang membocorkan (sebelum diperbaiki) |
+|---|---|
+| **Lupa Password** | "Email tidak ditemukan" untuk email tidak terdaftar, atau jawaban yang lebih lambat untuk email terdaftar |
+| **Daftar (register)** | "Email sudah terdaftar" (HTTP 409) untuk email yang sudah punya akun |
+| **Kirim Ulang Verifikasi** | Tiga pesan berbeda: email tidak ada, email sudah terverifikasi, atau tautan berhasil dikirim |
+
+Daftar email yang valid lalu dipakai untuk credential stuffing (S04) dan phishing. Akar masalahnya: **respons yang membedakan**, baik isi pesannya maupun waktunya.
 
 **Rantai sebab-akibat.**
 
 | Tahap | Penjelasan |
 |---|---|
-| **Sebab** | Jika respons lupa password berbeda (isi atau waktu) untuk email terdaftar dan tidak terdaftar, keberadaan akun bisa ditebak |
-| **Yang dilakukan penyerang** | Mengirim daftar email ke form lupa password lalu membandingkan jawaban dan waktunya |
+| **Sebab** | Respons berbeda (isi atau waktu) untuk email terdaftar dan tidak terdaftar di salah satu dari tiga pintu |
+| **Yang dilakukan penyerang** | Mengirim daftar email ke pintu-pintu itu lalu membandingkan jawaban dan waktunya |
 | **Akibat bila tidak dijaga** | Penyerang mendapat daftar akun yang valid untuk credential stuffing (S04) dan phishing |
-| **Titik pemutus di sistem ini** | Pesan identik, waktu respons minimum yang sama untuk kedua kasus, batas 5 permintaan per 10 menit, dan Turnstile |
+| **Titik pemutus di sistem ini** | Ketiga pintu menjawab **pesan yang sama** dalam **waktu yang mirip** (minimal sekitar 0,9 detik ditambah jitter). Pemilik akun yang asli diberi tahu lewat email. Ditambah batas permintaan dan Turnstile |
 
 **Di balik layar saat uji.**
 
 | Langkah uji | Yang terjadi di dalam sistem | Bukti |
 |---|---|---|
-| Email terdaftar | Server mengerjakan langkah tambahan (membuat token, mencatat audit), yang secara alami lebih lama | — |
-| Kedua kasus | Server menunggu sampai batas waktu minimum (sekitar 0,9 detik ditambah jitter) sebelum menjawab, sehingga waktu keduanya mirip | Kolom Time di Network |
-| Banjir permintaan | Pembatas laju menolak setelah 5 permintaan, event `user_password_reset_abuse` | **429**, alert rule **110541** |
+| Lupa Password, email terdaftar | Server membuat token reset dan mencatat audit, lalu mengirim email reset | Respons 200, email reset masuk |
+| Lupa Password, email tidak terdaftar | Server tidak mengirim apa pun, tetapi menunggu sampai batas waktu minimum yang sama | Respons 200 dengan pesan yang sama |
+| Daftar, email baru | Akun dibuat, tautan verifikasi dikirim | Respons 200 "Registrasi berhasil! Tautan verifikasi telah dikirim…" |
+| Daftar, email yang sudah terdaftar | **Tidak ada akun baru.** Server tetap menghitung hash password (beban yang sama), mengirim email pemberitahuan ke pemilik asli (atau tautan verifikasi baru jika akunnya belum terverifikasi), mencatat event `registration_existing_email`, lalu menjawab dengan **respons yang sama persis** | Respons 200 yang sama, email pemberitahuan masuk ke pemilik asli, alert rule **110542** (tercatat, tanpa Telegram) |
+| Kirim Ulang Verifikasi | Hanya akun yang belum terverifikasi yang dikirimi tautan. Semua kasus mendapat pesan yang sama | Respons 200 "Jika email terdaftar dan belum terverifikasi…" |
+| Banjir permintaan | Pembatas laju menolak | **429**, alert rule **110541** (lupa password) |
 
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Menyamakan respons dan membatasi permintaan | Route forgot-password, pembatas `forgot_password`, Turnstile, Wazuh 110540/110541 | Pesan identik; waktu respons minimum sekitar 0,9–1,1 detik; 5 permintaan per 10 menit |
-| 6 Presentation | Token reset tidak bisa dibaca atau diulang | Token disimpan sebagai hash | Berlaku 1 jam, sekali pakai |
+| 7 Application | Menyamakan respons di tiga pintu dan membatasi permintaan | Route forgot-password, register, resend-verification; `response-timing` (waktu minimum); pembatas request; Turnstile; email pemberitahuan; Wazuh 110540/110541/110542/110543 | Pesan identik; waktu minimum sekitar 0,9–1,1 detik; lupa password 5 per 10 menit; daftar 5 per 15 menit; kirim ulang 5 per 10 menit per email |
+| 6 Presentation | Token reset dan verifikasi tidak bisa dibaca atau diulang | Token disimpan sebagai hash | Reset berlaku 1 jam, verifikasi 5 menit, sekali pakai |
 | 5 Session | Sesi lama dicabut setelah reset berhasil | `sessionVersion` | Naik satu setiap reset |
-| 3 Network | Batas permintaan per IP (tanpa blokir) | Pembatas request aplikasi | 5 permintaan per 10 menit |
+| 3 Network | Batas permintaan per IP (tanpa blokir) | Pembatas request aplikasi | Lihat lapisan 7 |
 
 **Yang menutup akar masalah.**
 
 | Lapisan | Tools | Parameter |
 |---|---|---|
-| Pencegahan | Pesan respons **identik**; **waktu respons minimum** sekitar 0,9–1,1 detik untuk kedua kasus; pembatas request; Turnstile; token reset di-hash, berlaku 1 jam, sekali pakai | Batas 5 permintaan per 10 menit per IP |
-| Deteksi | `user_password_reset_abuse` → **110540**; banjir → **110541** | — |
+| Pencegahan | **Pesan respons identik** di Lupa Password, Daftar, dan Kirim Ulang Verifikasi; **waktu respons minimum** yang sama; pembatas request; Turnstile; pemilik akun diberi tahu lewat email bila emailnya dipakai mendaftar | Waktu minimum 900 ms + jitter 0–200 ms |
+| Deteksi | `user_password_reset_abuse` → **110540**; banjir lupa password → **110541**; pendaftaran dengan email yang sudah ada → **110542**; berulang 3 kali dalam 15 menit dari IP yang sama → **110543** | Telegram hanya untuk 110541 dan 110543 |
 | Respons | **Batasi + notifikasi, tanpa blokir** | — |
 
-**Langkah uji (varian inti: enumeration, 10×).**
+**Langkah uji (varian inti: enumeration di tiga pintu, 10×).**
 
-1. Siapkan **akun R** (terdaftar, emailnya bisa dibuka) dan **email X** yang tidak terdaftar (mis. `tidakada.s10@example.com`).
-2. Buka halaman **Lupa Password**, F12 → tab **Network** (filter `forgot`). Selesaikan CAPTCHA, kirim email R, catat **Status**, **Time**, dan `message`. Muat ulang halaman (F5, supaya CAPTCHA baru), kirim email X, catat hal yang sama.
-3. **Hasil yang diharapkan:** keduanya **200** dengan `message` **sama persis** ("Jika alamat email Anda terdaftar…"), waktu keduanya sekitar 0,9–1,2 detik tanpa pola "terdaftar selalu lebih lama". Hanya akun R yang menerima email.
-4. Kuota: maksimal 5 permintaan per 10 menit per IP, dihitung bersama halaman reset. Satu percobaan memakai 2 permintaan, jadi beri jeda 10 menit setiap 2 percobaan atau pakai IP lain.
-5. Hitung rata-rata waktu kelompok R dan kelompok X di lembar uji. Kesimpulan aman bila pesannya selalu sama dan selisih rata-rata kecil serta tidak konsisten.
+Siapkan **akun R** (terdaftar dan terverifikasi, emailnya bisa Anda buka) dan **email X** yang tidak terdaftar (mis. `tidakada.s10@example.com`). Buka DevTools → tab **Network** sebelum mengirim. Selesaikan CAPTCHA setiap kali, dan muat ulang halaman (F5) di antara pengiriman agar CAPTCHA baru.
 
-**Bukti tambahan (1×): banjir permintaan** (setelah jeda 10 menit):
+**A. Lupa Password**
+1. Kirim email R, catat **Status**, **Time**, dan `message` dari `POST /api/auth/forgot-password`.
+2. Kirim email X, catat hal yang sama.
+3. **Hasil:** keduanya **200** dengan `message` sama persis ("Jika alamat email Anda terdaftar…"), waktu keduanya sekitar 0,9–1,2 detik. Hanya akun R yang menerima email reset.
+
+**B. Daftar (register)**
+1. Di halaman **Daftar**, isi nama, **email R** (sudah terdaftar), dan password baru yang memenuhi syarat. Kirim. Catat Status, Time, dan `message` dari `POST /api/auth/register`.
+2. Ulangi dengan **email baru** yang belum terdaftar (mis. `baru.s10+1@example.com`, ganti angkanya tiap percobaan).
+3. **Hasil:** keduanya **200** dengan `message` sama persis ("Registrasi berhasil! Tautan verifikasi telah dikirim ke email Anda…"), dan halaman menampilkan layar "cek email" yang sama. Waktu keduanya mirip. **Tidak ada akun baru** untuk email R. Kotak masuk akun R menerima email **"Percobaan pendaftaran dengan email Anda"** yang menyarankan masuk atau Lupa Kata Sandi.
+4. ADMIN: `grep -F 'registration_existing_email' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 1 | cut -c1-230`. Event ada (tanpa email asli, hanya `account_ref`), alert **110542** tercatat di Wazuh.
+
+**C. Kirim Ulang Verifikasi**
+1. Setelah langkah B (layar "cek email"), klik **Kirim ulang**. Lakukan untuk email R (sudah terverifikasi) dan email baru dari langkah B2 (belum terverifikasi).
+2. **Hasil:** keduanya menampilkan pesan sama, "Jika email terdaftar dan belum terverifikasi, tautan verifikasi baru (berlaku 5 menit) telah dikirimkan." Hanya email yang belum terverifikasi yang benar-benar menerima tautan.
+
+**Kuota dan pengulangan.** Lupa password 5 per 10 menit per IP (dihitung bersama halaman reset), daftar 5 per 15 menit per IP. Satu percobaan memakai satu pasang permintaan per pintu, jadi beri jeda atau pakai IP lain bila tertahan 429. Catat waktu tiap permintaan, lalu hitung rata-rata kelompok email terdaftar dan tidak terdaftar per pintu. Kesimpulan aman bila pesannya selalu sama dan selisih rata-rata kecil serta tidak konsisten.
+
+**Bukti tambahan (1×): banjir permintaan lupa password** (setelah jeda 10 menit):
 
 ```bash
 for i in $(seq 1 7); do
@@ -1065,10 +1101,11 @@ done
 
 **Hasil:** R-1..5 **403** (tanpa CAPTCHA), R-6..7 **429**. Alert **110541**, Telegram, website tetap bisa diakses.
 
-**Catatan penting: halaman Daftar (register) berbeda dengan Lupa Password.** Uji di atas membuktikan **lupa password** aman: email terdaftar dan tidak terdaftar mendapat pesan yang sama. Tetapi halaman **Daftar** masih membedakannya. Buktikan sekali (1×): buka halaman Daftar, isi **email akun R yang sudah terdaftar**, lalu kirim. **Hasil:** pesan "Email sudah terdaftar. Silakan login atau gunakan menu lupa password." (HTTP 409). Dengan email yang belum terdaftar, pendaftaran berjalan normal. Jadi penyerang masih bisa mengecek keberadaan email lewat halaman Daftar, walaupun dibatasi 5 percobaan per 15 menit dan CAPTCHA. Tulis ini sebagai batasan, dan perbaikannya (selalu menjawab "cek email Anda", lalu mengirim email pemberitahuan ke pemilik akun yang sudah ada) sebagai saran.
-**Batasan.** Waktu respons minimum mengurangi tetapi tidak menghilangkan seluruh sinyal waktu. **Halaman register masih membocorkan keberadaan akun** (email terdaftar → 409), dibatasi rate limit dan CAPTCHA. Dicatat sebagai temuan.
+**Kontrol normal.** Pengguna baru mendaftar → menerima tautan verifikasi dan bisa login setelah verifikasi. Pengguna lupa password → menerima email reset. Pengguna yang lupa sudah punya akun lalu mendaftar lagi → menerima email pemberitahuan berisi tautan Masuk dan Lupa Kata Sandi.
 
-**Penjelasan untuk dosen.** "Enumeration terjadi karena respons berbeda untuk akun yang ada dan tidak ada, baik isi maupun waktunya. Sistem menyamakan pesan dan menjaga waktu respons minimum, sehingga penyerang tidak bisa menebak akun. Banjir permintaan dibatasi dan dilaporkan ke admin."
+**Batasan.** Waktu respons minimum mengurangi, tetapi tidak menghilangkan seluruh sinyal waktu (variasi jaringan dan beban server), sehingga dinilai dari beberapa percobaan. Login dengan Google tidak termasuk dalam uji ini. Pembatas request disimpan di memori aplikasi dan direset saat container di-restart.
+
+**Penjelasan untuk dosen.** "Enumeration adalah upaya mencari email yang sudah punya akun dengan membandingkan jawaban website. Ada tiga pintu: lupa password, daftar, dan kirim ulang verifikasi. Di sistem ini ketiganya menjawab pesan yang sama dalam waktu yang mirip, jadi penyerang tidak bisa membedakan email terdaftar dan tidak. Pemilik akun yang asli tetap diberi tahu lewat email kalau ada yang mencoba mendaftar dengan emailnya."
 
 ---
 
@@ -1085,7 +1122,7 @@ done
 | S07 | Voucher abuse | Pakai ulang voucher sekali-pakai | 110520 / 110521 | Tolak + notifikasi |
 | S08 | XSS | `<script>` di URL halaman | 110110 | **Blokir** IP + ban perangkat |
 | S09 | Webhook palsu | Tanda tangan palsu dan nominal salah | 110530 / 110531 | Tolak + alert prioritas tinggi |
-| S10 | Enumeration | Lupa password: email terdaftar vs tidak | 110540 / 110541 | Batasi + notifikasi |
+| S10 | Enumeration | Lupa password, daftar, dan kirim ulang verifikasi: email terdaftar vs tidak | 110540 / 110541 / 110542 (Telegram: 110541 / 110543) | Batasi + notifikasi |
 
 **Dasar kebijakan respons bertingkat:** serangan teknis yang jelas berniat jahat diblokir, perilaku yang juga bisa dilakukan pelanggan biasa dibatasi dan dilaporkan, dan webhook pembayaran ditolak tanpa blokir otomatis supaya IP Midtrans tidak ikut terblokir bila terjadi salah konfigurasi.
 
@@ -1105,7 +1142,7 @@ done
 | 8 | Penolakan voucher dan manipulasi harga tidak meninggalkan jejak di Wazuh | S07 | Dicatat sebagai `voucher_abuse_attempt` / `checkout_tampering_attempt` |
 | 9 | Tanda tangan webhook bisa dipalsukan bila server key kosong | S09 | Ditolak bila kunci kosong; perbandingan timing-safe |
 | 10 | Lupa password menjawab lebih lambat untuk email terdaftar | S10 | Waktu respons minimum yang sama |
-| 11 | Register membocorkan keberadaan email (409) | S10 | Belum diperbaiki, dicatat sebagai batasan |
+| 11 | Halaman Daftar (409 "Email sudah terdaftar") dan Kirim Ulang Verifikasi (tiga pesan berbeda) membocorkan keberadaan akun | S10 | Respons dan waktu disamakan di ketiga pintu; pemilik akun diberi tahu lewat email |
 | 12 | FIM memantau folder source secara realtime, sehingga setiap deploy sah memicu alert defacement (false positive) | FIM | Cakupan FIM dipersempit ke file yang tidak seharusnya berubah |
 
 ---

@@ -728,6 +728,81 @@ export async function sendEmailVerificationLink(params: {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Tells the owner of an already-registered, verified email that someone tried
+ * to register with it. The register page answers this case exactly like a new
+ * registration (so the page cannot be used to test which emails exist), and
+ * this email is how the real owner learns about it.
+ */
+export async function sendExistingAccountRegistrationNotice(params: {
+  email: string;
+  name: string;
+}): Promise<{ success: boolean; messageId?: string }> {
+  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+  const loginUrl = `${baseUrl}/login`;
+  const forgotUrl = `${baseUrl}/forgot-password`;
+  const name = escapeHtml(params.name);
+
+  try {
+    const emailResult = await dispatchEmail({
+      to: params.email,
+      subject: '[SALADINSHOP] Percobaan pendaftaran dengan email Anda',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>SALADINSHOP - Percobaan Pendaftaran</title>
+        </head>
+        <body style="margin: 0; padding: 24px 12px; background-color: #0d0d0d; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #ffffff;">
+          <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 560px; margin: 0 auto; background-color: #121214; border-radius: 12px; border: 1px solid #222226; overflow: hidden;">
+            <tr>
+              <td style="padding: 32px 28px 24px 28px; text-align: center;">
+                <h1 style="color: #ffc825; font-size: 22px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; margin: 0 0 16px 0; font-family: Arial, sans-serif;">
+                  SALADINSHOP
+                </h1>
+                <h2 style="color: #eab308; font-size: 20px; font-weight: 800; margin: 0 0 12px 0;">
+                  Email Anda Sudah Terdaftar
+                </h2>
+                <p style="color: #cccccc; font-size: 13px; line-height: 1.6; margin: 0 0 20px 0;">
+                  Halo <strong style="color: #ffffff;">${name}</strong>, seseorang baru saja mencoba mendaftar akun baru di SALADINSHOP memakai alamat email ini. Akun Anda sudah ada, jadi tidak ada akun baru yang dibuat.
+                </p>
+                <p style="color: #cccccc; font-size: 13px; line-height: 1.6; margin: 0 0 24px 0;">
+                  Jika itu Anda, silakan masuk atau atur ulang kata sandi:
+                </p>
+                <div style="margin: 24px 0;">
+                  <a href="${loginUrl}" target="_blank" style="display: inline-block; background-color: #367723; color: #ffffff; text-decoration: none; padding: 12px 24px; font-size: 13px; font-weight: bold; border-radius: 4px; margin: 4px;">Masuk</a>
+                  <a href="${forgotUrl}" target="_blank" style="display: inline-block; background-color: #eab308; color: #000000; text-decoration: none; padding: 12px 24px; font-size: 13px; font-weight: bold; border-radius: 4px; margin: 4px;">Lupa Kata Sandi</a>
+                </div>
+                <p style="color: #737373; font-size: 11px; line-height: 1.5; margin: 24px 0 0 0;">
+                  Jika bukan Anda, abaikan email ini. Akun Anda tetap aman dan tidak ada perubahan apa pun.
+                </p>
+                ${SOCIAL_MEDIA_FOOTER_HTML}
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    });
+
+    return { success: emailResult.success, messageId: emailResult.messageId };
+  } catch (error) {
+    console.error('Failed to send existing-account registration notice:', error);
+    return { success: false };
+  }
+}
+
 /**
  * Sends customer password reset link
  */

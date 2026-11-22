@@ -174,7 +174,7 @@ Cara memakainya:
 | S07 Voucher | "Voucher sekali pakai dicek di server, pemakaian ulang ditolak dan dilaporkan lewat rule 110521." |
 | S08 XSS | "Pola XSS ditolak dan diblokir, dan output encoding React membuat teks tidak pernah dijalankan sebagai kode." |
 | S09 Webhook | "Notifikasi pembayaran harus punya tanda tangan SHA-512 yang benar dan nominal yang cocok dengan pesanan, kalau tidak ditolak dan dilaporkan lewat rule 110530/110531." |
-| S10 Enumeration | "Pesan dan waktu respons lupa password dibuat sama untuk email terdaftar maupun tidak, supaya akun tidak bisa ditebak." |
+| S10 Enumeration | "Lupa password, daftar, dan kirim ulang verifikasi menjawab pesan yang sama dalam waktu yang mirip untuk email terdaftar maupun tidak, jadi akun tidak bisa ditebak. Pemilik akun diberi tahu lewat email kalau emailnya dipakai mendaftar." |
 
 ---
 

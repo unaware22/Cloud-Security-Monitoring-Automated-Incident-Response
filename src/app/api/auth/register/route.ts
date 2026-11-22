@@ -11,8 +11,10 @@ import {
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { createUserToken, CUSTOMER_COOKIE_NAME } from '@/lib/user-auth';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
-import { sendEmailVerificationLink } from '@/lib/email';
+import { sendEmailVerificationLink, sendExistingAccountRegistrationNotice } from '@/lib/email';
 import { generateOpaqueToken } from '@/lib/auth-tokens';
+import { createAccountReference } from '@/lib/account-reference';
+import { waitForResponseFloor } from '@/lib/response-timing';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,6 +131,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // From here on a registered email and a new one get the same answer in
+  // about the same time, so this page cannot be used to test which emails
+  // have an account. The real owner of an existing account is told by email.
+  const startedAt = Date.now();
+  const registrationAccepted = () =>
+    NextResponse.json({
+      success: true,
+      requiresVerification: true,
+      message: 'Registrasi berhasil! Tautan verifikasi telah dikirim ke email Anda. Silakan verifikasi email Anda dalam 5 menit sebelum masuk.',
+    });
+
   try {
     // 5. Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -136,10 +149,49 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: 'Conflict', message: 'Email sudah terdaftar. Silakan login atau gunakan menu lupa password.' },
-        { status: 409 }
-      );
+      // Same bcrypt cost as a real registration, so timing stays similar.
+      await hashPassword(password);
+
+      if (existingUser.isEmailVerified) {
+        sendExistingAccountRegistrationNotice({
+          email: existingUser.email,
+          name: existingUser.name,
+        }).catch((err) => console.error('[Register] Existing-account notice error:', err));
+      } else {
+        // Registered before but never verified: send a fresh verification
+        // link to the inbox owner instead of creating a second account.
+        const { token, tokenHash } = generateOpaqueToken();
+        await prisma.emailVerificationToken.deleteMany({ where: { userId: existingUser.id } });
+        await prisma.emailVerificationToken.create({
+          data: { userId: existingUser.id, token: tokenHash, expiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+        });
+        sendEmailVerificationLink({
+          email: existingUser.email,
+          name: existingUser.name,
+          token,
+        }).catch((err) => console.error('[Register] Email send error:', err));
+      }
+
+      let accountRef: string | undefined;
+      try {
+        accountRef = createAccountReference(normalizedEmail);
+      } catch {}
+      await recordSecurityEvent({
+        eventType: 'registration_existing_email',
+        severity: 'low',
+        ipAddress: ip,
+        method: 'POST',
+        endpoint: '/api/auth/register',
+        userAgent,
+        payloadSnippet: `existing_account_verified=${existingUser.isEmailVerified}`,
+        statusCode: 200,
+        description: 'Registration attempted with an email that already has an account',
+        requestId,
+        accountRef,
+      });
+
+      await waitForResponseFloor(startedAt);
+      return registrationAccepted();
     }
 
     // 6. Create User and Verification Token
@@ -147,7 +199,7 @@ export async function POST(req: NextRequest) {
     const { token: verificationToken, tokenHash } = generateOpaqueToken();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
 
-    const newUser = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           name,
@@ -189,18 +241,10 @@ export async function POST(req: NextRequest) {
       token: verificationToken,
     }).catch((err) => console.error('[Register] Email send error:', err));
 
-    // 8. Return success response without setting session cookie (user must verify first)
-    return NextResponse.json({
-      success: true,
-      requiresVerification: true,
-      message: 'Registrasi berhasil! Tautan verifikasi telah dikirim ke email Anda. Silakan verifikasi email Anda dalam 5 menit sebelum masuk.',
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        isEmailVerified: false,
-      },
-    });
+    // 8. Same response as for an existing email, without a session cookie
+    // (the user must verify first) and without account details.
+    await waitForResponseFloor(startedAt);
+    return registrationAccepted();
   } catch (error: any) {
     console.error('Customer registration error:', error);
     return NextResponse.json(

@@ -19,6 +19,7 @@ const BASE_RULES: Record<string, string> = {
   checkout_tampering_attempt: '110524',
   invalid_payment_callback: '110530',
   user_password_reset_abuse: '110540',
+  registration_existing_email: '110542',
   device_banned: '110601',
   account_banned: '110602',
   banned_device_request: '110603',

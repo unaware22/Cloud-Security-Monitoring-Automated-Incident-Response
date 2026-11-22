@@ -11,20 +11,9 @@ import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 import { sendPasswordResetLink } from '@/lib/email';
 import { generateOpaqueToken } from '@/lib/auth-tokens';
+import { waitForResponseFloor } from '@/lib/response-timing';
 
 export const dynamic = 'force-dynamic';
-
-// Registered emails trigger extra database work (token reset, audit log)
-// before the response. Answering both cases no earlier than this floor
-// (plus jitter) keeps response time from revealing whether an email exists.
-const MIN_RESPONSE_MS = 900;
-const RESPONSE_JITTER_MS = 200;
-
-async function waitForResponseFloor(startedAt: number): Promise<void> {
-  const target = MIN_RESPONSE_MS + Math.floor(Math.random() * RESPONSE_JITTER_MS);
-  const remaining = target - (Date.now() - startedAt);
-  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
-}
 
 const ForgotSchema = z.object({
   email: z.string().trim().email('Format email tidak valid').max(150),

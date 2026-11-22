@@ -103,6 +103,7 @@ export type SecurityEventType =
   | 'user_login_bot_attempt'
   | 'user_registration_bot_attempt'
   | 'user_password_reset_abuse'
+  | 'registration_existing_email'
   | 'unauthorized_order_access'
   | 'unauthorized_object_access_attempt'
   | 'voucher_abuse_attempt'
