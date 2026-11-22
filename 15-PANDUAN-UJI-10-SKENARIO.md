@@ -14,6 +14,8 @@ Konsep besar yang dipakai semua skenario (siapa yang memblokir, identitas penyer
 
 > **Catatan S02:** S02 di bawah adalah **pemindaian jalur sensitif**, usulan pengganti dari "web defacement/FIM" dan **menunggu persetujuan dosen**. Jika tidak disetujui, kembali ke versi FIM di **Lampiran A**.
 
+> **Catatan penomoran rule:** nomor rule diubah menjadi berurutan per skenario (S01 = 1001xx, S02 = 1002xx, dan seterusnya). Tabel konversi dan cara migrasinya ada di **Lampiran E**. Pengujian yang dilakukan sebelum migrasi memakai ID lama (110xxx).
+
 ---
 
 ## Bagian 1 — Konsep inti dalam satu halaman
@@ -81,10 +83,10 @@ sudo grep -E 'Monitoring path' /var/ossec/logs/ossec.log | tail -n 12
 
 ### 2.3 EC2 Wazuh: semua rule baru dalam satu blok
 
-Rule untuk SQLi (110100), auth (110401, 110411, 110420, 110421), BOLA (110500, 110501), dan FIM (110200, 110201) sudah ada dari minggu-minggu sebelumnya. Yang baru ditambahkan:
+Rule untuk SQLi, auth, BOLA, dan FIM sudah ada dari minggu-minggu sebelumnya dengan **ID lama (110xxx)**. Lakukan dulu **Lampiran E** (migrasi ke penomoran baru), lalu tambahkan rule baru di bawah ini. Yang baru ditambahkan:
 
 ```bash
-sudo grep -R -n -E 'id="1101(10|30|31)"|id="1105(10|12|20|21|24|30|31|40|41)"|id="11060[1-4]"' /var/ossec/etc/rules
+sudo grep -R -n -E 'id="(100200|100201|100600|100601|100700|100701|100702|100800|100900|100901|101000|101001|101100|101101|101102|101103)"' /var/ossec/etc/rules
 sudo cp /var/ossec/etc/rules/saladinshop_rules.xml /var/ossec/etc/rules/saladinshop_rules.xml.backup-skenario
 sudo nano /var/ossec/etc/rules/saladinshop_rules.xml
 ```
@@ -95,7 +97,7 @@ Jika perintah `grep` menampilkan ID yang sudah ada, jangan menimpa: sesuaikan no
 <group name="saladinshop,web_security,">
 
   <!-- S08 XSS -->
-  <rule id="110110" level="10">
+  <rule id="100800" level="10">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^xss_attempt$</field>
     <description>SALADINSHOP: XSS attempt blocked from $(ip_address)</description>
@@ -104,15 +106,15 @@ Jika perintah `grep` menampilkan ID yang sudah ada, jangan menimpa: sesuaikan no
   </rule>
 
   <!-- S02 pemindaian jalur sensitif -->
-  <rule id="110130" level="5">
+  <rule id="100200" level="5">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^sensitive_path_scan$</field>
     <description>SALADINSHOP: Sensitive path probe from $(ip_address)</description>
     <mitre><id>T1595.003</id></mitre>
     <group>recon,web_scan,</group>
   </rule>
-  <rule id="110131" level="10" frequency="5" timeframe="60">
-    <if_matched_sid>110130</if_matched_sid>
+  <rule id="100201" level="10" frequency="5" timeframe="60">
+    <if_matched_sid>100200</if_matched_sid>
     <same_field>ip_address</same_field>
     <description>SALADINSHOP: Repeated sensitive path scanning from $(ip_address)</description>
     <mitre><id>T1595.003</id></mitre>
@@ -120,13 +122,13 @@ Jika perintah `grep` menampilkan ID yang sudah ada, jangan menimpa: sesuaikan no
   </rule>
 
   <!-- S06 checkout -->
-  <rule id="110510" level="6">
+  <rule id="100600" level="6">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^checkout_abuse$</field>
     <description>SALADINSHOP: Checkout limited (pending limit) from $(ip_address)</description>
     <group>business_logic,checkout_abuse,</group>
   </rule>
-  <rule id="110512" level="6">
+  <rule id="100601" level="6">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^bot_order_attempt$</field>
     <description>SALADINSHOP: Checkout without valid anti-bot verification from $(ip_address)</description>
@@ -134,19 +136,19 @@ Jika perintah `grep` menampilkan ID yang sudah ada, jangan menimpa: sesuaikan no
   </rule>
 
   <!-- S07 voucher -->
-  <rule id="110520" level="5">
+  <rule id="100700" level="5">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^voucher_abuse_attempt$</field>
     <description>SALADINSHOP: Voucher rejected from $(ip_address)</description>
     <group>business_logic,voucher_abuse,</group>
   </rule>
-  <rule id="110521" level="8">
-    <if_sid>110520</if_sid>
+  <rule id="100701" level="8">
+    <if_sid>100700</if_sid>
     <field name="payload_snippet" type="pcre2">reason=reuse</field>
     <description>SALADINSHOP: Single-use voucher reuse attempt from $(ip_address)</description>
     <group>business_logic,voucher_abuse,voucher_reuse,</group>
   </rule>
-  <rule id="110524" level="10">
+  <rule id="100702" level="10">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^checkout_tampering_attempt$</field>
     <description>SALADINSHOP: Checkout price/discount tampering rejected from $(ip_address)</description>
@@ -154,54 +156,54 @@ Jika perintah `grep` menampilkan ID yang sudah ada, jangan menimpa: sesuaikan no
   </rule>
 
   <!-- S09 webhook pembayaran -->
-  <rule id="110530" level="12">
+  <rule id="100900" level="12">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^invalid_payment_callback$</field>
     <description>SALADINSHOP: Rejected payment webhook (invalid signature) from $(ip_address)</description>
     <mitre><id>T1565.002</id></mitre>
     <group>payment_fraud,webhook,</group>
   </rule>
-  <rule id="110531" level="13">
-    <if_sid>110530</if_sid>
+  <rule id="100901" level="13">
+    <if_sid>100900</if_sid>
     <field name="payload_snippet" type="pcre2">gross_amount=</field>
     <description>SALADINSHOP: Payment webhook amount mismatch from $(ip_address)</description>
     <group>payment_fraud,webhook,amount_mismatch,</group>
   </rule>
 
   <!-- S10 lupa password -->
-  <rule id="110540" level="5">
+  <rule id="101000" level="5">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^user_password_reset_abuse$</field>
     <description>SALADINSHOP: Password reset rejected from $(ip_address)</description>
     <group>authentication,password_reset,</group>
   </rule>
-  <rule id="110541" level="8">
-    <if_sid>110540</if_sid>
+  <rule id="101001" level="8">
+    <if_sid>101000</if_sid>
     <field name="payload_snippet" type="pcre2">Exceeded rate limit for forgot_password</field>
     <description>SALADINSHOP: Password reset flooding from $(ip_address)</description>
     <group>authentication,password_reset,reset_flood,</group>
   </rule>
 
   <!-- Blokir perangkat/akun oleh aplikasi (pemantauan) -->
-  <rule id="110601" level="10">
+  <rule id="101100" level="10">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^device_banned$</field>
     <description>SALADINSHOP: Device temporarily banned after attack from $(ip_address)</description>
     <group>device_ban,</group>
   </rule>
-  <rule id="110602" level="10">
+  <rule id="101101" level="10">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^account_banned$</field>
     <description>SALADINSHOP: Customer account temporarily banned from $(ip_address)</description>
     <group>account_ban,</group>
   </rule>
-  <rule id="110603" level="12">
+  <rule id="101102" level="12">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^banned_device_request$</field>
     <description>SALADINSHOP: Banned device returned from new IP $(ip_address) (possible VPN/IP change)</description>
     <group>ip_evasion,possible_vpn,</group>
   </rule>
-  <rule id="110604" level="8">
+  <rule id="101103" level="8">
     <decoded_as>json</decoded_as>
     <field name="event_type" type="pcre2">^banned_account_request$</field>
     <description>SALADINSHOP: Login attempt on temporarily banned account from $(ip_address)</description>
@@ -218,14 +220,14 @@ Di `/var/ossec/etc/ossec.conf`:
 1. **Active Response (blokir IP 30 menit).** Satukan semua rule yang memblokir dalam **satu blok** `<timeout>1800</timeout>`:
 
    ```xml
-   <rules_id>110100,110110,110131,110401,110411,110420,110421,110501,110603</rules_id>
+   <rules_id>100100,100800,100201,100300,100301,100400,100401,100501,101102</rules_id>
    <timeout>1800</timeout>
    ```
 
-   Ini sekaligus menaikkan timeout SQLi (110100) dari 600 ke 1800 detik, sesuai keputusan di dokumen 22. Pastikan blok lama ber-timeout 600 dihapus atau tidak lagi memuat 110100. **Jangan** memasukkan rule S06, S07, S09, dan S10 ke Active Response.
+   Ini sekaligus menaikkan timeout SQLi (100100) dari 600 ke 1800 detik, sesuai keputusan di dokumen 22. Pastikan blok lama ber-timeout 600 dihapus atau tidak lagi memuat 100100. **Jangan** memasukkan rule S06, S07, S09, dan S10 ke Active Response.
 
 2. **Integrasi n8n.** Tambahkan semua rule baru ke `<rule_id>` blok `<integration>` custom-n8n:
-   `110110,110130,110131,110510,110512,110520,110521,110524,110530,110531,110540,110541,110601,110602,110603,110604`.
+   `100800,100200,100201,100600,100601,100700,100701,100702,100900,100901,101000,101001,101100,101101,101102,101103`.
 
 ```bash
 sudo cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.backup-skenario
@@ -237,7 +239,7 @@ sudo grep -F 'saladinshop-ip-control' /var/ossec/etc/shared/ar.conf
 
 ### 2.5 n8n (homelab)
 
-- **Workflow pertama** (Webhook → Edit Fields → Switch → Telegram): tambahkan satu output Switch per rule baru, lalu sambungkan ke **Send a text message**. Nama output yang disarankan: `110110 — XSS Attempt`, `110130 — Path Probe`, `110131 — Repeated Path Scan`, `110510 — Checkout Limited`, `110512 — Bot Order`, `110521 — Voucher Reuse`, `110524 — Price Tampering`, `110530 — Fake Payment Webhook`, `110531 — Payment Amount Mismatch`, `110541 — Reset Flood`, `110603 — Banned Device Returned`.
+- **Workflow pertama** (Webhook → Edit Fields → Switch → Telegram): tambahkan satu output Switch per rule baru, lalu sambungkan ke **Send a text message**. Nama output yang disarankan: `100800 — XSS Attempt`, `100200 — Path Probe`, `100201 — Repeated Path Scan`, `100600 — Checkout Limited`, `100601 — Bot Order`, `100701 — Voucher Reuse`, `100702 — Price Tampering`, `100900 — Fake Payment Webhook`, `100901 — Payment Amount Mismatch`, `101001 — Reset Flood`, `101102 — Banned Device Returned`.
 - **Workflow kedua** (kontrol IP dari dashboard): node `HTTP Request1` memakai `"command": "!saladinshop-ip-control.py"`.
 
 ---
@@ -288,6 +290,26 @@ Metrik yang dihitung: detection rate, false positive, waktu deteksi (serangan �
 
 **Apa dan kenapa bisa terjadi.** Aplikasi yang menyusun query database dengan menempelkan input pengguna langsung ke teks SQL membuat input itu bisa **mengubah arti query**. Contoh `' OR 1=1 --` membuat syarat pencarian selalu benar, sedangkan `UNION SELECT` bisa membaca tabel lain. Akar masalahnya: **data dan perintah tidak dipisahkan**.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Aplikasi yang menyusun perintah SQL dari teks input membuat input pengguna ikut dianggap bagian dari perintah. Data dan perintah tercampur |
+| **Yang dilakukan penyerang** | Mengirim `' OR 1=1 --` agar syarat pencarian selalu benar, atau `UNION SELECT` untuk membaca tabel lain (misalnya tabel password) |
+| **Akibat bila tidak dijaga** | Data yang bukan haknya terbaca atau berubah, bahkan seluruh database bisa bocor |
+| **Titik pemutus di sistem ini** | (1) Prisma memisahkan data dari perintah sehingga sintaks SQL hanya menjadi teks biasa. (2) Deteksi pola menolak dan mencatat percobaannya. (3) Wazuh dan Nginx memblokir sumbernya |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Kirim payload SQL | Middleware atau API membaca input, men-decode, mencocokkan pola SQL, lalu menjawab **400** sebelum menyentuh database | HTTP 400 dan `x-request-id` |
+| Event tercatat | Aplikasi menulis baris JSON `sql_injection_attempt` ke `security_events.log` dan tabel RDS | `grep sql_injection_attempt` |
+| Alert Wazuh | Agent membaca baris itu dan mengirimnya ke manager. Manager mencocokkan rule **100100** | `alerts.json` berisi id 100100 |
+| IP diblokir | Manager menyuruh agent menjalankan script, script menulis `deny <IP>;` ke Nginx dan me-reload-nya | Baris `deny` dan log Active Response `blocked` |
+| Penyerang kembali | **Nginx** menolak IP itu sebelum request sampai ke aplikasi | curl menjawab 403 |
+| Ganti IP lewat VPN, browser sama | IP berubah, tetapi cookie `sv_did` sama. **Middleware** mengecek ban perangkat di RDS | 403 JSON "Akses perangkat ini dibatasi" |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
@@ -295,7 +317,7 @@ Metrik yang dihitung: detection rate, false positive, waktu deteksi (serangan �
 | 7 Application | Menolak input berpola SQL dan mencegah input mengubah query | Middleware Next.js, API (`detectSQLi`), Prisma ORM | Pola `UNION…SELECT`, `OR 1=1`, `--`, `SLEEP()`; respons 400 |
 | 6 Presentation | Mengurai input yang di-encode browser sebelum dicek | `query-inspection` (decode URL) | Decode hingga 3 putaran (`%27` menjadi `'`) |
 | 5 Session | Mengenali perangkat penyerang walau IP berubah | Cookie `sv_did`, tabel `security_penalties` (RDS) | Ban 30 menit, 60 menit jika mengulang < 24 jam |
-| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Rule 110100; timeout 1800 detik; hanya IPv4 publik |
+| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Rule 100100; timeout 1800 detik; hanya IPv4 publik |
 
 **Yang menutup akar masalah.**
 
@@ -303,9 +325,9 @@ Metrik yang dihitung: detection rate, false positive, waktu deteksi (serangan �
 |---|---|---|
 | Pencegahan utama | **Prisma ORM** memakai *parameterized query*: input selalu diperlakukan sebagai data, bukan perintah SQL | Tidak ada penggabungan string ke query |
 | Pemantauan | Deteksi pola SQL di middleware (query URL, di-decode dulu) dan API (`detectSQLi`) → 400 | Pola: `UNION…SELECT`, `OR 1=1`, `--`, `SLEEP()`, dll. |
-| Respons | Rule Wazuh **110100** → Active Response | Blokir IP 1800 detik + ban perangkat 30 menit |
+| Respons | Rule Wazuh **100100** → Active Response | Blokir IP 1800 detik + ban perangkat 30 menit |
 
-**Deteksi dan respons.** `sql_injection_attempt` → rule 110100 → Nginx `deny` → 403.
+**Deteksi dan respons.** `sql_injection_attempt` → rule 100100 → Nginx `deny` → 403.
 
 **Langkah uji.**
 
@@ -327,12 +349,25 @@ Metrik yang dihitung: detection rate, false positive, waktu deteksi (serangan �
    sudo grep -nF -- "deny $IP_UJI;" /etc/nginx/conf.d/90-saladinshop-blocklist.conf
    sudo tail -n 3 /var/ossec/logs/saladinshop-active-response.log
    # EC2 Wazuh
-   sudo grep -F '"id":"110100"' /var/ossec/logs/alerts/alerts.json | tail -n 2 | cut -c1-230
+   sudo grep -F '"id":"100100"' /var/ossec/logs/alerts/alerts.json | tail -n 2 | cut -c1-230
    ```
 
 4. Telegram masuk. PENGUJI buka halaman utama → **403**.
 5. **Varian VPN:** nyalakan VPN, buka halaman utama dengan **browser yang sama** → tetap **403** (ban perangkat). Dashboard: Device & Akun Ban menandai "IP berubah".
 6. Kontrol normal: `/api/products?search=diamond` → 200, tanpa event.
+
+**Bukti identitas: mengapa VPN di browser yang sama tetap terblokir, tetapi browser lain lolos.**
+
+Lakukan **Prosedur Bukti Identitas (Lampiran D)** segera setelah penyerang terblokir. Hasil yang diharapkan:
+
+| Percobaan | IP | Cookie `sv_did` | Hasil | Penyebabnya |
+|---|---|---|---|---|
+| 1. Chrome, tanpa VPN | IP-A | cookie-1 | **403 dari Nginx** | IP-A ada di daftar `deny` |
+| 2. Chrome yang sama + VPN | IP-B | cookie-1 (sama) | **403 dari middleware** | Perangkat cookie-1 sedang diban di database |
+| 3. Firefox atau incognito + VPN | IP-B | cookie-2 (baru) | **200 (lolos)** | IP-B dan cookie-2 belum pernah tercatat |
+| 4. Firefox atau incognito, tanpa VPN | IP-A | cookie-2 | **403 dari Nginx** | IP-A masih diblokir |
+
+Pesan dari tabel ini: **yang dikenali server adalah cookie dan IP, bukan orangnya**. Percobaan 2 ditolak karena cookie yang sama, percobaan 3 lolos karena kedua identitasnya baru.
 
 **Penjelasan untuk dosen.** "SQL injection terjadi karena input dicampur dengan perintah SQL. Di sistem ini, pencegahan utamanya Prisma yang memisahkan data dari perintah. Deteksi pola menjadi lapisan pemantauan, sehingga percobaannya tercatat, Wazuh memblokir IP selama 30 menit, dan perangkatnya ikut dibatasi."
 
@@ -342,20 +377,38 @@ Metrik yang dihitung: detection rate, false positive, waktu deteksi (serangan �
 
 **Apa dan kenapa bisa terjadi.** Server sering secara tidak sengaja meninggalkan file atau panel di jalur yang bisa dibuka publik (`/.env`, `/.git`, `/wp-login.php`, `/phpmyadmin`, `/actuator/env`, `backup.sql`). Bot memakai daftar kata (*wordlist*) untuk mencoba ribuan jalur dan mencari yang terbuka. Akar masalahnya: **konfigurasi default atau file sisa yang terekspos**. Ini tahap pengintaian (MITRE T1595.003) yang biasanya mendahului serangan lain.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Server sering meninggalkan file atau panel di jalur yang bisa dibuka publik (`.env`, file cadangan, panel admin bawaan), dan nama jalurnya mudah ditebak |
+| **Yang dilakukan penyerang** | Bot mencoba ribuan jalur dari daftar kata (*wordlist*) dan mencatat jalur yang dijawab 200 |
+| **Akibat bila tidak dijaga** | `.env` yang terbuka membocorkan kunci database, kunci JWT, dan kunci Midtrans. Panel admin bawaan membuka jalan pengambilalihan |
+| **Titik pemutus di sistem ini** | Nginx dan middleware menjawab 404 untuk jalur sensitif, sehingga tidak ada yang bisa ditemukan. Polanya (banyak jalur dalam waktu singkat) dikenali, lalu sumbernya diblokir |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| `curl` ke jalur sensitif | Middleware mencocokkan jalur dengan daftarnya, menjawab **404**, dan menulis event `sensitive_path_scan` | HTTP 404 dan baris event |
+| Jalur ke-1 sampai ke-4 | Tiap event cocok dengan rule **100200** (level 5, alert saja) | Alert 100200 |
+| Jalur ke-5 dalam 60 detik | Rule korelasi **100201** terpenuhi (`frequency=5`, `timeframe=60`, IP sama), sehingga Active Response berjalan | Alert 100201, baris `deny` |
+| Jalur berikutnya | Nginx menolak IP itu | 403 |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Menolak jalur sensitif dan mengenali pola pemindaian | Nginx `location`, middleware, Wazuh rule 110130/110131 | Daftar jalur sensitif; 5 jalur dalam 60 detik per IP (`frequency=5`, `timeframe=60`) |
-| 3 Network | Memblokir IP pemindai | Wazuh Active Response + script, Nginx `deny` | Rule 110131; timeout 1800 detik |
+| 7 Application | Menolak jalur sensitif dan mengenali pola pemindaian | Nginx `location`, middleware, Wazuh rule 100200/100201 | Daftar jalur sensitif; 5 jalur dalam 60 detik per IP (`frequency=5`, `timeframe=60`) |
+| 3 Network | Memblokir IP pemindai | Wazuh Active Response + script, Nginx `deny` | Rule 100201; timeout 1800 detik |
 
 **Yang menutup akar masalah.**
 
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Pencegahan | **Nginx**: `location ~ /\.(env\|git\|aws\|svn\|DS_Store)` dan `wp-admin\|phpmyadmin\|pma\|backup.*` → 404. **Middleware**: `/wp-login`, `/adminer`, `/actuator`, `/cgi-bin`, `/config.json`, `/db_backup`, `/telescope` → 404 | File sensitif tidak pernah dilayani |
-| Deteksi | Rule **110130** (satu kejadian, alert) dan **110131** (5 jalur dalam 60 detik dari IP yang sama) | `frequency=5`, `timeframe=60`, `same_field ip_address` |
-| Respons | Active Response untuk 110131 | Blokir IP 1800 detik |
+| Deteksi | Rule **100200** (satu kejadian, alert) dan **100201** (5 jalur dalam 60 detik dari IP yang sama) | `frequency=5`, `timeframe=60`, `same_field ip_address` |
+| Respons | Active Response untuk 100201 | Blokir IP 1800 detik |
 
 Satu jalur tidak langsung memblokir karena manusia bisa salah ketik. Pemindai selalu mencoba banyak jalur sekaligus.
 
@@ -369,7 +422,7 @@ done
 curl -s -o /dev/null -w "Halaman utama -> %{http_code}\n" https://saladinshop.duckdns.org/
 ```
 
-**Hasil:** jalur 1–4 dijawab **404** (alert 110130), setelah jalur ke-5 muncul alert **110131**, IP diblokir, jalur berikutnya dan halaman utama **403**. Jalur seperti `/.env` dan `/wp-admin` ditolak Nginx sebelum sampai ke aplikasi, jadi tidak menghasilkan event aplikasi. Karena itu varian inti memakai jalur yang ditangani middleware.
+**Hasil:** jalur 1–4 dijawab **404** (alert 100200), setelah jalur ke-5 muncul alert **100201**, IP diblokir, jalur berikutnya dan halaman utama **403**. Jalur seperti `/.env` dan `/wp-admin` ditolak Nginx sebelum sampai ke aplikasi, jadi tidak menghasilkan event aplikasi. Karena itu varian inti memakai jalur yang ditangani middleware.
 
 ```bash
 # EC2 App
@@ -377,7 +430,7 @@ grep -F '"event_type":"sensitive_path_scan"' ~/ecommerce-security/runtime-logs/s
 read -r -p "IP penguji: " IP_UJI
 sudo grep -nF -- "deny $IP_UJI;" /etc/nginx/conf.d/90-saladinshop-blocklist.conf
 # EC2 Wazuh
-sudo grep -E '"id":"11013[01]"' /var/ossec/logs/alerts/alerts.json | tail -n 3 | cut -c1-220
+sudo grep -E '"id":"10020[01]"' /var/ossec/logs/alerts/alerts.json | tail -n 3 | cut -c1-220
 ```
 
 **Demo (1×).** Teman Anda memindai website Anda **dengan izin Anda**:
@@ -390,9 +443,20 @@ nikto -h https://saladinshop.duckdns.org
 
 Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per detik, burst 50) bisa menjawab 503 bila pemindai terlalu cepat. Yang diamati: alert, Telegram, lalu pemindai mulai menerima 403.
 
-**Kontrol normal.** Membuka halaman produk, login, dan checkout: tanpa event. Satu jalur sensitif saja: alert 110130 tanpa blokir.
+**Kontrol normal.** Membuka halaman produk, login, dan checkout: tanpa event. Satu jalur sensitif saja: alert 100200 tanpa blokir.
 
 **Batasan.** Pemindai yang memakai banyak IP atau sangat lambat (satu jalur per beberapa menit) tidak mencapai ambang. Deteksi hanya mencakup jalur di daftar. Pemindai biasanya tidak menyimpan cookie, sehingga yang efektif adalah blokir IP, bukan ban perangkat.
+
+**Bukti identitas: pemindai biasanya tidak membawa cookie.**
+
+Pemindai seperti `curl`, Gobuster, dan Nikto tidak menyimpan cookie, sehingga setiap request dianggap perangkat baru. Karena itu yang efektif pada skenario ini adalah **blokir IP**, bukan ban perangkat:
+
+| Percobaan | IP | Cookie | Hasil | Penyebabnya |
+|---|---|---|---|---|
+| 1. Pemindai tanpa cookie, IP-A | IP-A | tidak ada | **403 dari Nginx** | IP-A diblokir |
+| 2. Pemindai yang sama via VPN | IP-B | tidak ada | **404 (lolos dari blokir)** | IP-B belum tercatat, cookie tidak ada untuk dikenali |
+
+Ini batasan yang jujur: penyerang yang berganti IP bisa kembali memindai. Bedanya dengan S01, tidak ada cookie yang bisa mengikatnya. Ia tetap terdeteksi dan diblokir lagi begitu mencapai 5 jalur pada IP barunya. Jika pemindaian dilakukan dari browser (bukan alat), perangkat juga diban dan Prosedur Bukti Identitas (Lampiran D) berlaku.
 
 **Penjelasan untuk dosen.** "Pemindaian jalur sensitif adalah pengintaian: bot mencoba daftar jalur yang sering salah konfigurasi. Sistem menutupnya di dua tempat, Nginx dan aplikasi, lalu Wazuh mengenali pola 5 jalur dalam 60 detik dan memblokir IP-nya selama 30 menit."
 
@@ -402,11 +466,28 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 
 **Apa dan kenapa bisa terjadi.** Penyerang mencoba banyak password pada **satu akun** sampai ada yang cocok. Ini bisa berhasil bila login tidak membatasi percobaan dan password pengguna lemah. Akar masalahnya: **tidak ada batas percobaan dan tidak ada pemantauan pola**.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Login mengizinkan percobaan password berulang, dan sebagian pengguna memakai password yang mudah ditebak |
+| **Yang dilakukan penyerang** | Mencoba daftar password umum terhadap satu akun sampai ada yang cocok |
+| **Akibat bila tidak dijaga** | Akun diambil alih: riwayat pesanan, data pribadi, dan produk digital terbuka |
+| **Titik pemutus di sistem ini** | Pembatas laju memperlambat, bcrypt membuat tiap tebakan mahal, Turnstile menghalangi otomatisasi, dan detektor menghitung 5 kegagalan dalam 10 menit lalu memicu blokir |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Password salah ke-1 sampai ke-4 | Tiap kegagalan menulis `user_login_failed` dengan `failures_for_account` yang naik | Log aplikasi |
+| Password salah ke-5 | Detektor melihat 5 kegagalan dalam 10 menit dan menulis `user_bruteforce_attempt` | Alert rule **100300** |
+| Respons | Active Response memblokir IP, aplikasi mem-ban **perangkat** (bukan akun korban, supaya pemilik akun tidak ikut terkunci) | `deny` dan baris di Device & Akun Ban |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Membatasi dan mendeteksi tebakan password | Pembatas login, Turnstile, detektor (`credential-stuffing-detector`), Wazuh 110401/110411 | Customer 30 per 15 menit; admin 5 per 15 menit + Nginx 5 per menit (burst 3); 5 gagal per akun dalam 10 menit |
+| 7 Application | Membatasi dan mendeteksi tebakan password | Pembatas login, Turnstile, detektor (`credential-stuffing-detector`), Wazuh 100300/100301 | Customer 30 per 15 menit; admin 5 per 15 menit + Nginx 5 per menit (burst 3); 5 gagal per akun dalam 10 menit |
 | 6 Presentation | Password disimpan sebagai hash, bukan teks asli | bcrypt (`bcryptjs`) | Salt 10 putaran |
 | 5 Session | Membatasi perangkat penyerang (akun korban tidak diban) | Cookie `sv_did`, RDS | Ban perangkat 30 menit |
 | 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Timeout 1800 detik |
@@ -416,7 +497,7 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Memperlambat | Pembatas request login; **bcrypt** untuk hash password; **Cloudflare Turnstile**; pesan gagal seragam ("Email atau password salah") | Customer 30 request per 15 menit; admin 5 per 15 menit + Nginx 5 per menit (burst 3) |
-| Deteksi | Detektor aplikasi: **5 kegagalan ke 1 akun dalam jendela geser 10 menit** | `user_bruteforce_attempt` → rule **110401**; admin → **110411** |
+| Deteksi | Detektor aplikasi: **5 kegagalan ke 1 akun dalam jendela geser 10 menit** | `user_bruteforce_attempt` → rule **100300**; admin → **100301** |
 | Respons | Active Response + ban perangkat | Blokir IP 1800 detik. Yang diban perangkat, **bukan akun korban**, supaya korban tidak ikut terkunci |
 
 **Langkah uji.**
@@ -429,11 +510,24 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
    sudo grep -E 'user_login_failed|user_bruteforce_attempt|device_banned' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 8 | cut -c1-230
    ```
 
-   Alert **110401**, Telegram, `deny` di Nginx, PENGUJI **403**. Varian VPN: tetap 403.
-4. Untuk admin: ulangi di `/admin/login` dengan akun admin uji. Rule **110411**. Jangan lakukan ini dari jaringan atau Tailscale yang dipakai administrasi.
+   Alert **100300**, Telegram, `deny` di Nginx, PENGUJI **403**. Varian VPN: tetap 403.
+4. Untuk admin: ulangi di `/admin/login` dengan akun admin uji. Rule **100301**. Jangan lakukan ini dari jaringan atau Tailscale yang dipakai administrasi.
 5. Kontrol normal: salah password 1–2 kali lalu benar → berhasil, tanpa alert.
 
-**Penjelasan untuk dosen.** "Brute force bisa terjadi karena password dapat ditebak berulang. Sistem membatasi laju login dan menghitung kegagalan dalam jendela 10 menit. Lima kegagalan memicu rule 110401 dan IP diblokir 30 menit. Yang dibatasi perangkat penyerang, bukan akun korban."
+**Bukti identitas: mengapa VPN di browser yang sama tetap terblokir, tetapi browser lain lolos.**
+
+Lakukan **Prosedur Bukti Identitas (Lampiran D)** setelah IP penguji terblokir. Hasil yang diharapkan:
+
+| Percobaan | IP | Cookie `sv_did` | Hasil | Penyebabnya |
+|---|---|---|---|---|
+| 1. Chrome, tanpa VPN | IP-A | cookie-1 | **403 dari Nginx** | IP-A diblokir |
+| 2. Chrome yang sama + VPN | IP-B | cookie-1 (sama) | **403 dari middleware** | Perangkat cookie-1 diban |
+| 3. Firefox atau incognito + VPN | IP-B | cookie-2 (baru) | **Halaman bisa dibuka (200)** | Identitas baru |
+| 4. Firefox + VPN, **login ke akun korban dengan password benar** | IP-B | cookie-2 | **Berhasil login** | **Akun korban tidak diban** (sengaja, supaya pemilik sah tidak ikut terkunci) |
+
+Baris 4 penting dijelaskan: pada brute force, yang diban adalah **perangkat penyerang**, bukan akun yang diserang. Jika akun ikut diban, penyerang bisa mengunci pemilik akun sah hanya dengan menebak password-nya (*denial of service*).
+
+**Penjelasan untuk dosen.** "Brute force bisa terjadi karena password dapat ditebak berulang. Sistem membatasi laju login dan menghitung kegagalan dalam jendela 10 menit. Lima kegagalan memicu rule 100300 dan IP diblokir 30 menit. Yang dibatasi perangkat penyerang, bukan akun korban."
 
 ---
 
@@ -441,11 +535,28 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 
 **Apa dan kenapa bisa terjadi.** Banyak orang memakai password yang sama di banyak situs. Penyerang membawa daftar email dan password hasil kebocoran situs lain, lalu mencobanya ke banyak akun, **masing-masing sekali**. Pembatas per akun tidak terpicu karena tiap akun hanya dicoba satu kali. Akar masalahnya: **pemakaian ulang password** ditambah **tidak ada pemantauan lintas akun**.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Banyak orang memakai password yang sama di banyak situs, dan daftar email-password hasil kebocoran beredar. Pembatas per akun tidak terpicu karena tiap akun hanya dicoba satu kali |
+| **Yang dilakukan penyerang** | Mencoba banyak pasangan email dan password, satu percobaan per akun |
+| **Akibat bila tidak dijaga** | Akun yang password-nya sama dengan situs yang bocor diambil alih, tanpa memicu pembatas apa pun |
+| **Titik pemutus di sistem ini** | Yang dihitung adalah **jumlah akun berbeda per IP** dalam jendela geser 10 menit. Lima akun atau lebih memicu rule 100400, dan login dari IP itu dijawab 429 walaupun password-nya benar |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Email berbeda ke-1 sampai ke-4 | Tiap kegagalan menambah `distinct_accounts` (1, 2, 3, 4) | Log `user_login_failed` |
+| Email berbeda ke-5 | `distinct_accounts=5` memicu `credential_stuffing_attempt` | Alert rule **100400** |
+| Respons | IP diblokir, perangkat diban | `deny` dan Device & Akun Ban |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Mendeteksi banyak akun berbeda dari satu sumber | Turnstile, detektor jendela geser, Wazuh 110420 | 5 email berbeda per IP dalam 10 menit; login benar pun dijawab 429 bila IP mencurigakan |
+| 7 Application | Mendeteksi banyak akun berbeda dari satu sumber | Turnstile, detektor jendela geser, Wazuh 100400 | 5 email berbeda per IP dalam 10 menit; login benar pun dijawab 429 bila IP mencurigakan |
 | 5 Session | Membatasi perangkat penyerang | Cookie `sv_did`, RDS | Ban perangkat 30 menit |
 | 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Timeout 1800 detik |
 
@@ -454,19 +565,31 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Pencegahan | Turnstile. Login dengan password benar pun **ditolak (429)** jika IP yang sama baru saja mencoba ≥ 5 akun berbeda | Jendela geser 10 menit |
-| Deteksi | **5 email berbeda dari 1 IP dalam 10 menit** | `credential_stuffing_attempt` → rule **110420** |
+| Deteksi | **5 email berbeda dari 1 IP dalam 10 menit** | `credential_stuffing_attempt` → rule **100400** |
 | Respons | Active Response + ban perangkat | Blokir IP 1800 detik |
 
 **Langkah uji.**
 
 1. Mulai dari jendela bersih (≥ 10 menit sejak uji login terakhir dari IP yang sama).
 2. Di form login, masukkan **5 email berbeda** (boleh tidak terdaftar) dengan password salah, CAPTCHA diselesaikan tiap kali.
-3. ADMIN: `grep -F 'credential_stuffing_attempt' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 3`. Cari `distinct_accounts=5`. Alert **110420**, Telegram, blokir IP, PENGUJI 403, varian VPN tetap 403.
+3. ADMIN: `grep -F 'credential_stuffing_attempt' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 3`. Cari `distinct_accounts=5`. Alert **100400**, Telegram, blokir IP, PENGUJI 403, varian VPN tetap 403.
 4. Kontrol normal: pengguna salah ketik email sekali lalu benar → tanpa alert.
 
 **Batasan.** Dihitung per IP. Penyerang yang memutar IP **dan** perangkat setiap percobaan tidak dijamin terdeteksi.
 
-**Penjelasan untuk dosen.** "Credential stuffing memanfaatkan password yang dipakai ulang. Karena tiap akun hanya dicoba sekali, pembatas per akun tidak berguna. Maka sistem menghitung jumlah akun berbeda per IP: lima akun dalam 10 menit memicu rule 110420 dan blokir 30 menit."
+**Bukti identitas: mengapa VPN di browser yang sama tetap terblokir, tetapi browser lain lolos.**
+
+Lakukan **Prosedur Bukti Identitas (Lampiran D)** setelah IP penguji terblokir. Hasil yang diharapkan:
+
+| Percobaan | IP | Cookie `sv_did` | Hasil | Penyebabnya |
+|---|---|---|---|---|
+| 1. Browser yang dipakai menyerang, tanpa VPN | IP-A | cookie-1 | **403 dari Nginx** | IP-A diblokir |
+| 2. Browser yang sama + VPN | IP-B | cookie-1 (sama) | **403 dari middleware** | Perangkat cookie-1 diban |
+| 3. Browser lain + VPN | IP-B | cookie-2 (baru) | **Lolos** | IP dan cookie sama-sama baru |
+
+Batasan yang perlu disampaikan: karena yang dihitung adalah akun berbeda **per IP**, penyerang yang memutar IP **dan** perangkat setiap percobaan tidak dijamin terdeteksi. Ia tetap terdeteksi lagi begitu mencapai 5 akun pada identitas barunya.
+
+**Penjelasan untuk dosen.** "Credential stuffing memanfaatkan password yang dipakai ulang. Karena tiap akun hanya dicoba sekali, pembatas per akun tidak berguna. Maka sistem menghitung jumlah akun berbeda per IP: lima akun dalam 10 menit memicu rule 100400 dan blokir 30 menit."
 
 ---
 
@@ -474,21 +597,39 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 
 **Apa dan kenapa bisa terjadi.** *Broken Object Level Authorization* terjadi ketika API mengambil data berdasarkan ID di URL (kode pesanan) **tanpa memeriksa siapa pemiliknya**. Akun B yang sah bisa membaca pesanan akun A hanya dengan mengganti ID. Ini peringkat #1 di OWASP API Security Top 10 2023. Akar masalahnya: **pemeriksaan kepemilikan dilewatkan**.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | API mengambil pesanan berdasarkan kode di URL **tanpa memeriksa pemiliknya**, dan kode pesanan bisa diketahui (ditebak, bocor, atau dibagikan) |
+| **Yang dilakukan penyerang** | Akun B yang sah login, lalu meminta pesanan akun A dengan mengganti kode pesanan |
+| **Akibat bila tidak dijaga** | Data pesanan dan produk digital akun A terbaca atau berubah oleh orang lain |
+| **Titik pemutus di sistem ini** | Query mensyaratkan **kode pesanan DAN pemilik = akun yang login**, sehingga hasilnya 404, sama dengan pesanan yang tidak ada. Percobaan berulang dideteksi, dan IP, perangkat, serta akun penyerang dibatasi |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Console akun B meminta pesanan A | Browser mengirim cookie sesi akun B. Server mencari `orderCode` **dan** `userId = B`, tidak menemukan apa pun | **404** tanpa data |
+| Tiap percobaan | Event `unauthorized_object_access_attempt` | Alert rule **100500** |
+| Percobaan ke-3 dalam 10 menit | Aplikasi mem-ban perangkat dan akun B, lalu `sessionVersion` dinaikkan sehingga sesi B keluar | 401/403, baris di Device & Akun Ban |
+| Berulang dari IP yang sama | Rule korelasi memicu Active Response | Alert **100501**, `deny` |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Memeriksa kepemilikan pesanan pada setiap query | Prisma (`orderCode` + `userId`), pembatas `order_detail`, Wazuh 110500/110501 | Respons 404 tanpa data; 30 request per menit; 110501: berulang dari IP sama (panduan: 3 kali dalam 300 detik) |
+| 7 Application | Memeriksa kepemilikan pesanan pada setiap query | Prisma (`orderCode` + `userId`), pembatas `order_detail`, Wazuh 100500/100501 | Respons 404 tanpa data; 30 request per menit; 100501: berulang dari IP sama (panduan: 3 kali dalam 300 detik) |
 | 5 Session | Sesi menentukan pemilik; sesi akun penyerang dicabut | JWT HS256 (`jose`), cookie `customer_session_token`, `sessionVersion` | Sesi 7 hari; ban akun menaikkan `sessionVersion`; ban setelah 3 kali dalam 10 menit |
-| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Rule 110501; timeout 1800 detik |
+| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Rule 100501; timeout 1800 detik |
 
 **Yang menutup akar masalah.**
 
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Pencegahan utama | Setiap query pesanan memakai syarat **kode pesanan DAN pemilik = akun yang login**. Jika tidak cocok, jawabannya **404 tanpa data** (sama dengan pesanan yang tidak ada, supaya tidak membocorkan keberadaannya) | `where: { orderCode, userId }` |
-| Deteksi | `unauthorized_object_access_attempt` → **110500**; berulang dari IP yang sama → **110501** | Panduan: 3 kali dalam 300 detik |
-| Respons | Active Response (110501) + ban perangkat **dan akun** setelah 3 kali dalam 10 menit | Blokir IP 1800 detik, sesi akun B dicabut |
+| Deteksi | `unauthorized_object_access_attempt` → **100500**; berulang dari IP yang sama → **100501** | Panduan: 3 kali dalam 300 detik |
+| Respons | Active Response (100501) + ban perangkat **dan akun** setelah 3 kali dalam 10 menit | Blokir IP 1800 detik, sesi akun B dicabut |
 
 **Langkah uji.**
 
@@ -510,9 +651,22 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
    ```
 
    **Hasil:** **404** tanpa data pesanan A. Setelah ambang, request berikutnya 401/403 (sesi dicabut, perangkat diban, atau IP diblokir).
-4. ADMIN: `grep -E 'unauthorized_object_access_attempt|device_banned|account_banned' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 8 | cut -c1-230`. Alert **110500** dan **110501**, Telegram, deny, Device & Akun Ban menampilkan perangkat dan akun B.
+4. ADMIN: `grep -E 'unauthorized_object_access_attempt|device_banned|account_banned' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 8 | cut -c1-230`. Alert **100500** dan **100501**, Telegram, deny, Device & Akun Ban menampilkan perangkat dan akun B.
 5. **Varian VPN dan akun:** B nyalakan VPN, buka incognito, login sebagai B → **403 "Akun dibatasi sementara"**.
 6. Kontrol normal: salah ketik kode pesanan **1 kali** dari akun sendiri → 404 biasa, tanpa ban.
+
+**Bukti identitas: IP, cookie perangkat, dan akun.**
+
+Lakukan **Prosedur Bukti Identitas (Lampiran D)** setelah akun B terkena ban. Hasil yang diharapkan:
+
+| Percobaan | IP | Cookie `sv_did` | Akun | Hasil | Penyebabnya |
+|---|---|---|---|---|---|
+| 1. Browser B, tanpa VPN | IP-A | cookie-1 | B | **403** | IP diblokir dan perangkat diban |
+| 2. Browser yang sama + VPN | IP-B | cookie-1 (sama) | B | **403 dari middleware** | Perangkat cookie-1 diban |
+| 3. Browser lain + VPN, **tanpa login** | IP-B | cookie-2 (baru) | — | **200 (lolos)** | Identitas baru, belum ada yang bisa dikenali |
+| 4. Browser lain + VPN, **login akun B** | IP-B | cookie-2 | B | **403 "Akun dibatasi sementara"** | **Ban akun** berlaku di browser dan IP mana pun |
+
+Baris 3 dan 4 menjelaskan kenapa ada **lapis ketiga (akun)**: cookie dan IP bisa diganti penyerang dengan mudah, tetapi akun yang dipakai untuk menyerang tetap sama.
 
 **Penjelasan untuk dosen.** "BOLA terjadi kalau server percaya pada ID dari pengguna tanpa memeriksa pemiliknya. Di sistem ini setiap query pesanan mensyaratkan pemilik sama dengan akun yang login, sehingga akun B hanya dapat 404. Percobaan berulang terdeteksi Wazuh, IP diblokir, dan akun penyerang ikut dibatasi."
 
@@ -522,11 +676,29 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 
 **Apa dan kenapa bisa terjadi.** Checkout adalah alur bisnis yang tidak mengikat pembeli untuk membayar. Penyerang (atau bot) bisa membuat banyak pesanan tanpa membayar, menahan stok, dan membebani gateway pembayaran. Tidak ada celah teknis yang dibobol, sehingga WAF biasa sering tidak mendeteksinya. Akar masalahnya: **alur bisnis tanpa batas**. Rujukan: OWASP API6:2023 dan OWASP Automated Threats OAT-021.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Checkout membuat pesanan tanpa mewajibkan pembayaran di awal, dan setiap pesanan menahan stok serta membuat transaksi di gateway |
+| **Yang dilakukan penyerang** | Membuat banyak pesanan tanpa membayar, secara manual atau dengan bot |
+| **Akibat bila tidak dijaga** | Stok tertahan sehingga pembeli sah kehabisan, dan gateway terbebani |
+| **Titik pemutus di sistem ini** | Batas pesanan menunggu bayar (3 per akun, 5 per IP), kedaluwarsa 15 menit, Turnstile, dan pembatas laju Nginx. Wazuh hanya memberi tahu, karena pelanggan biasa pun bisa lupa membayar |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Pesanan ke-4 | `findPendingCheckoutLimit` menghitung 3 pesanan pending yang masih aktif, lalu menolak | **429** `ACTIVE_PENDING_LIMIT` |
+| Pencatatan | Event `checkout_abuse` | Alert rule **100600**, Telegram |
+| Tanpa CAPTCHA | Verifikasi Turnstile gagal sebelum pesanan dibuat | 400, event `bot_order_attempt`, rule **100601** |
+| Setelah 15 menit | Worker mengubah pesanan tak dibayar menjadi `expired` | Log worker |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Membatasi alur checkout | Turnstile, `checkout-abuse.ts`, pembatas `checkout`, worker kedaluwarsa, Wazuh 110510/110512 | Pending 3 per akun dan 5 per IP; kedaluwarsa 15 menit; 10 request per menit |
+| 7 Application | Membatasi alur checkout | Turnstile, `checkout-abuse.ts`, pembatas `checkout`, worker kedaluwarsa, Wazuh 100600/100601 | Pending 3 per akun dan 5 per IP; kedaluwarsa 15 menit; 10 request per menit |
 | 5 Session | Batas per akun memakai akun dari sesi login | JWT sesi | ID akun dari sesi |
 | 3 Network | Batas per IP di pintu depan (tanpa blokir) | Nginx `limit_req` (`checkout_limit`) | 10 request per menit, burst 5; lewat dari itu dijawab 503 |
 
@@ -535,14 +707,14 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Pencegahan | Turnstile; **batas pesanan menunggu bayar** 3 per akun dan 5 per IP; pesanan tak dibayar kedaluwarsa 15 menit; Nginx `checkout_limit` | 429 `ACTIVE_PENDING_LIMIT`; 10 request per menit, burst 5 |
-| Deteksi | `checkout_abuse` → **110510**; `bot_order_attempt` → **110512** | — |
+| Deteksi | `checkout_abuse` → **100600**; `bot_order_attempt` → **100601** | — |
 | Respons | **Batasi + notifikasi, tanpa blokir** (pelanggan biasa juga bisa lupa bayar) | — |
 
 **Langkah uji (varian inti: pesanan ke-4 ditolak).**
 
 1. Login akun uji C. Buat **3 pesanan** Sandbox lewat halaman checkout (CAPTCHA diselesaikan), **jangan dibayar**.
 2. Buat pesanan **ke-4** → alert di halaman, Network `POST /api/orders` → **429** `ACTIVE_PENDING_LIMIT`. Riwayat tetap 3 pending.
-3. ADMIN: `grep -F '"event_type":"checkout_abuse"' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 1 | cut -c1-230`. Alert **110510**, Telegram. Akun C **tetap bisa** membuka website.
+3. ADMIN: `grep -F '"event_type":"checkout_abuse"' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 1 | cut -c1-230`. Alert **100600**, Telegram. Akun C **tetap bisa** membuka website.
 4. Setelah ±15 menit ketiga pesanan `expired` dan akun C bisa checkout lagi.
 5. **Bukti tambahan (1×), tanpa CAPTCHA:**
 
@@ -552,7 +724,7 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
      https://saladinshop.duckdns.org/api/orders
    ```
 
-   **Hasil:** **400**, tidak ada pesanan, alert **110512**.
+   **Hasil:** **400**, tidak ada pesanan, alert **100601**.
 
 Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar pesanan kedaluwarsa. Banjir request ditahan Nginx (request ke-7 sudah ditolak), tidak diuji sebagai varian terpisah.
 
@@ -564,11 +736,28 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 
 **Apa dan kenapa bisa terjadi.** Aturan voucher (sekali pakai per akun, minimal belanja, masa berlaku) hanya aman bila **dipaksakan di server**. Jika hanya ada di tampilan, penyerang bisa melewatinya dengan request langsung. Jika pemeriksaan dan pemakaian tidak atomik, dua checkout bersamaan bisa sama-sama lolos (*race condition*). Nilai diskon dari klien juga tidak boleh dipercaya. Akar masalahnya: **logika bisnis yang bisa dilewati atau dibalap**.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Aturan voucher hanya aman bila dipaksakan di **server**. Jika hanya ada di tampilan, request langsung ke API melewatinya. Jika pengecekan dan pemakaian tidak atomik, dua checkout bersamaan sama-sama lolos. Nilai diskon dari klien tidak boleh dipercaya |
+| **Yang dilakukan penyerang** | Memakai voucher berulang lewat API, mengirim dua checkout bersamaan, atau menyisipkan `discount_amount` palsu |
+| **Akibat bila tidak dijaga** | Diskon terpakai berkali-kali, toko rugi |
+| **Titik pemutus di sistem ini** | Validasi di server (sekali pakai per akun), kunci transaksi per voucher dan akun, diskon dihitung server, dan field harga dari klien ditolak |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Pakai ulang voucher lewat tampilan | Server mencari pemakaian aktif atas voucher dan akun itu, menemukannya, lalu menolak | 400 "sudah pernah digunakan" |
+| Pakai ulang lewat API langsung | Pemeriksaan yang sama berjalan di `POST /api/orders`, jadi melewati tampilan tidak membantu | 400 tanpa pesanan baru |
+| Pencatatan | Event `voucher_abuse_attempt` dengan `reason=reuse` | Alert rule **100700** dan **100701** |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Memaksa aturan voucher di server | Route voucher dan order, Prisma transaction, `pg_advisory_xact_lock`, Wazuh 110520/110521/110524 | Sekali pakai per akun; 20 validasi per menit; field harga dari klien ditolak |
+| 7 Application | Memaksa aturan voucher di server | Route voucher dan order, Prisma transaction, `pg_advisory_xact_lock`, Wazuh 100700/100701/100702 | Sekali pakai per akun; 20 validasi per menit; field harga dari klien ditolak |
 | 5 Session | Voucher hanya untuk akun yang login | JWT sesi | Wajib login |
 
 **Yang menutup akar masalah.**
@@ -576,7 +765,7 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Pencegahan | Validasi di server (login, masa berlaku, minimal belanja, sekali pakai per akun); diskon dihitung server; **kunci transaksi per voucher+akun** (`pg_advisory_xact_lock`) menutup race condition; request yang membawa field harga (`total_amount`, `discount_amount`, dll.) **ditolak** | Voucher seed HEMAT5K: Rp5.000, minimal Rp30.000 |
-| Deteksi | `voucher_abuse_attempt` (`reason=reuse`) → **110520** dan **110521**; manipulasi harga → **110524** | — |
+| Deteksi | `voucher_abuse_attempt` (`reason=reuse`) → **100700** dan **100701**; manipulasi harga → **100702** | — |
 | Respons | **Tolak + notifikasi, tanpa blokir** | — |
 
 **Langkah uji (varian inti: pakai ulang voucher).**
@@ -602,10 +791,10 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
    ```
 
    **Hasil:** **400** "sudah pernah Anda gunakan", tanpa pesanan baru.
-4. ADMIN: `grep -F 'reason=reuse' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 2 | cut -c1-230`. Dua event `reason=reuse`, alert **110521**, Telegram.
+4. ADMIN: `grep -F 'reason=reuse' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 2 | cut -c1-230`. Dua event `reason=reuse`, alert **100701**, Telegram.
 5. Kontrol normal: akun yang belum pernah memakai voucher → diskon diterapkan, tanpa event.
 
-**Temuan (cukup disebut di pembahasan, tidak diuji 10×):** race condition pada pemakaian voucher ditutup dengan kunci transaksi, dan manipulasi harga dari klien (uji 3 November 2026: total tetap Rp196.108, bukan Rp1.000) kini ditolak dan dicatat sebagai `checkout_tampering_attempt` (rule 110524).
+**Temuan (cukup disebut di pembahasan, tidak diuji 10×):** race condition pada pemakaian voucher ditutup dengan kunci transaksi, dan manipulasi harga dari klien (uji 3 November 2026: total tetap Rp196.108, bukan Rp1.000) kini ditolak dan dicatat sebagai `checkout_tampering_attempt` (rule 100702).
 
 **Penjelasan untuk dosen.** "Penyalahgunaan voucher adalah serangan pada logika bisnis, bukan pada kode. Aturan sekali pakai dipaksakan di server dan dikunci per transaksi, sehingga request langsung maupun checkout bersamaan tidak bisa memakai voucher dua kali. Percobaannya tercatat dan diberitahukan ke admin."
 
@@ -615,11 +804,29 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 
 **Apa dan kenapa bisa terjadi.** Jika input pengguna ditampilkan kembali di halaman **sebagai HTML**, browser bisa menjalankannya sebagai kode. Penyerang menyisipkan `<script>`, lalu kode itu berjalan di browser korban, misalnya mencuri sesi atau mengubah halaman checkout (pola *Magecart*). Akar masalahnya: **output tidak di-encode**.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Input pengguna yang ditampilkan kembali sebagai HTML bisa dijalankan browser sebagai skrip |
+| **Yang dilakukan penyerang** | Menyisipkan `<script>` di parameter atau form agar skripnya berjalan di browser korban |
+| **Akibat bila tidak dijaga** | Pencurian sesi, pengalihan halaman, atau pencurian data checkout (pola *Magecart*) |
+| **Titik pemutus di sistem ini** | React meng-escape semua output (pencegah utama). Cookie `HttpOnly` mengurangi dampak. Deteksi pola menolak dan mencatat. Wazuh memblokir sumbernya |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Buka URL berisi `<script>` | Browser meng-encode menjadi `%3Cscript%3E`. Middleware men-decode dulu, baru mencocokkan pola, lalu menjawab 400 | 400 tanpa pop-up |
+| Pencatatan | Event `xss_attempt` | Alert rule **100800** |
+| Respons | IP diblokir dan perangkat diban | `deny`, 403 |
+| Bukti tambahan `<b>` | React mengganti `<` menjadi `&lt;`, sehingga tampil sebagai teks | Inspect elemen: `&lt;b&gt;` |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Mendeteksi pola XSS dan menolak | Middleware (`query-inspection`), API (`detectXSS`), Wazuh 110110 | Respons 400; rule 110110 |
+| 7 Application | Mendeteksi pola XSS dan menolak | Middleware (`query-inspection`), API (`detectXSS`), Wazuh 100800 | Respons 400; rule 100800 |
 | 6 Presentation | Mencegah input dijalankan sebagai kode | **Output encoding React**, decode URL | Teks tampil apa adanya (`&lt;b&gt;`); decode hingga 3 putaran |
 | 5 Session | Cookie tidak bisa dicuri skrip | Cookie `HttpOnly`, `SameSite=Lax`, `Secure` | — |
 | 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Timeout 1800 detik; ditambah ban perangkat 30 menit |
@@ -631,7 +838,7 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 | Pencegahan utama | **Output encoding React**: semua data ditampilkan sebagai teks | Tidak ada `dangerouslySetInnerHTML` pada data pengguna |
 | Pengurang dampak | Cookie sesi dan perangkat `HttpOnly` | JavaScript tidak bisa membaca cookie |
 | Pemantauan | Deteksi pola XSS di middleware dan API. URL **di-decode dulu** (`%3Cscript%3E` → `<script>`), sampai 3 putaran | Respons 400 |
-| Respons | Rule **110110** → Active Response | Blokir IP 1800 detik + ban perangkat 30 menit |
+| Respons | Rule **100800** → Active Response | Blokir IP 1800 detik + ban perangkat 30 menit |
 
 **Langkah uji (varian inti: XSS di URL halaman, 10×).**
 
@@ -642,7 +849,7 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 
    ```bash
    grep -E '"event_type":"(xss_attempt|device_banned)"' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 2 | cut -c1-230
-   sudo grep -F '"id":"110110"' /var/ossec/logs/alerts/alerts.json | tail -n 1 | cut -c1-200
+   sudo grep -F '"id":"100800"' /var/ossec/logs/alerts/alerts.json | tail -n 1 | cut -c1-200
    ```
 
 **Bukti tambahan (1×): output encoding.**
@@ -653,6 +860,18 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 
 Kontrol normal: `/products?q=minecraft` → 200, tanpa event.
 
+**Bukti identitas: mengapa VPN di browser yang sama tetap terblokir, tetapi browser lain lolos.**
+
+Lakukan **Prosedur Bukti Identitas (Lampiran D)** setelah IP penguji terblokir. Hasil yang diharapkan:
+
+| Percobaan | IP | Cookie `sv_did` | Hasil | Penyebabnya |
+|---|---|---|---|---|
+| 1. Chrome, tanpa VPN | IP-A | cookie-1 | **403 dari Nginx** | IP-A diblokir |
+| 2. Chrome yang sama + VPN | IP-B | cookie-1 (sama) | **403 dari middleware** | Perangkat cookie-1 diban |
+| 3. Firefox atau incognito + VPN | IP-B | cookie-2 (baru) | **200 (lolos)** | Identitas baru |
+
+Kaitan dengan XSS: cookie `sv_did` berstatus `HttpOnly`, sehingga skrip yang disisipkan penyerang **tidak bisa membacanya**. Buktikan dengan mengetik `document.cookie` di Console: `sv_did` tidak muncul.
+
 **Penjelasan untuk dosen.** "XSS terjadi bila input ditampilkan sebagai HTML. Pencegahan utamanya output encoding React, yang membuktikan payload tidak pernah dijalankan walaupun lolos deteksi. Deteksi pola adalah lapisan pemantauan yang membuat percobaannya tercatat dan IP-nya diblokir."
 
 ---
@@ -661,11 +880,28 @@ Kontrol normal: `/products?q=minecraft` → 200, tanpa event.
 
 **Apa dan kenapa bisa terjadi.** Setelah pelanggan membayar, Midtrans memanggil endpoint webhook di server toko. Endpoint itu **harus publik** supaya bisa dipanggil Midtrans. Jika server percaya isi pesannya, siapa pun bisa mengirim "pesanan sudah dibayar" dan mendapat produk tanpa membayar. Akar masalahnya: **endpoint publik yang mempercayai data dari luar**.
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Webhook harus bisa dipanggil publik supaya Midtrans bisa mengirim notifikasi. Jika server percaya pada isi pesan, siapa pun bisa mengaku "sudah bayar" |
+| **Yang dilakukan penyerang** | Mengirim JSON notifikasi `settlement` palsu untuk pesanan yang belum dibayar |
+| **Akibat bila tidak dijaga** | Produk digital terkirim tanpa pembayaran |
+| **Titik pemutus di sistem ini** | Tanda tangan SHA-512 dengan kunci rahasia yang hanya diketahui Midtrans dan server, pencocokan nominal dengan database, dan status `paid` diklaim sekali |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Varian A: tanda tangan acak | Server menghitung SHA-512 dengan kunci rahasianya, hasilnya tidak sama dengan yang dikirim | **403** `Invalid signature key`, alert rule **100900** |
+| Varian B: tanda tangan sah, nominal 1000 | Tanda tangan lolos (dihitung di EC2 App dengan kunci yang benar), tetapi 1000 tidak sama dengan total pesanan di database | **400** `Payment amount mismatch`, alert rule **100901** |
+| Akhir | Status pesanan tidak berubah | `paymentStatus: 'pending'` |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Menolak notifikasi pembayaran palsu | Route webhook, Prisma `updateMany` atomik, Wazuh 110530/110531 | 403 tanda tangan salah; 400 nominal beda; status `paid` diklaim sekali |
+| 7 Application | Menolak notifikasi pembayaran palsu | Route webhook, Prisma `updateMany` atomik, Wazuh 100900/100901 | 403 tanda tangan salah; 400 nominal beda; status `paid` diklaim sekali |
 | 6 Presentation | Membuktikan keaslian pengirim dengan tanda tangan digital | SHA-512 + `MIDTRANS_SERVER_KEY`, `crypto.timingSafeEqual` | `SHA512(order_id + status_code + gross_amount + server key)`, 128 karakter heksadesimal |
 
 **Yang menutup akar masalah.**
@@ -675,7 +911,7 @@ Kontrol normal: `/products?q=minecraft` → 200, tanpa event.
 | Keaslian pengirim | **Tanda tangan SHA-512**: `SHA512(order_id + status_code + gross_amount + SERVER_KEY)`, dibandingkan secara *timing-safe*. `SERVER_KEY` hanya diketahui Midtrans dan server toko. Kalau kunci kosong, semua ditolak | Tanda tangan salah → 403 |
 | Keutuhan data | `gross_amount` harus sama dengan total pesanan di database | Beda → 400 |
 | Pengiriman ganda | Pesanan diklaim `paid` hanya sekali (atomik) | Replay tidak mengirim produk dua kali |
-| Deteksi | `invalid_payment_callback` → **110530** (tanda tangan), **110531** (nominal) | — |
+| Deteksi | `invalid_payment_callback` → **100900** (tanda tangan), **100901** (nominal) | — |
 | Respons | **Tolak + alert prioritas tinggi, tanpa blokir otomatis**, supaya IP Midtrans tidak ikut terblokir bila terjadi salah konfigurasi | — |
 
 **Persiapan.** Buat satu **pesanan uji pending** (jangan dibayar) dan catat kodenya **tanpa `#`** (mis. `ORD-G4MHN2Z5`) beserta totalnya. Di **EC2 App**, siapkan fungsi tanda tangan (server key tidak ditampilkan):
@@ -697,7 +933,7 @@ curl -i -H 'Content-Type: application/json' \
   https://saladinshop.duckdns.org/api/payments/midtrans/webhook
 ```
 
-**Hasil:** **403** "Invalid signature key". Pesanan tetap pending. Alert **110530**, Telegram.
+**Hasil:** **403** "Invalid signature key". Pesanan tetap pending. Alert **100900**, Telegram.
 
 **Varian B: tanda tangan sah, nominal dimanipulasi** (dari **EC2 App**, karena hanya di sana ada server key untuk membuat tanda tangan sah):
 
@@ -709,7 +945,7 @@ curl -i -H 'Content-Type: application/json' \
   "$WEBHOOK"
 ```
 
-**Hasil:** **400** "Payment amount mismatch". Pesanan tetap pending. Alert **110531**, Telegram.
+**Hasil:** **400** "Payment amount mismatch". Pesanan tetap pending. Alert **100901**, Telegram.
 
 > Jika hasilnya **200 OK "Webhook processed"**, kode pesanan tidak ditemukan (ada tanda `#`, salah ketik, atau pesanan sudah dihapus). Webhook sengaja menjawab 200 untuk pesanan tak dikenal agar Midtrans berhenti mengulang, dan tidak ada yang berubah.
 
@@ -732,11 +968,28 @@ p.order.findUnique({ where: { orderCode: process.argv[1] }, select: { paymentSta
 
 **Apa dan kenapa bisa terjadi.** Jika form lupa password menjawab berbeda untuk email yang terdaftar dan yang tidak ("email tidak ditemukan"), atau menjawab dengan **waktu** yang berbeda, penyerang bisa mengecek email mana yang punya akun. Daftar itu dipakai untuk credential stuffing (S04) dan phishing. Akar masalahnya: **respons yang membedakan** (isi atau waktu).
 
+**Rantai sebab-akibat.**
+
+| Tahap | Penjelasan |
+|---|---|
+| **Sebab** | Jika respons lupa password berbeda (isi atau waktu) untuk email terdaftar dan tidak terdaftar, keberadaan akun bisa ditebak |
+| **Yang dilakukan penyerang** | Mengirim daftar email ke form lupa password lalu membandingkan jawaban dan waktunya |
+| **Akibat bila tidak dijaga** | Penyerang mendapat daftar akun yang valid untuk credential stuffing (S04) dan phishing |
+| **Titik pemutus di sistem ini** | Pesan identik, waktu respons minimum yang sama untuk kedua kasus, batas 5 permintaan per 10 menit, dan Turnstile |
+
+**Di balik layar saat uji.**
+
+| Langkah uji | Yang terjadi di dalam sistem | Bukti |
+|---|---|---|
+| Email terdaftar | Server mengerjakan langkah tambahan (membuat token, mencatat audit), yang secara alami lebih lama | — |
+| Kedua kasus | Server menunggu sampai batas waktu minimum (sekitar 0,9 detik ditambah jitter) sebelum menjawab, sehingga waktu keduanya mirip | Kolom Time di Network |
+| Banjir permintaan | Pembatas laju menolak setelah 5 permintaan, event `user_password_reset_abuse` | **429**, alert rule **101001** |
+
 **Pemetaan 7 lapisan, tools, dan parameter.**
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Menyamakan respons dan membatasi permintaan | Route forgot-password, pembatas `forgot_password`, Turnstile, Wazuh 110540/110541 | Pesan identik; waktu respons minimum sekitar 0,9–1,1 detik; 5 permintaan per 10 menit |
+| 7 Application | Menyamakan respons dan membatasi permintaan | Route forgot-password, pembatas `forgot_password`, Turnstile, Wazuh 101000/101001 | Pesan identik; waktu respons minimum sekitar 0,9–1,1 detik; 5 permintaan per 10 menit |
 | 6 Presentation | Token reset tidak bisa dibaca atau diulang | Token disimpan sebagai hash | Berlaku 1 jam, sekali pakai |
 | 5 Session | Sesi lama dicabut setelah reset berhasil | `sessionVersion` | Naik satu setiap reset |
 | 3 Network | Batas permintaan per IP (tanpa blokir) | Pembatas request aplikasi | 5 permintaan per 10 menit |
@@ -746,7 +999,7 @@ p.order.findUnique({ where: { orderCode: process.argv[1] }, select: { paymentSta
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Pencegahan | Pesan respons **identik**; **waktu respons minimum** sekitar 0,9–1,1 detik untuk kedua kasus; pembatas request; Turnstile; token reset di-hash, berlaku 1 jam, sekali pakai | Batas 5 permintaan per 10 menit per IP |
-| Deteksi | `user_password_reset_abuse` → **110540**; banjir → **110541** | — |
+| Deteksi | `user_password_reset_abuse` → **101000**; banjir → **101001** | — |
 | Respons | **Batasi + notifikasi, tanpa blokir** | — |
 
 **Langkah uji (varian inti: enumeration, 10×).**
@@ -766,7 +1019,7 @@ for i in $(seq 1 7); do
 done
 ```
 
-**Hasil:** R-1..5 **403** (tanpa CAPTCHA), R-6..7 **429**. Alert **110541**, Telegram, website tetap bisa diakses.
+**Hasil:** R-1..5 **403** (tanpa CAPTCHA), R-6..7 **429**. Alert **101001**, Telegram, website tetap bisa diakses.
 
 **Batasan.** Waktu respons minimum mengurangi tetapi tidak menghilangkan seluruh sinyal waktu. **Halaman register masih membocorkan keberadaan akun** (email terdaftar → 409), dibatasi rate limit dan CAPTCHA. Dicatat sebagai temuan.
 
@@ -778,16 +1031,16 @@ done
 
 | ID | Skenario | Varian inti (10×) | Rule | Respons |
 |---|---|---|---|---|
-| S01 | SQL injection | Payload SQL di pencarian atau URL | 110100 | **Blokir** IP + ban perangkat |
-| S02 | Pemindaian jalur sensitif *(usulan)* | 8 jalur dengan `curl` | 110130 / 110131 | **Blokir** IP (setelah 5 jalur dalam 60 detik) |
-| S03 | Brute force | 5 password salah ke 1 akun | 110401 / 110411 | **Blokir** IP + ban perangkat |
-| S04 | Credential stuffing | 5 email berbeda dari 1 IP | 110420 | **Blokir** IP + ban perangkat |
-| S05 | BOLA | Akun B membuka pesanan akun A | 110500 / 110501 | **Blokir** IP + ban perangkat dan akun |
-| S06 | Fake order | Pesanan pending ke-4 | 110510 / 110512 | Batasi + notifikasi |
-| S07 | Voucher abuse | Pakai ulang voucher sekali-pakai | 110520 / 110521 | Tolak + notifikasi |
-| S08 | XSS | `<script>` di URL halaman | 110110 | **Blokir** IP + ban perangkat |
-| S09 | Webhook palsu | Tanda tangan palsu dan nominal salah | 110530 / 110531 | Tolak + alert prioritas tinggi |
-| S10 | Enumeration | Lupa password: email terdaftar vs tidak | 110540 / 110541 | Batasi + notifikasi |
+| S01 | SQL injection | Payload SQL di pencarian atau URL | 100100 | **Blokir** IP + ban perangkat |
+| S02 | Pemindaian jalur sensitif *(usulan)* | 8 jalur dengan `curl` | 100200 / 100201 | **Blokir** IP (setelah 5 jalur dalam 60 detik) |
+| S03 | Brute force | 5 password salah ke 1 akun | 100300 / 100301 | **Blokir** IP + ban perangkat |
+| S04 | Credential stuffing | 5 email berbeda dari 1 IP | 100400 | **Blokir** IP + ban perangkat |
+| S05 | BOLA | Akun B membuka pesanan akun A | 100500 / 100501 | **Blokir** IP + ban perangkat dan akun |
+| S06 | Fake order | Pesanan pending ke-4 | 100600 / 100601 | Batasi + notifikasi |
+| S07 | Voucher abuse | Pakai ulang voucher sekali-pakai | 100700 / 100701 | Tolak + notifikasi |
+| S08 | XSS | `<script>` di URL halaman | 100800 | **Blokir** IP + ban perangkat |
+| S09 | Webhook palsu | Tanda tangan palsu dan nominal salah | 100900 / 100901 | Tolak + alert prioritas tinggi |
+| S10 | Enumeration | Lupa password: email terdaftar vs tidak | 101000 / 101001 | Batasi + notifikasi |
 
 **Dasar kebijakan respons bertingkat:** serangan teknis yang jelas berniat jahat diblokir, perilaku yang juga bisa dilakukan pelanggan biasa dibatasi dan dilaporkan, dan webhook pembayaran ditolak tanpa blokir otomatis supaya IP Midtrans tidak ikut terblokir bila terjadi salah konfigurasi.
 
@@ -836,7 +1089,7 @@ printf '<p>DEFACED - authorized test</p>\n' >> "$FIM_DOC_DIR/index.html"
 sudo grep -F '/fim-test/doc-' /var/ossec/logs/alerts/alerts.json | tail -n 5
 ```
 
-**Hasil (pengujian 1 November 2026):** alert **110201** (file baru) pukul 16:11:34 dan **110200** (file diubah) pukul 16:12:02, kurang dari 1 detik setelah perubahan. Alert mencatat ukuran file (29 → 62 byte), hash MD5/SHA1/SHA256 sebelum dan sesudah, serta isi perubahan (diff). Level 12, MITRE T1565.001. Tanpa blokir, karena pelakunya ada di dalam server. Pemulihan dilakukan admin secara manual.
+**Hasil (pengujian 1 November 2026):** alert **110201** (file baru; ID lama, kini 100211) pukul 16:11:34 dan **110200** (file diubah; ID lama, kini 100210) pukul 16:12:02, kurang dari 1 detik setelah perubahan. Alert mencatat ukuran file (29 → 62 byte), hash MD5/SHA1/SHA256 sebelum dan sesudah, serta isi perubahan (diff). Level 12, MITRE T1565.001. Tanpa blokir, karena pelakunya ada di dalam server. Pemulihan dilakukan admin secara manual.
 
 **Kontrol normal.** Setelah cakupan FIM dipersempit (bagian 2.2), `git pull` yang mengubah file di `src` **tidak** memicu alert.
 
@@ -849,7 +1102,7 @@ sudo grep -F '/fim-test/doc-' /var/ossec/logs/alerts/alerts.json | tail -n 5
 Dijalankan pada skenario yang memblokir (S01, S03, S04, S05, S08).
 
 1. Setelah terblokir, nyalakan VPN (IP berubah), tunggu ±15 detik.
-2. Buka halaman utama dengan **browser yang sama**. **Hasil:** **403** "Akses perangkat ini dibatasi sementara", event `banned_device_request`, alert **110603**. Dashboard **Device & Akun Ban** menandai "IP berubah, kemungkinan VPN".
+2. Buka halaman utama dengan **browser yang sama**. **Hasil:** **403** "Akses perangkat ini dibatasi sementara", event `banned_device_request`, alert **101102**. Dashboard **Device & Akun Ban** menandai "IP berubah, kemungkinan VPN".
 3. Dengan browser lain atau incognito tanpa login, penyerang lolos (cookie baru). Dengan login ke akun yang sama, ban akun berlaku (403 "Akun dibatasi sementara").
 4. Dibandingkan dengan **V1** (hanya blokir IP): penyerang yang ganti IP langsung kembali mengakses.
 
@@ -923,3 +1176,238 @@ Perhatikan baris `sv_did` di `jar.txt`. Tanpa `-b /tmp/jar.txt` pada permintaan 
 ### Hubungan dengan dashboard
 
 Halaman **Device & Akun Ban** menampilkan referensi 12 karakter (`subjectRef`), yaitu hash dari ID perangkat, **bukan** isi cookie, sehingga tidak bisa dicocokkan langsung dengan nilai di browser. Cocokkan lewat **waktu** kejadian dan **IP awal**.
+
+---
+
+## Lampiran D — Prosedur bukti identitas (IP, cookie, dan log server)
+
+Tujuan: membuktikan dengan data bahwa server mengenali perangkat dari **cookie**, bukan dari IP, sehingga VPN di browser yang sama tetap terblokir sedangkan browser lain lolos.
+
+**Persiapan:** Chrome dan Firefox (atau jendela incognito), aplikasi VPN, akses SSH ke EC2 App. Tuliskan hasil di tabel pengamatan di akhir lampiran ini. **Jangan menampilkan nilai cookie penuh** di screenshot; cukup 8 karakter pertama.
+
+### D.1 Mencatat identitas sebelum serangan
+
+1. Buka `https://ifconfig.me` (tanpa VPN), catat **IP-A**.
+2. Buka website di **Chrome**. Tekan F12, tab **Application**, **Storage → Cookies**, pilih domain website.
+3. Pada baris `sv_did`, salin bagian **sebelum tanda titik** (itu UUID perangkat). Catat 8 karakter pertamanya sebagai **cookie-1**. Perhatikan juga kolom **HttpOnly**, **Secure**, dan **SameSite** (screenshot).
+4. Hitung referensi perangkat dari UUID itu, di terminal mana pun (untuk dicocokkan dengan log server nanti):
+
+   ```bash
+   UUID=tempel-uuid-lengkap-di-sini
+   printf 'ref:%s' "$UUID" | sha256sum | cut -c1-12
+   ```
+
+   Hasil 12 karakter ini disebut **device_ref**. Rumus yang sama dipakai server (SHA-256 dari `ref:` + ID perangkat, diambil 12 karakter heksadesimal pertama).
+
+### D.2 Serangan dan percobaan 1 sampai 4
+
+1. Jalankan serangan sampai penyerang terblokir (sesuai skenario).
+2. Jalankan percobaan 1 sampai 4 pada tabel di skenario. Untuk tiap percobaan catat: **IP** (ifconfig.me), **8 karakter cookie** (F12), dan **status** yang diterima. Untuk percobaan dengan browser lain, buka website di Firefox atau incognito lalu catat cookie barunya (**cookie-2**, nilainya akan berbeda).
+3. Screenshot DevTools (cookie) berdampingan dengan hasil halaman untuk tiap percobaan.
+
+### D.3 Bukti dari sisi server
+
+Di **EC2 App**:
+
+```bash
+cd ~/ecommerce-security
+grep -E '"event_type":"(sql_injection_attempt|xss_attempt|user_bruteforce_attempt|credential_stuffing_attempt|unauthorized_object_access_attempt|device_banned|banned_device_request)"' runtime-logs/security_events.log | tail -n 20 \
+  | python3 -c '
+import sys, json
+for line in sys.stdin:
+    e = json.loads(line)
+    print(e["created_at"], e["event_type"], e["ip_address"], e.get("device_ref", "-"))'
+```
+
+Yang dibaca:
+- Baris serangan (IP-A) dan baris `banned_device_request` (IP-B, dari percobaan 2) memiliki **device_ref yang sama**. Itu bukti server mengenali perangkat yang sama walaupun IP berbeda.
+- Percobaan 3 (browser lain) **tidak** menghasilkan `banned_device_request`, dan jika ada baris untuknya, `device_ref`-nya **berbeda**.
+- `device_ref` pada log harus **sama dengan hasil perhitungan D.1 langkah 4**. Itu menghubungkan cookie di browser dengan catatan di server.
+
+### D.4 Bukti di dashboard
+
+Buka **Device & Akun Ban**. Kolom **Referensi** harus sama dengan `device_ref`. Kolom **IP Awal** berisi IP-A, dan **IP Terakhir Ditolak** berisi IP-B dengan keterangan "IP berubah, kemungkinan VPN".
+
+### D.5 Penjelasan sebab-akibatnya
+
+| Kenyataan | Akibat |
+|---|---|
+| Cookie `sv_did` disimpan di dalam browser dan dikirim di setiap request | Mengganti IP dengan VPN tidak menghapus cookie, sehingga server tetap mengenali perangkat yang sama |
+| Server memeriksa tanda tangan cookie dan mencari ban untuk ID itu di RDS | Perangkat yang diban ditolak dengan 403, dari IP mana pun |
+| Setiap browser (dan incognito) punya penyimpanan cookie sendiri | Browser lain tidak membawa cookie itu, sehingga dianggap perangkat baru |
+| IP-B belum pernah diblokir | Perangkat baru dari IP baru tidak dikenali sebagai penyerang, sehingga lolos |
+| Ban akun melekat pada akun, bukan pada browser atau IP | Jika penyerang login ke akun yang sama (S05), ia tetap ditolak |
+
+**Batasan:** server tidak bisa melihat IP asli di balik VPN dan tidak memakai *browser fingerprinting*. Penyerang yang mengganti IP **dan** perangkat tanpa login tidak bisa dikenali sebagai orang yang sama. Jika ia menyerang lagi dari identitas barunya, serangannya terdeteksi dan diblokir lagi.
+
+### D.6 Tabel pengamatan (isi saat uji)
+
+| Percobaan | Browser | VPN | IP | Cookie (8 karakter) | device_ref | Status | Catatan |
+|---|---|---|---|---|---|---|---|
+| 1 | Chrome | tidak | IP-A | | | | |
+| 2 | Chrome (sama) | ya | IP-B | | | | |
+| 3 | Firefox/incognito | ya | IP-B | | | | |
+| 4 | Firefox/incognito | tidak | IP-A | | | | |
+
+---
+
+## Lampiran E — Penomoran rule baru dan cara migrasi
+
+Penomoran rule diubah agar berurutan per skenario: **S01 = 1001xx, S02 = 1002xx, S03 = 1003xx, dan seterusnya sampai S10 = 1010xx**, lintas skenario = 1011xx. Semua nomor berada di rentang 100000–120000 yang diperuntukkan bagi rule buatan sendiri di Wazuh.
+
+### E.1 Tabel konversi
+
+| Skenario | Fungsi rule | ID lama | ID baru |
+|---|---|---|---|
+| S01 | SQL injection | 110100 | **100100** |
+| S02 | Pemindaian jalur: satu percobaan | 110130 | **100200** |
+| S02 | Pemindaian jalur: berulang | 110131 | **100201** |
+| S02 | FIM: file diubah | 110200 | **100210** |
+| S02 | FIM: file ditambah | 110201 | **100211** |
+| S03 | Brute force customer | 110401 | **100300** |
+| S03 | Brute force admin | 110411 | **100301** |
+| S04 | Credential stuffing | 110420 | **100400** |
+| S04 | Indikasi account takeover | 110421 | **100401** |
+| S05 | Akses objek ditolak | 110500 | **100500** |
+| S05 | Akses ditolak berulang | 110501 | **100501** |
+| S06 | Checkout abuse | 110510 | **100600** |
+| S06 | Bot order | 110512 | **100601** |
+| S07 | Voucher ditolak | 110520 | **100700** |
+| S07 | Pakai ulang voucher | 110521 | **100701** |
+| S07 | Manipulasi harga | 110524 | **100702** |
+| S08 | XSS | 110110 | **100800** |
+| S09 | Tanda tangan webhook salah | 110530 | **100900** |
+| S09 | Nominal webhook beda | 110531 | **100901** |
+| S10 | Reset password ditolak | 110540 | **101000** |
+| S10 | Banjir reset password | 110541 | **101001** |
+| Lintas | Perangkat diban | 110601 | **101100** |
+| Lintas | Akun diban | 110602 | **101101** |
+| Lintas | Perangkat diban kembali dari IP baru | 110603 | **101102** |
+| Lintas | Login ke akun yang diban | 110604 | **101103** |
+
+**Tidak berubah:** rule **120000** (laporan hasil block/unblock yang disinkronkan ke dashboard). Pada Wazuh, penomoran ini tetap valid.
+
+### E.2 Yang ikut terpengaruh
+
+| Bagian | Dampak jika lupa diubah |
+|---|---|
+| `saladinshop_rules.xml` di EC2 Wazuh | Rule lama tetap terpakai, rule baru tidak ada |
+| `ossec.conf`: `<rules_id>` Active Response dan `<rule_id>` integrasi | Active Response dan notifikasi **berhenti diam-diam** karena menunggu ID lama |
+| Switch di workflow pertama n8n | Alert baru tidak masuk ke Telegram |
+| Script Active Response di EC2 aplikasi, bila memetakan ID rule ke mode/timeout | Respons salah atau tidak berjalan |
+| Dashboard Wazuh (filter tersimpan) | Filter lama tidak menemukan alert baru |
+| Bukti dan screenshot sebelum migrasi | Memakai ID lama |
+
+**Penting untuk skripsi:** alert, screenshot, dan dokumen mingguan yang dibuat **sebelum** migrasi tetap memakai ID lama. Sertakan **tabel konversi E.1** sebagai lampiran skripsi, dan tulis jelas bahwa pengujian versi final memakai penomoran baru.
+
+### E.3 Langkah migrasi di EC2 Wazuh
+
+Kerjakan dengan tenang dan berurutan. Jangan melakukan pengujian skenario saat migrasi berjalan.
+
+**1. Cadangkan:**
+
+```bash
+sudo cp /var/ossec/etc/rules/saladinshop_rules.xml /var/ossec/etc/rules/saladinshop_rules.xml.backup-renumber
+sudo cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.backup-renumber
+```
+
+**2. Pastikan ID baru belum dipakai** (hasil harus kosong):
+
+```bash
+sudo grep -R -n -E 'id="10[01][0-9]{3}"' /var/ossec/etc/rules
+```
+
+Jika ada hasil, jangan lanjut; kirim hasilnya agar nomornya disesuaikan.
+
+**3. Cari semua tempat yang memakai ID lama:**
+
+```bash
+sudo grep -R -l -E '\b11[0-9]{4}\b' /var/ossec/etc/rules /var/ossec/etc/ossec.conf
+sudo grep -n -E '\b11[0-9]{4}\b' /var/ossec/active-response/bin/saladinshop-ip-control.py
+```
+
+Hasil perintah kedua penting: jika script Active Response memuat ID rule lama (misalnya untuk menentukan mode blokir), ubah juga di sana, kalau tidak respons bisa tidak berjalan.
+
+**4. Buat berkas pemetaan dan terapkan:**
+
+```bash
+cat > /tmp/rule-map.sed <<'EOF'
+s/\b110100\b/100100/g
+s/\b110130\b/100200/g
+s/\b110131\b/100201/g
+s/\b110200\b/100210/g
+s/\b110201\b/100211/g
+s/\b110401\b/100300/g
+s/\b110411\b/100301/g
+s/\b110420\b/100400/g
+s/\b110421\b/100401/g
+s/\b110500\b/100500/g
+s/\b110501\b/100501/g
+s/\b110510\b/100600/g
+s/\b110512\b/100601/g
+s/\b110520\b/100700/g
+s/\b110521\b/100701/g
+s/\b110524\b/100702/g
+s/\b110110\b/100800/g
+s/\b110530\b/100900/g
+s/\b110531\b/100901/g
+s/\b110540\b/101000/g
+s/\b110541\b/101001/g
+s/\b110601\b/101100/g
+s/\b110602\b/101101/g
+s/\b110603\b/101102/g
+s/\b110604\b/101103/g
+EOF
+sudo sed -i -f /tmp/rule-map.sed /var/ossec/etc/rules/saladinshop_rules.xml
+sudo sed -i -f /tmp/rule-map.sed /var/ossec/etc/ossec.conf
+```
+
+Karena ID lama (110xxx) dan baru (100xxx/101xxx) tidak saling tumpang tindih, penggantian aman dijalankan sekali.
+
+**5. Validasi dan muat ulang:**
+
+```bash
+sudo grep -n -E '\b11[0-9]{4}\b' /var/ossec/etc/rules/saladinshop_rules.xml /var/ossec/etc/ossec.conf
+sudo /var/ossec/bin/wazuh-analysisd -t && echo "validasi OK"
+sudo systemctl restart wazuh-manager
+sudo systemctl is-active wazuh-manager
+```
+
+Perintah `grep` pertama harus tidak menampilkan ID lama yang ada di tabel konversi (ID lain yang tidak ada di tabel, jika ada, memang tidak diubah).
+
+**6. Periksa Active Response dan integrasi:**
+
+```bash
+sudo sed -n '/<active-response>/,/<\/active-response>/p' /var/ossec/etc/ossec.conf | grep -E '<(rules_id|timeout)>'
+sudo sed -n '/<integration>/,/<\/integration>/p' /var/ossec/etc/ossec.conf | grep -E '<rule_id>'
+```
+
+Semua ID harus sudah berbentuk 100xxx atau 101xxx.
+
+### E.4 Langkah di n8n
+
+Di **workflow pertama**, buka node **Switch**. Untuk setiap output, ubah nilai rule ID sesuai tabel E.1 (misalnya output "110100 — SQL" menjadi 100100, "Customer Brute Force" dari 110401 menjadi 100300). Ubah juga nama output agar sama, supaya mudah dicocokkan. **Jangan ubah** output untuk rule **120000** (sinkronisasi dashboard). Simpan dan pastikan workflow tetap **Active**. Workflow kedua (kontrol IP) tidak berubah.
+
+### E.5 Verifikasi
+
+1. Jalankan uji S01 dari IP uji. Alert harus berisi `"id":"100100"`:
+
+   ```bash
+   sudo grep -F '"id":"100100"' /var/ossec/logs/alerts/alerts.json | tail -n 1 | cut -c1-200
+   ```
+
+2. Telegram menerima notifikasi, `deny` muncul di Nginx, dan penguji menerima 403.
+3. Jalankan satu skenario lain (misalnya S08) untuk memastikan Active Response ber-rule baru juga bekerja.
+4. Deploy aplikasi terbaru di EC2 App agar kolom **Rule Wazuh** di halaman Security Events menampilkan nomor baru.
+
+### E.6 Jika ada yang tidak berfungsi
+
+Kembalikan cadangan di EC2 Wazuh, lalu muat ulang:
+
+```bash
+sudo cp /var/ossec/etc/rules/saladinshop_rules.xml.backup-renumber /var/ossec/etc/rules/saladinshop_rules.xml
+sudo cp /var/ossec/etc/ossec.conf.backup-renumber /var/ossec/etc/ossec.conf
+sudo /var/ossec/bin/wazuh-analysisd -t && sudo systemctl restart wazuh-manager
+```
+
+Kembalikan juga nilai di n8n ke ID lama.

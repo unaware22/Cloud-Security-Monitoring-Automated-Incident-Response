@@ -243,7 +243,7 @@ export default function AdminSecurityEventsPage() {
             </table>
             <p className="mt-4 text-[10px] text-gray-500 font-sans">
               * Rule Wazuh = rule yang dikonfigurasi untuk mencocokkan event ini (pemetaan). Bukti alert yang benar-benar
-              terpicu ada di dashboard Wazuh. Rule korelasi pola berulang (mis. 110501, 110511, 110523) tidak ditampilkan per
+              terpicu ada di dashboard Wazuh. Rule korelasi pola berulang (mis. 100201, 100501) tidak ditampilkan per
               event.
             </p>
           </div>

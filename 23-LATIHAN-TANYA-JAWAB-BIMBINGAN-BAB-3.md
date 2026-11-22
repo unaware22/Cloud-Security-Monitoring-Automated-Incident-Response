@@ -94,7 +94,7 @@ Cara memakainya:
 
 | Layer | Yang diuji | Tools | Parameter penting |
 |---|---|---|---|
-| 7 Application | 10 skenario serangan | Next.js, Wazuh rules, Turnstile, n8n, Wazuh FIM | Rule 110100–110541, rate limit per endpoint |
+| 7 Application | 10 skenario serangan | Next.js, Wazuh rules, Turnstile, n8n, Wazuh FIM | Rule 100100–101001, rate limit per endpoint |
 | 6 Presentation | HTTPS, encoding, tanda tangan | TLS Nginx, React, SHA-512 webhook, HMAC cookie | HTTPS 443, SHA-512 + server key |
 | 5 Session | Login, pencabutan sesi | JWT, cookie HttpOnly | Sesi 7 hari, `sessionVersion` naik saat ban |
 | 4 Transport | Port yang terbuka | AWS Security Group | RDS 5432 hanya dari SG aplikasi, agent 1514 hanya antar-EC2 |
@@ -143,21 +143,21 @@ Cara memakainya:
 > "Setiap skenario saya jalankan dengan pola yang sama. Satu, saya kirim serangan dan catat waktu serta responsnya. Dua, saya cek apakah aplikasi mencatat event-nya. Tiga, saya cek apakah Wazuh mengeluarkan alert dengan rule yang tepat. Empat, saya cek notifikasi Telegram. Lima, untuk skenario yang memblokir, saya cek baris deny di Nginx dan buktikan penyerang mendapat 403. Enam, saya tunggu blokirnya berakhir sendiri, lalu ulangi sepuluh kali, ditambah traffic normal untuk menghitung false positive."
 
 **Contoh lengkap yang paling mudah dijelaskan: S08 XSS**
-> "Saya buka URL dengan `<script>alert(1)</script>` di parameter pencarian. Middleware aplikasi men-decode URL-nya, mengenali pola script, dan menolak dengan 400. Aplikasi mencatat event `xss_attempt`. Wazuh mencocokkannya dengan rule 110110 dan menyuruh agent memblokir IP selama 30 menit. Nginx lalu menolak IP itu dengan 403, dan Telegram menerima notifikasinya. Kalau penyerang pindah VPN dengan browser yang sama, cookie perangkatnya tetap kena ban, jadi tetap ditolak."
+> "Saya buka URL dengan `<script>alert(1)</script>` di parameter pencarian. Middleware aplikasi men-decode URL-nya, mengenali pola script, dan menolak dengan 400. Aplikasi mencatat event `xss_attempt`. Wazuh mencocokkannya dengan rule 100800 dan menyuruh agent memblokir IP selama 30 menit. Nginx lalu menolak IP itu dengan 403, dan Telegram menerima notifikasinya. Kalau penyerang pindah VPN dengan browser yang sama, cookie perangkatnya tetap kena ban, jadi tetap ditolak."
 
 **Ringkasan sepuluh skenario dalam satu kalimat tiap skenario:**
 
 | ID | Kalimat penjelasnya |
 |---|---|
-| S01 SQLi | "Aplikasi menolak pola SQL dan query memakai Prisma yang parameterized, Wazuh rule 110100 memblokir IP." |
-| S02 Defacement | "Wazuh FIM realtime memantau folder web, mencatat hash dan isi perubahan dalam kurang dari satu detik, rule 110200." |
-| S03 Brute force | "Lima password salah ke satu akun dalam 10 menit memicu rule 110401, IP dan perangkat diblokir, akun korban tidak ikut diban." |
-| S04 Credential stuffing | "Lima email berbeda dari satu IP dalam 10 menit memicu rule 110420." |
-| S05 BOLA | "Setiap query pesanan mensyaratkan pemilik sama dengan akun login, jadi akun B hanya dapat 404. Berulang memicu rule 110501 dan akun penyerang dibatasi." |
+| S01 SQLi | "Aplikasi menolak pola SQL dan query memakai Prisma yang parameterized, Wazuh rule 100100 memblokir IP." |
+| S02 Defacement | "Wazuh FIM realtime memantau folder web, mencatat hash dan isi perubahan dalam kurang dari satu detik, rule 100210." |
+| S03 Brute force | "Lima password salah ke satu akun dalam 10 menit memicu rule 100300, IP dan perangkat diblokir, akun korban tidak ikut diban." |
+| S04 Credential stuffing | "Lima email berbeda dari satu IP dalam 10 menit memicu rule 100400." |
+| S05 BOLA | "Setiap query pesanan mensyaratkan pemilik sama dengan akun login, jadi akun B hanya dapat 404. Berulang memicu rule 100501 dan akun penyerang dibatasi." |
 | S06 Fake order | "Maksimal 3 pesanan menunggu bayar per akun, pesanan ke-4 ditolak 429, Wazuh hanya memberi notifikasi karena ini bisa terjadi pada pelanggan biasa." |
-| S07 Voucher | "Voucher sekali pakai dicek di server, pemakaian ulang ditolak dan dilaporkan lewat rule 110521." |
+| S07 Voucher | "Voucher sekali pakai dicek di server, pemakaian ulang ditolak dan dilaporkan lewat rule 100701." |
 | S08 XSS | "Pola XSS ditolak dan diblokir, dan output encoding React membuat teks tidak pernah dijalankan sebagai kode." |
-| S09 Webhook | "Notifikasi pembayaran harus punya tanda tangan SHA-512 yang benar dan nominal yang cocok dengan pesanan, kalau tidak ditolak dan dilaporkan lewat rule 110530/110531." |
+| S09 Webhook | "Notifikasi pembayaran harus punya tanda tangan SHA-512 yang benar dan nominal yang cocok dengan pesanan, kalau tidak ditolak dan dilaporkan lewat rule 100900/100901." |
 | S10 Enumeration | "Pesan dan waktu respons lupa password dibuat sama untuk email terdaftar maupun tidak, supaya akun tidak bisa ditebak." |
 
 ---
