@@ -30,6 +30,8 @@ Konsep besar yang dipakai semua skenario (siapa yang memblokir, identitas penyer
 
 ### Mengapa blokir 30 menit
 
+(Jawaban lengkap dengan bukti rujukan dan cara menunjukkannya ada di **Lampiran F**.)
+
 - **Ada acuan standar:** PCI DSS v4.0.1 Req. 8.3.4 (hal. 189) menetapkan penguncian minimal 30 menit setelah paling banyak 10 percobaan gagal. Dipakai sebagai acuan praktik industri pembayaran, bukan kewajiban: Requirement 8 mengatur akun pengguna sistem dan menyatakan tidak berlaku untuk akun konsumen (hal. 175), dan data kartu ditangani Midtrans.
 - **Lebih lama dari jendela deteksi (10 menit)**, kalau tidak penyerang bisa kembali sebelum hitungannya habis.
 - **Pulih sendiri**, jadi salah blokir tidak permanen. Blokir permanen hanya manual oleh admin karena IP bukan identitas tetap (CGNAT, VPN bersama).
@@ -1282,3 +1284,52 @@ Buka **Device & Akun Ban**. Kolom **Referensi** harus sama dengan `device_ref`. 
 | 2 | Chrome (sama) | ya | IP-B | | | | |
 | 3 | Firefox/incognito | ya | IP-B | | | | |
 | 4 | Firefox/incognito | tidak | IP-A | | | | |
+
+---
+
+## Lampiran F — Jawaban "kenapa blokir 30 menit", beserta bukti rujukannya
+
+### F.1 Intinya dalam tiga kalimat
+
+1. **Ada acuan resmi:** PCI DSS v4.0.1 Requirement 8.3.4 menetapkan penguncian setelah paling banyak 10 percobaan gagal, dengan durasi kunci minimal 30 menit.
+2. **Tapi standar itu tidak berlaku langsung** untuk sistem ini: Requirement 8 mengatur akun pengguna sistem (karyawan, administrator, pihak ketiga) dan dokumennya menyatakan tidak berlaku untuk akun konsumen. Jadi angka 30 menit dipakai sebagai **acuan praktik**, bukan kewajiban.
+3. **Alasan lain yang berdiri sendiri:** blokir harus lebih lama dari jendela deteksi 10 menit, dan blokir berakhir sendiri sehingga salah blokir tidak permanen. Angka 30 menit adalah **keputusan kebijakan** yang dievaluasi di Bab 4.
+
+### F.2 Jawaban lisan untuk dosen
+
+> "Saya memilih 30 menit dengan tiga landasan. Pertama, acuan praktik: PCI DSS versi 4.0.1 Requirement 8.3.4 di halaman 189 menyebut penguncian minimal 30 menit setelah paling banyak 10 percobaan gagal. Saya memakainya sebagai acuan, bukan kewajiban, karena standar itu untuk akun pengguna sistem dan dokumennya menyatakan tidak berlaku untuk akun konsumen, dan data kartu di sistem saya ditangani Midtrans. Kedua, jendela deteksi saya 10 menit, jadi blokir harus lebih lama supaya penyerang tidak bisa kembali sebelum hitungannya habis. Ketiga, blokirnya berakhir sendiri, jadi kalau ada pengguna sah yang salah terblokir, dia tidak terkunci selamanya. Blokir permanen saya serahkan ke keputusan admin, karena IP bukan identitas yang tetap. Angka ini keputusan kebijakan, dan saya evaluasi hasilnya di Bab 4."
+
+**Jika dosen bertanya "apakah 8.3.4 berlaku untuk pelanggan tokomu?"**
+> "Tidak langsung. Di halaman 175 dokumen yang sama, Requirement 8 dinyatakan tidak berlaku untuk akun konsumen. Yang paling dekat dengan sistem saya adalah login admin. Untuk sumber serangan seperti IP dan perangkat, saya mengadaptasi prinsipnya, jadi saya menyebutnya acuan praktik."
+
+**Jika dosen bertanya "kenapa tidak 10 menit atau 1 jam?"**
+> "Sepuluh menit di bawah batas minimal yang disebut standar dan efek jeranya rendah. Satu jam atau lebih menambah risiko pengguna sah ikut terkunci. Satu jam saya pakai hanya untuk eskalasi perangkat atau akun yang mengulang dalam 24 jam."
+
+### F.3 Bukti rujukan dan cara menampilkannya
+
+Rujukan di bawah sudah dibaca dari dokumen aslinya (PDF PCI DSS v4.0.1 pada 22 November 2026, dan halaman NIST pada tanggal yang sama). Nomor halaman PCI mengikuti **nomor tercetak** di dokumen; pada penampil PDF nomornya 4 lebih besar.
+
+| Yang dibuktikan | Rujukan | Lokasi | Isi singkat | Cara menampilkan bukti |
+|---|---|---|---|---|
+| Durasi kunci minimal 30 menit | PCI DSS v4.0.1, Requirement 8.3.4 | Hlm. 189 (PDF hlm. 193) | Kunci user ID setelah paling banyak 10 percobaan gagal. Durasi kunci "minimum of 30 minutes or until the user's identity is confirmed" | Screenshot baris 8.3.4 (kolom Requirements dan Purpose) lengkap dengan footer halaman |
+| Standar tidak berlaku untuk akun konsumen | PCI DSS v4.0.1, catatan awal Requirement 8 | Hlm. 175 (PDF hlm. 179) | Catatan lingkup menyatakan persyaratan ini tidak berlaku untuk akun yang dipakai konsumen (pemegang kartu) | Screenshot paragraf catatan di bagian bawah halaman |
+| Standar ditujukan untuk siapa | PCI DSS v4.0.1, bagian 2 *PCI DSS Applicability Information* | Hlm. 4 (PDF hlm. 8) | Berlaku bagi entitas yang menyimpan, memproses, atau mengirim data kartu. Kewajiban kepatuhan ditentukan merek pembayaran dan acquirer | Screenshot dua paragraf pertama |
+| Deteksi perubahan file (uji FIM) | PCI DSS v4.0.1, Requirement 11.5.2 | Hlm. 286 (PDF hlm. 290) | Mekanisme deteksi perubahan (contoh FIM) memberi peringatan atas perubahan tanpa izin pada file penting | Screenshot baris 11.5.2 |
+| Waktu tunggu yang bertambah, batas percobaan gagal | NIST SP 800-63B-4, bagian 3.2.2 *Rate Limiting (Throttling)* | pages.nist.gov/800-63-4/sp800-63b.html | Batas atas 100 percobaan gagal berturut-turut per akun. Teknik tambahan yang disebut: tantangan anti-bot, waktu tunggu yang bertambah (contoh 30 detik sampai 1 jam), dan penilaian risiko berbasis IP atau metadata browser | Screenshot bagian 3.2.2 beserta alamat halaman dan tanggal akses |
+| Jendela deteksi 10 menit dan 5 percobaan | Bawaan Fail2ban (`bantime`, `findtime`, `maxretry`) | Belum diverifikasi | Ditulis dari pengetahuan umum | **Cek dulu** di berkas `jail.conf` atau dokumentasi Fail2ban sebelum dikutip, atau hapus dari skripsi bila tidak sempat |
+
+**Cara mengambil screenshot bukti dari PDF:**
+1. Buka PDF `PCI-DSS-v4_0_1.pdf`, pergi ke halaman PDF 193 (ketik nomor halaman di penampil).
+2. Perbesar sampai baris **8.3.4** terbaca jelas, lalu screenshot **termasuk footer** ("v4.0.1, June 2024" dan nomor halaman).
+3. Ulangi untuk halaman PDF 179 (catatan lingkup) dan, bila perlu, halaman PDF 8 dan 290.
+4. Beri keterangan gambar, misalnya: *Gambar X. Requirement 8.3.4 PCI DSS v4.0.1 (PCI SSC, 2024, hlm. 189).*
+
+### F.4 Cara mengutip di skripsi
+
+- **Kutip pendek, jangan menyalin bagian panjang.** Cukup satu frasa kunci (mis. durasi minimal 30 menit atau sampai identitas dikonfirmasi) dalam tanda kutip, lalu jelaskan dengan kalimat sendiri. Salin kalimat aslinya dari PDF, jangan dari tulisan saya.
+- Selalu sertakan **versi dan halaman**: "PCI DSS v4.0.1, Requirement 8.3.4, hlm. 189".
+- **Jangan menyimpan PDF atau gambar halamannya di repository GitHub**; dokumennya berhak cipta. Simpan di folder pribadi dan pakai screenshot seperlunya sebagai bukti di skripsi dengan keterangan sumber.
+
+**Contoh entri daftar pustaka** (sesuaikan dengan format institusi Anda, lengkapi dari halaman sampul dokumen):
+- PCI Security Standards Council. (2024). *Payment Card Industry Data Security Standard: Requirements and Testing Procedures, Version 4.0.1.* PCI Security Standards Council.
+- National Institute of Standards and Technology. (tahun terbit dari halaman sampul). *NIST Special Publication 800-63B-4: Digital Identity Guidelines, Authentication and Authenticator Management.* Diakses 22 November 2026 dari https://pages.nist.gov/800-63-4/sp800-63b.html (lengkapi nama penulis dari halaman sampul).
