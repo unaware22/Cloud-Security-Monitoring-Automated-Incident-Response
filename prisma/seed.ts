@@ -262,6 +262,7 @@ async function main() {
         isActive: true,
         requiresAuth: true,
         singleUsePerAccount: true,
+        maxRedemptions: 100,
       },
     });
     console.log(`[Seed] Voucher created: ${voucher.code} - Potongan Rp${voucher.discountAmount.toLocaleString('id-ID')} (Min. Belanja Rp${voucher.minSubtotal.toLocaleString('id-ID')})`);

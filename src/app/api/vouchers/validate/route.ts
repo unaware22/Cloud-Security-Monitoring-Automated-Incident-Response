@@ -3,7 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { getCustomerSession } from '@/lib/user-auth';
 import { getClientIp } from '@/lib/security';
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limiter';
-import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
+import {
+  activeVoucherRedemptionsWhere,
+  blockingVoucherUsageWhere,
+  isVoucherQuotaReached,
+} from '@/lib/voucher-usage';
 import { recordVoucherRejection } from '@/lib/voucher-abuse';
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +82,19 @@ export async function POST(req: NextRequest) {
         { valid: false, error: 'EXPIRED', message: 'Masa berlaku voucher telah berakhir.' },
         { status: 400 }
       );
+    }
+
+    // 3b. Check the total redemption quota (paid + unpaid orders still in their window)
+    if (voucher.maxRedemptions !== null) {
+      const redeemed = await prisma.voucherUsage.count({
+        where: activeVoucherRedemptionsWhere(voucher.id),
+      });
+      if (isVoucherQuotaReached(voucher, redeemed)) {
+        return NextResponse.json(
+          { valid: false, error: 'QUOTA_EXHAUSTED', message: `Kuota voucher ${voucher.code} sudah habis.` },
+          { status: 400 }
+        );
+      }
     }
 
     // 4. Check Authentication requirement

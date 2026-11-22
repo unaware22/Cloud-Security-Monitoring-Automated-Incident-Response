@@ -14,7 +14,11 @@ import { fallbackStore } from '@/lib/products-store';
 import { isDatabaseOnline, inMemoryOrders, isInMemoryFallbackEnabled } from '@/lib/db-store';
 import { getTurnstileConfigurationStatus, verifyTurnstileToken } from '@/lib/turnstile';
 import { getCustomerSession } from '@/lib/user-auth';
-import { blockingVoucherUsageWhere } from '@/lib/voucher-usage';
+import {
+  activeVoucherRedemptionsWhere,
+  blockingVoucherUsageWhere,
+  isVoucherQuotaReached,
+} from '@/lib/voucher-usage';
 import { findPendingCheckoutLimit } from '@/lib/checkout-abuse';
 import { recordVoucherRejection } from '@/lib/voucher-abuse';
 
@@ -38,6 +42,10 @@ const PRICE_TAMPERING_FIELDS = [
 // Thrown inside the order transaction when another checkout claimed the same
 // single-use voucher first.
 class VoucherAlreadyClaimedError extends Error {}
+
+// Thrown inside the order transaction when the voucher's total quota was
+// reached by other checkouts in the meantime.
+class VoucherQuotaExhaustedError extends Error {}
 
 export const dynamic = 'force-dynamic';
 
@@ -366,6 +374,18 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      if (voucher.maxRedemptions !== null) {
+        const redeemed = await prisma.voucherUsage.count({
+          where: activeVoucherRedemptionsWhere(voucher.id),
+        });
+        if (isVoucherQuotaReached(voucher, redeemed)) {
+          return NextResponse.json(
+            { error: 'Bad Request', message: `Kuota voucher ${voucher.code} sudah habis.` },
+            { status: 400 }
+          );
+        }
+      }
+
       appliedVoucher = voucher;
       discountAmount = voucher.discountAmount;
     }
@@ -498,6 +518,17 @@ export async function POST(req: NextRequest) {
         });
 
         if (appliedVoucher && customerSession) {
+          if (appliedVoucher.maxRedemptions !== null) {
+            // The quota check above ran outside this transaction. Serialize all
+            // checkouts of this voucher and count again, so parallel checkouts
+            // cannot push redemptions past the quota.
+            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`voucher-quota:${appliedVoucher.id}`}))`;
+            const redeemed = await tx.voucherUsage.count({
+              where: activeVoucherRedemptionsWhere(appliedVoucher.id),
+            });
+            if (isVoucherQuotaReached(appliedVoucher, redeemed)) throw new VoucherQuotaExhaustedError();
+          }
+
           if (appliedVoucher.singleUsePerAccount) {
             // The earlier usage check ran outside this transaction, so two
             // parallel checkouts could both pass it. Serialize per
@@ -578,6 +609,14 @@ export async function POST(req: NextRequest) {
         { status: 201 }
       );
     } catch (dbErr) {
+      if (dbErr instanceof VoucherQuotaExhaustedError) {
+        // Lost the race for the last redemptions; nothing was written and the
+        // unpaid Midtrans Snap transaction expires on its own.
+        return NextResponse.json(
+          { error: 'Conflict', message: `Kuota voucher ${appliedVoucher?.code} sudah habis.` },
+          { status: 409 }
+        );
+      }
       if (dbErr instanceof VoucherAlreadyClaimedError) {
         // The Midtrans Snap transaction created above is left unpaid and
         // expires on its own; no order or voucher usage was written.

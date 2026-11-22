@@ -307,6 +307,9 @@ model Voucher {
   isActive            Boolean        @default(true) @map("is_active")
   requiresAuth        Boolean        @default(true) @map("requires_auth")
   singleUsePerAccount Boolean        @default(true) @map("single_use_per_account")
+  // Total redemptions allowed across all accounts (paid orders plus unpaid
+  // orders still inside their payment window). Null means unlimited.
+  maxRedemptions      Int?           @map("max_redemptions")
   createdAt           DateTime       @default(now()) @map("created_at")
   updatedAt           DateTime       @updatedAt @map("updated_at")
   usages              VoucherUsage[]

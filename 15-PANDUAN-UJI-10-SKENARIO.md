@@ -86,7 +86,7 @@ sudo grep -E 'Monitoring path' /var/ossec/logs/ossec.log | tail -n 12
 Rule untuk SQLi (110100), auth (110401, 110411, 110420, 110421), BOLA (110500, 110501), dan FIM (110200, 110201) sudah ada dari minggu-minggu sebelumnya. Yang baru ditambahkan:
 
 ```bash
-sudo grep -R -n -E 'id="(110130|110131|110510|110512|110520|110521|110524|110110|110530|110531|110540|110541|110601|110602|110603|110604)"' /var/ossec/etc/rules
+sudo grep -R -n -E 'id="(110130|110131|110510|110511|110512|110513|110520|110521|110524|110110|110530|110531|110540|110541|110601|110602|110603|110604)"' /var/ossec/etc/rules
 sudo cp /var/ossec/etc/rules/saladinshop_rules.xml /var/ossec/etc/rules/saladinshop_rules.xml.backup-skenario
 sudo nano /var/ossec/etc/rules/saladinshop_rules.xml
 ```
@@ -133,6 +133,18 @@ Jika perintah `grep` menampilkan ID yang sudah ada, jangan menimpa: sesuaikan no
     <field name="event_type" type="pcre2">^bot_order_attempt$</field>
     <description>SALADINSHOP: Checkout without valid anti-bot verification from $(ip_address)</description>
     <group>bot,fake_order,</group>
+  </rule>
+  <rule id="110511" level="10" frequency="3" timeframe="600">
+    <if_matched_sid>110510</if_matched_sid>
+    <same_field>ip_address</same_field>
+    <description>SALADINSHOP: Repeated checkout limiting from $(ip_address)</description>
+    <group>business_logic,checkout_abuse,repeated_abuse,</group>
+  </rule>
+  <rule id="110513" level="10" frequency="3" timeframe="300">
+    <if_matched_sid>110512</if_matched_sid>
+    <same_field>ip_address</same_field>
+    <description>SALADINSHOP: Repeated bot order attempts from $(ip_address)</description>
+    <group>bot,fake_order,repeated_abuse,</group>
   </rule>
 
   <!-- S07 voucher -->
@@ -227,7 +239,9 @@ Di `/var/ossec/etc/ossec.conf`:
    Ini sekaligus menaikkan timeout SQLi (110100) dari 600 ke 1800 detik, sesuai keputusan di dokumen 22. Pastikan blok lama ber-timeout 600 dihapus atau tidak lagi memuat 110100. **Jangan** memasukkan rule S06, S07, S09, dan S10 ke Active Response.
 
 2. **Integrasi n8n.** Tambahkan semua rule baru ke `<rule_id>` blok `<integration>` custom-n8n:
-   `110110,110130,110131,110510,110512,110520,110521,110524,110530,110531,110540,110541,110601,110602,110603,110604`.
+   `110110,110131,110511,110513,110521,110524,110530,110531,110541,110601,110602,110603,110604`.
+
+   **Mengapa tidak semua rule dikirim ke Telegram:** rule kejadian tunggal **110130** (satu jalur sensitif), **110510** (satu penolakan checkout), **110512** (satu checkout tanpa CAPTCHA), **110520** (satu voucher ditolak), dan **110540** (satu reset ditolak) sengaja **tidak** dimasukkan ke integrasi. Kejadiannya tetap tercatat dan terlihat di dashboard Wazuh, tetapi tidak mengirim pesan. Telegram hanya untuk **pola berulang** (110131, 110511, 110513) dan **kejadian yang jelas mencurigakan** (110521 pakai ulang voucher, 110541 banjir reset, serangan yang memblokir). Tujuannya supaya admin tidak kebanjiran notifikasi dan tidak terbiasa mengabaikannya (*alert fatigue*).
 
 ```bash
 sudo cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.backup-skenario
@@ -239,7 +253,7 @@ sudo grep -F 'saladinshop-ip-control' /var/ossec/etc/shared/ar.conf
 
 ### 2.5 n8n (homelab)
 
-- **Workflow pertama** (Webhook → Edit Fields → Switch → Telegram): tambahkan satu output Switch per rule baru, lalu sambungkan ke **Send a text message**. Nama output yang disarankan: `110110 — XSS Attempt`, `110130 — Path Probe`, `110131 — Repeated Path Scan`, `110510 — Checkout Limited`, `110512 — Bot Order`, `110521 — Voucher Reuse`, `110524 — Price Tampering`, `110530 — Fake Payment Webhook`, `110531 — Payment Amount Mismatch`, `110541 — Reset Flood`, `110603 — Banned Device Returned`.
+- **Workflow pertama** (Webhook → Edit Fields → Switch → Telegram): tambahkan satu output Switch per rule baru, lalu sambungkan ke **Send a text message**. Nama output yang disarankan: `110110 — XSS Attempt`, `110131 — Repeated Path Scan`, `110511 — Repeated Checkout Limit`, `110513 — Repeated Bot Orders`, `110521 — Voucher Reuse`, `110524 — Price Tampering`, `110530 — Fake Payment Webhook`, `110531 — Payment Amount Mismatch`, `110541 — Reset Flood`, `110603 — Banned Device Returned`.
 - **Workflow kedua** (kontrol IP dari dashboard): node `HTTP Request1` memakai `"command": "!saladinshop-ip-control.py"`.
 
 ---
@@ -690,7 +704,7 @@ Baris 3 dan 4 menjelaskan kenapa ada **lapis ketiga (akun)**: cookie dan IP bisa
 | Langkah uji | Yang terjadi di dalam sistem | Bukti |
 |---|---|---|
 | Pesanan ke-4 | `findPendingCheckoutLimit` menghitung 3 pesanan pending yang masih aktif, lalu menolak | **429** `ACTIVE_PENDING_LIMIT` |
-| Pencatatan | Event `checkout_abuse` | Alert rule **110510**, Telegram |
+| Pencatatan | Event `checkout_abuse` | Alert rule **110510** (tercatat di Wazuh). Telegram baru dikirim saat penolakan berulang 3 kali dalam 10 menit (rule **110511**) |
 | Tanpa CAPTCHA | Verifikasi Turnstile gagal sebelum pesanan dibuat | 400, event `bot_order_attempt`, rule **110512** |
 | Setelah 15 menit | Worker mengubah pesanan tak dibayar menjadi `expired` | Log worker |
 
@@ -698,7 +712,7 @@ Baris 3 dan 4 menjelaskan kenapa ada **lapis ketiga (akun)**: cookie dan IP bisa
 
 | Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
 |---|---|---|---|
-| 7 Application | Membatasi alur checkout | Turnstile, `checkout-abuse.ts`, pembatas `checkout`, worker kedaluwarsa, Wazuh 110510/110512 | Pending 3 per akun dan 5 per IP; kedaluwarsa 15 menit; 10 request per menit |
+| 7 Application | Membatasi alur checkout | Turnstile, `checkout-abuse.ts`, pembatas `checkout`, worker kedaluwarsa, Wazuh 110510/110512 (kejadian) dan 110511/110513 (pola berulang, untuk notifikasi) | Pending 3 per akun dan 5 per IP; kedaluwarsa 15 menit; 10 request per menit |
 | 5 Session | Batas per akun memakai akun dari sesi login | JWT sesi | ID akun dari sesi |
 | 3 Network | Batas per IP di pintu depan (tanpa blokir) | Nginx `limit_req` (`checkout_limit`) | 10 request per menit, burst 5; lewat dari itu dijawab 503 |
 
@@ -707,16 +721,17 @@ Baris 3 dan 4 menjelaskan kenapa ada **lapis ketiga (akun)**: cookie dan IP bisa
 | Lapisan | Tools | Parameter |
 |---|---|---|
 | Pencegahan | Turnstile; **batas pesanan menunggu bayar** 3 per akun dan 5 per IP; pesanan tak dibayar kedaluwarsa 15 menit; Nginx `checkout_limit` | 429 `ACTIVE_PENDING_LIMIT`; 10 request per menit, burst 5 |
-| Deteksi | `checkout_abuse` → **110510**; `bot_order_attempt` → **110512** | — |
+| Deteksi | `checkout_abuse` → **110510**; `bot_order_attempt` → **110512**. Notifikasi Telegram hanya untuk pola berulang dari IP yang sama: **110511** (3 penolakan checkout dalam 10 menit) dan **110513** (3 checkout tanpa CAPTCHA dalam 5 menit) | `frequency=3`, `timeframe=600` dan `300`, `same_field ip_address` |
 | Respons | **Batasi + notifikasi, tanpa blokir** (pelanggan biasa juga bisa lupa bayar) | — |
 
 **Langkah uji (varian inti: pesanan ke-4 ditolak).**
 
 1. Login akun uji C. Buat **3 pesanan** Sandbox lewat halaman checkout (CAPTCHA diselesaikan), **jangan dibayar**.
 2. Buat pesanan **ke-4** → alert di halaman, Network `POST /api/orders` → **429** `ACTIVE_PENDING_LIMIT`. Riwayat tetap 3 pending.
-3. ADMIN: `grep -F '"event_type":"checkout_abuse"' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 1 | cut -c1-230`. Alert **110510**, Telegram. Akun C **tetap bisa** membuka website.
-4. Setelah ±15 menit ketiga pesanan `expired` dan akun C bisa checkout lagi.
-5. **Bukti tambahan (1×), tanpa CAPTCHA:**
+3. ADMIN: `grep -F '"event_type":"checkout_abuse"' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 1 | cut -c1-230`. Alert **110510** tercatat di Wazuh, **tanpa** Telegram untuk satu kejadian. Akun C **tetap bisa** membuka website.
+4. **Uji notifikasi pola berulang:** ulangi pesanan ke-4 **dua kali lagi** (total 3 penolakan dalam 10 menit). Hasil: alert **110511** dan **satu** pesan Telegram, bukan tiga.
+5. Setelah ±15 menit ketiga pesanan `expired` dan akun C bisa checkout lagi.
+6. **Bukti tambahan (1×), tanpa CAPTCHA:**
 
    ```bash
    curl -s -w "\n%{http_code}\n" -H 'Content-Type: application/json' \
@@ -724,7 +739,7 @@ Baris 3 dan 4 menjelaskan kenapa ada **lapis ketiga (akun)**: cookie dan IP bisa
      https://saladinshop.duckdns.org/api/orders
    ```
 
-   **Hasil:** **400**, tidak ada pesanan, alert **110512**.
+   **Hasil:** **400**, tidak ada pesanan, alert **110512** (tercatat). Jalankan perintah itu **3 kali dalam 5 menit** untuk memicu **110513** dan **satu** pesan Telegram.
 
 Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar pesanan kedaluwarsa. Banjir request ditahan Nginx (request ke-7 sudah ditolak), tidak diuji sebagai varian terpisah.
 
@@ -743,7 +758,7 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 | **Sebab** | Aturan voucher hanya aman bila dipaksakan di **server**. Jika hanya ada di tampilan, request langsung ke API melewatinya. Jika pengecekan dan pemakaian tidak atomik, dua checkout bersamaan sama-sama lolos. Nilai diskon dari klien tidak boleh dipercaya |
 | **Yang dilakukan penyerang** | Memakai voucher berulang lewat API, mengirim dua checkout bersamaan, atau menyisipkan `discount_amount` palsu |
 | **Akibat bila tidak dijaga** | Diskon terpakai berkali-kali, toko rugi |
-| **Titik pemutus di sistem ini** | Validasi di server (sekali pakai per akun), kunci transaksi per voucher dan akun, diskon dihitung server, dan field harga dari klien ditolak |
+| **Titik pemutus di sistem ini** | Validasi di server (sekali pakai per akun), kuota total penukaran per voucher, kunci transaksi per voucher dan akun, diskon dihitung server, dan field harga dari klien ditolak |
 
 **Di balik layar saat uji.**
 
@@ -764,7 +779,7 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 
 | Lapisan | Tools | Parameter |
 |---|---|---|
-| Pencegahan | Validasi di server (login, masa berlaku, minimal belanja, sekali pakai per akun); diskon dihitung server; **kunci transaksi per voucher+akun** (`pg_advisory_xact_lock`) menutup race condition; request yang membawa field harga (`total_amount`, `discount_amount`, dll.) **ditolak** | Voucher seed HEMAT5K: Rp5.000, minimal Rp30.000 |
+| Pencegahan | Validasi di server (login, masa berlaku, minimal belanja, sekali pakai per akun); diskon dihitung server; **kunci transaksi per voucher+akun** (`pg_advisory_xact_lock`) menutup race condition; request yang membawa field harga (`total_amount`, `discount_amount`, dll.) **ditolak** | Voucher seed HEMAT5K: Rp5.000, minimal Rp30.000, kuota 100 penukaran untuk semua akun |
 | Deteksi | `voucher_abuse_attempt` (`reason=reuse`) → **110520** dan **110521**; manipulasi harga → **110524** | — |
 | Respons | **Tolak + notifikasi, tanpa blokir** | — |
 
@@ -793,6 +808,35 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
    **Hasil:** **400** "sudah pernah Anda gunakan", tanpa pesanan baru.
 4. ADMIN: `grep -F 'reason=reuse' ~/ecommerce-security/runtime-logs/security_events.log | tail -n 2 | cut -c1-230`. Dua event `reason=reuse`, alert **110521**, Telegram.
 5. Kontrol normal: akun yang belum pernah memakai voucher → diskon diterapkan, tanpa event.
+6. **Uji kuota voucher (1×).** HEMAT5K dibatasi **100 penukaran** untuk semua akun. Yang dihitung adalah pesanan yang sudah dibayar **dan** pesanan menunggu bayar yang belum kedaluwarsa; pesanan yang kedaluwarsa atau batal mengembalikan kuotanya. Supaya tidak perlu membuat 100 pesanan, turunkan kuota sementara sama dengan jumlah penukaran yang ada sekarang, lalu kembalikan. Di **EC2 App**:
+
+   ```bash
+   cd ~/ecommerce-security
+   # 1) Lihat jumlah penukaran yang sedang dihitung, lalu set kuota sama dengan jumlah itu
+   sudo docker compose -f docker-compose.aws.yml exec -T app node -e "
+   const { PrismaClient } = require('@prisma/client'); const p = new PrismaClient();
+   (async () => {
+     const v = await p.voucher.findUnique({ where: { code: 'HEMAT5K' } });
+     const now = new Date();
+     const n = await p.voucherUsage.count({ where: { voucherId: v.id, OR: [
+       { order: { paymentStatus: { in: ['paid','paid_manual'] } } },
+       { order: { paymentStatus: { in: ['pending','pending_manual'] }, expiredAt: { gt: now } } } ] } });
+     await p.voucher.update({ where: { id: v.id }, data: { maxRedemptions: n } });
+     console.log('penukaran terhitung:', n, '-> kuota sementara:', n);
+     await p.\$disconnect();
+   })();"
+   ```
+
+   Lalu dari akun lain yang **belum pernah** memakai HEMAT5K, terapkan voucher di halaman checkout. **Hasil:** ditolak "Kuota voucher HEMAT5K sudah habis." (`POST /api/vouchers/validate` → 400, `QUOTA_EXHAUSTED`), dan checkout lewat API juga ditolak dengan pesan yang sama. Setelah itu **kembalikan kuota ke 100**:
+
+   ```bash
+   sudo docker compose -f docker-compose.aws.yml exec -T app node -e "
+   const { PrismaClient } = require('@prisma/client'); const p = new PrismaClient();
+   p.voucher.update({ where: { code: 'HEMAT5K' }, data: { maxRedemptions: 100 } })
+    .then(v => { console.log('kuota dikembalikan:', v.maxRedemptions); return p.\$disconnect(); });"
+   ```
+
+   Kuota ini **tidak menghasilkan event keamanan**, karena voucher yang habis adalah keadaan normal, bukan serangan. Jika kuota hampir habis dan banyak orang checkout bersamaan, kuncian transaksi memastikan penukaran tidak melebihi 100: yang kalah berebut menerima 409 "Kuota voucher HEMAT5K sudah habis".
 
 **Temuan (cukup disebut di pembahasan, tidak diuji 10×):** race condition pada pemakaian voucher ditutup dengan kunci transaksi, dan manipulasi harga dari klien (uji 3 November 2026: total tetap Rp196.108, bukan Rp1.000) kini ditolak dan dicatat sebagai `checkout_tampering_attempt` (rule 110524).
 
@@ -1021,6 +1065,7 @@ done
 
 **Hasil:** R-1..5 **403** (tanpa CAPTCHA), R-6..7 **429**. Alert **110541**, Telegram, website tetap bisa diakses.
 
+**Catatan penting: halaman Daftar (register) berbeda dengan Lupa Password.** Uji di atas membuktikan **lupa password** aman: email terdaftar dan tidak terdaftar mendapat pesan yang sama. Tetapi halaman **Daftar** masih membedakannya. Buktikan sekali (1×): buka halaman Daftar, isi **email akun R yang sudah terdaftar**, lalu kirim. **Hasil:** pesan "Email sudah terdaftar. Silakan login atau gunakan menu lupa password." (HTTP 409). Dengan email yang belum terdaftar, pendaftaran berjalan normal. Jadi penyerang masih bisa mengecek keberadaan email lewat halaman Daftar, walaupun dibatasi 5 percobaan per 15 menit dan CAPTCHA. Tulis ini sebagai batasan, dan perbaikannya (selalu menjawab "cek email Anda", lalu mengirim email pemberitahuan ke pemilik akun yang sudah ada) sebagai saran.
 **Batasan.** Waktu respons minimum mengurangi tetapi tidak menghilangkan seluruh sinyal waktu. **Halaman register masih membocorkan keberadaan akun** (email terdaftar → 409), dibatasi rate limit dan CAPTCHA. Dicatat sebagai temuan.
 
 **Penjelasan untuk dosen.** "Enumeration terjadi karena respons berbeda untuk akun yang ada dan tidak ada, baik isi maupun waktunya. Sistem menyamakan pesan dan menjaga waktu respons minimum, sehingga penyerang tidak bisa menebak akun. Banjir permintaan dibatasi dan dilaporkan ke admin."
@@ -1036,7 +1081,7 @@ done
 | S03 | Brute force | 5 password salah ke 1 akun | 110401 / 110411 | **Blokir** IP + ban perangkat |
 | S04 | Credential stuffing | 5 email berbeda dari 1 IP | 110420 | **Blokir** IP + ban perangkat |
 | S05 | BOLA | Akun B membuka pesanan akun A | 110500 / 110501 | **Blokir** IP + ban perangkat dan akun |
-| S06 | Fake order | Pesanan pending ke-4 | 110510 / 110512 | Batasi + notifikasi |
+| S06 | Fake order | Pesanan pending ke-4 | 110510 / 110512 (Telegram: 110511 / 110513) | Batasi + notifikasi pola berulang |
 | S07 | Voucher abuse | Pakai ulang voucher sekali-pakai | 110520 / 110521 | Tolak + notifikasi |
 | S08 | XSS | `<script>` di URL halaman | 110110 | **Blokir** IP + ban perangkat |
 | S09 | Webhook palsu | Tanda tangan palsu dan nominal salah | 110530 / 110531 | Tolak + alert prioritas tinggi |
