@@ -9,7 +9,7 @@ Setiap varian inti diuji **10 kali** dengan konfigurasi yang sama, ditambah **tr
 | ID | Skenario | Varian inti | Hasil yang diharapkan | Rule Wazuh | Respons | Panduan |
 |---|---|---|---|---|---|---|
 | S01 | SQL injection | Payload SQL di pencarian (`/api/products?search=` atau URL halaman) | 400, data aman | 110100 | **Blokir** IP + ban perangkat | 15 |
-| S02 | Web defacement | Ubah file uji di folder FIM | Alert < 1 detik, hash & diff tercatat | 110200 / 110201 | Notifikasi | 15 |
+| S02 | Web defacement | Ubah file uji di folder FIM; kontrol normal: deploy sah tidak boleh memicu alert | Alert < 1 detik, hash & diff tercatat | 110200 / 110201 | Notifikasi | 15 |
 | S03 | Brute force | 5 password salah ke 1 akun (customer & admin) | 401 → 429 | 110401 / 110411 | **Blokir** IP + ban perangkat | 15 |
 | S04 | Credential stuffing | 5 email berbeda dari 1 IP | 429 | 110420 | **Blokir** IP + ban perangkat | 15 |
 | S05 | BOLA | Akun B membuka pesanan akun A | 404 tanpa data | 110500 / 110501 | **Blokir** IP + ban perangkat & akun | 15 |
@@ -49,3 +49,4 @@ Metrik yang dihitung dari tabel ini: detection rate (TP / jumlah serangan), fals
 | 9 | Tanda tangan webhook dapat dipalsukan bila server key kosong; perbandingan tidak timing-safe | S09 | Ditolak bila key kosong; perbandingan timing-safe |
 | 10 | Lupa password menjawab lebih lambat untuk email terdaftar (enumeration lewat waktu) | S10 | Waktu respons minimum yang sama |
 | 11 | Register membocorkan keberadaan email (409) | S10 | Belum diperbaiki — dicatat sebagai batasan |
+| 12 | FIM memantau folder source (`src`, `public`, folder aplikasi) secara realtime, sehingga setiap deploy yang sah memicu alert defacement (false positive), padahal file yang dilayani ke pengunjung ada di dalam image Docker | S02 | Cakupan FIM dipersempit ke file yang tidak seharusnya berubah (`/etc/nginx`, `.env`, `docker-compose.aws.yml`, `Dockerfile`, `fim-test`). Perubahan source saat deploy tidak lagi memicu alert. Batasan: isi kontainer tidak terpantau FIM host (saran: filesystem kontainer read-only) |
