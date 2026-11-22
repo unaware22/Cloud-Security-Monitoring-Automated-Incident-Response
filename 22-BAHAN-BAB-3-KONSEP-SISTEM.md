@@ -112,7 +112,7 @@ Yang **berbeda antar-browser** adalah isi penyimpanan cookie (`sv_did`, sesi), U
 | Rujukan | Isi yang relevan | Penerapan di sistem |
 |---|---|---|
 | **PCI DSS v4.0, Requirement 8.3.4** (standar keamanan industri pembayaran kartu) | Percobaan autentikasi gagal dibatasi dengan mengunci identitas setelah paling banyak 10 percobaan, dengan **durasi kunci minimal 30 menit** atau sampai identitas dikonfirmasi | Durasi dasar blokir otomatis **30 menit (1800 detik)**, dipakai sebagai acuan praktik industri pembayaran (bukan kewajiban kepatuhan). Standar ini aslinya untuk penguncian akun, lalu diterapkan pada sumber serangan |
-| **NIST SP 800-63B**, bagian pembatasan percobaan (*throttling*) | Percobaan gagal berturut-turut harus dibatasi, dan waktu tunggu yang bertambah lebih disarankan daripada penguncian permanen | Eskalasi: ban perangkat/akun **30 menit**, naik jadi **60 menit** jika mengulang dalam 24 jam |
+| **NIST SP 800-63B-4**, bagian 3.2.2 *Rate Limiting (Throttling)* (pada edisi lama 800-63B-3: bagian 5.2.2) | Percobaan gagal berturut-turut pada satu akun dibatasi **paling banyak 100** (batas atas, boleh lebih rendah). Teknik tambahan yang disebut: tantangan anti-bot, waktu tunggu yang **bertambah** setelah tiap kegagalan (contoh 30 detik sampai 1 jam), dan penilaian risiko berbasis IP, waktu, atau metadata browser | Eskalasi: ban perangkat/akun **30 menit**, naik jadi **60 menit** jika mengulang dalam 24 jam, selaras dengan prinsip waktu tunggu yang bertambah |
 | **OWASP Authentication Cheat Sheet** dan **Credential Stuffing Prevention Cheat Sheet** | Penguncian permanen bisa disalahgunakan untuk mengunci pengguna sah | Tidak ada blokir permanen otomatis |
 | **Fail2ban** (bawaan `jail.conf`) | `bantime = 10m`, `findtime = 10m`, `maxretry = 5`, praktik umum pada perangkat lunak pemblokir IP | Jendela deteksi **10 menit** dan ambang **5 percobaan** pada detektor brute force dan credential stuffing |
 
@@ -260,8 +260,8 @@ Setiap skenario dijelaskan dalam empat tahap: **pencegahan** (oleh aplikasi atau
 
 ## Rujukan yang perlu dicek dan dikutip
 
-- PCI Security Standards Council, *PCI DSS v4.0*, Requirement 8.3.4.
-- NIST SP 800-63B, *Digital Identity Guidelines: Authentication and Lifecycle Management*, bagian pembatasan percobaan (*throttling*).
+- PCI Security Standards Council, *PCI DSS v4.0* (atau v4.0.1), Requirement 8.3.4. **Status verifikasi:** dokumen resmi (`docs-prv.pcisecuritystandards.org`) mengembalikan 403 tanpa registrasi, jadi teksnya baru terkonfirmasi lewat sumber sekunder (compliance.theartofservice.com/controls/pci-dss-4-0/8-3-4, diakses 22 November 2026): penguncian user ID setelah paling banyak 10 percobaan, dengan durasi minimal 30 menit atau sampai identitas dikonfirmasi. Unduh dokumen resmi dari *Document Library* pcisecuritystandards.org (gratis, perlu mengisi formulir), lalu kutip dari dokumen itu beserta nomor halamannya.
+- NIST SP 800-63B-4, *Digital Identity Guidelines: Authentication and Authenticator Management*, bagian 3.2.2 *Rate Limiting (Throttling)*, https://pages.nist.gov/800-63-4/sp800-63b.html (dibaca langsung 22 November 2026; edisi ini terbit Agustus 2025). Edisi sebelumnya, SP 800-63B-3 bagian 5.2.2 (https://pages.nist.gov/800-63-3/sp800-63b.html), tercatat telah digantikan sejak 1 Agustus 2025. Keduanya memuat batas maksimal 100 percobaan gagal berturut-turut per akun.
 - NIST SP 800-61, *Computer Security Incident Handling Guide* (tahap penahanan/*containment*).
 - OWASP *Authentication Cheat Sheet* dan *Credential Stuffing Prevention Cheat Sheet*.
 - OWASP *XSS Prevention Cheat Sheet*; OWASP API Security Top 10 2023 (API1 BOLA, API6).

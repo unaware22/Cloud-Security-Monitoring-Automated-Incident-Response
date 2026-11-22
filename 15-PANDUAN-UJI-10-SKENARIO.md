@@ -259,9 +259,43 @@ Metrik yang dihitung: detection rate, false positive, waktu deteksi (serangan �
 
 ## Bagian 4 — Skenario
 
+### Peta 7 lapisan untuk 10 skenario
+
+● = lapisan utama tempat serangan atau pertahanan bekerja, ○ = pendukung, — = tidak terlibat.
+
+| Skenario | 7 App | 6 Pres | 5 Sess | 4 Trans | 3 Net | 2–1 |
+|---|---|---|---|---|---|---|
+| S01 SQL injection | ● | ○ | ○ | — | ● | — |
+| S02 Pemindaian jalur | ● | — | — | — | ● | — |
+| S03 Brute force | ● | ○ | ○ | — | ● | — |
+| S04 Credential stuffing | ● | — | ○ | — | ● | — |
+| S05 BOLA | ● | — | ● | — | ● | — |
+| S06 Fake order | ● | — | ○ | — | ○ | — |
+| S07 Voucher | ● | — | ○ | — | — | — |
+| S08 XSS | ● | ● | ○ | — | ● | — |
+| S09 Webhook | ● | ● | — | — | — | — |
+| S10 Enumeration | ● | ○ | ○ | — | ○ | — |
+
+**Catatan cara membaca:**
+- **Alat bersama di semua skenario** (tidak diulang di tiap tabel): Wazuh Agent (membaca log, TCP 1514), Wazuh Manager (mencocokkan rule), n8n, dan Telegram sebagai jalur deteksi dan notifikasi.
+- **Lapisan 4 (Transport)** bukan bagian skenario serangan. Ia diperiksa lewat konfigurasi AWS Security Group: 443 terbuka ke publik, 5432 (RDS) hanya dari Security Group aplikasi, 1514 hanya antar-EC2.
+- **Lapisan 2 dan 1** dikelola AWS (*shared responsibility model*), di luar cakupan.
+- **Blokir IP dicatat di lapisan 3** karena yang diblokir adalah identitas jaringan (alamat IP). Secara teknis Nginx menegakkannya di lapisan aplikasi (membaca IP lalu menolak request), jadi ini penyederhanaan pemetaan, bukan klaim bahwa Nginx bekerja sebagai firewall lapisan 3.
+- **Lapisan 5** mencakup cookie sesi login dan cookie perangkat (`sv_did`), yang dipakai untuk mengenali pengguna di antara request.
+
+
 ### S01 — SQL Injection
 
 **Apa dan kenapa bisa terjadi.** Aplikasi yang menyusun query database dengan menempelkan input pengguna langsung ke teks SQL membuat input itu bisa **mengubah arti query**. Contoh `' OR 1=1 --` membuat syarat pencarian selalu benar, sedangkan `UNION SELECT` bisa membaca tabel lain. Akar masalahnya: **data dan perintah tidak dipisahkan**.
+
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Menolak input berpola SQL dan mencegah input mengubah query | Middleware Next.js, API (`detectSQLi`), Prisma ORM | Pola `UNION…SELECT`, `OR 1=1`, `--`, `SLEEP()`; respons 400 |
+| 6 Presentation | Mengurai input yang di-encode browser sebelum dicek | `query-inspection` (decode URL) | Decode hingga 3 putaran (`%27` menjadi `'`) |
+| 5 Session | Mengenali perangkat penyerang walau IP berubah | Cookie `sv_did`, tabel `security_penalties` (RDS) | Ban 30 menit, 60 menit jika mengulang < 24 jam |
+| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Rule 110100; timeout 1800 detik; hanya IPv4 publik |
 
 **Yang menutup akar masalah.**
 
@@ -307,6 +341,13 @@ Metrik yang dihitung: detection rate, false positive, waktu deteksi (serangan �
 ### S02 — Pemindaian Jalur Sensitif (usulan, menunggu persetujuan dosen)
 
 **Apa dan kenapa bisa terjadi.** Server sering secara tidak sengaja meninggalkan file atau panel di jalur yang bisa dibuka publik (`/.env`, `/.git`, `/wp-login.php`, `/phpmyadmin`, `/actuator/env`, `backup.sql`). Bot memakai daftar kata (*wordlist*) untuk mencoba ribuan jalur dan mencari yang terbuka. Akar masalahnya: **konfigurasi default atau file sisa yang terekspos**. Ini tahap pengintaian (MITRE T1595.003) yang biasanya mendahului serangan lain.
+
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Menolak jalur sensitif dan mengenali pola pemindaian | Nginx `location`, middleware, Wazuh rule 110130/110131 | Daftar jalur sensitif; 5 jalur dalam 60 detik per IP (`frequency=5`, `timeframe=60`) |
+| 3 Network | Memblokir IP pemindai | Wazuh Active Response + script, Nginx `deny` | Rule 110131; timeout 1800 detik |
 
 **Yang menutup akar masalah.**
 
@@ -361,6 +402,15 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 
 **Apa dan kenapa bisa terjadi.** Penyerang mencoba banyak password pada **satu akun** sampai ada yang cocok. Ini bisa berhasil bila login tidak membatasi percobaan dan password pengguna lemah. Akar masalahnya: **tidak ada batas percobaan dan tidak ada pemantauan pola**.
 
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Membatasi dan mendeteksi tebakan password | Pembatas login, Turnstile, detektor (`credential-stuffing-detector`), Wazuh 110401/110411 | Customer 30 per 15 menit; admin 5 per 15 menit + Nginx 5 per menit (burst 3); 5 gagal per akun dalam 10 menit |
+| 6 Presentation | Password disimpan sebagai hash, bukan teks asli | bcrypt (`bcryptjs`) | Salt 10 putaran |
+| 5 Session | Membatasi perangkat penyerang (akun korban tidak diban) | Cookie `sv_did`, RDS | Ban perangkat 30 menit |
+| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Timeout 1800 detik |
+
 **Yang menutup akar masalah.**
 
 | Lapisan | Tools | Parameter |
@@ -391,6 +441,14 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 
 **Apa dan kenapa bisa terjadi.** Banyak orang memakai password yang sama di banyak situs. Penyerang membawa daftar email dan password hasil kebocoran situs lain, lalu mencobanya ke banyak akun, **masing-masing sekali**. Pembatas per akun tidak terpicu karena tiap akun hanya dicoba satu kali. Akar masalahnya: **pemakaian ulang password** ditambah **tidak ada pemantauan lintas akun**.
 
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Mendeteksi banyak akun berbeda dari satu sumber | Turnstile, detektor jendela geser, Wazuh 110420 | 5 email berbeda per IP dalam 10 menit; login benar pun dijawab 429 bila IP mencurigakan |
+| 5 Session | Membatasi perangkat penyerang | Cookie `sv_did`, RDS | Ban perangkat 30 menit |
+| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Timeout 1800 detik |
+
 **Yang menutup akar masalah.**
 
 | Lapisan | Tools | Parameter |
@@ -415,6 +473,14 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 ### S05 — BOLA (akses pesanan milik akun lain)
 
 **Apa dan kenapa bisa terjadi.** *Broken Object Level Authorization* terjadi ketika API mengambil data berdasarkan ID di URL (kode pesanan) **tanpa memeriksa siapa pemiliknya**. Akun B yang sah bisa membaca pesanan akun A hanya dengan mengganti ID. Ini peringkat #1 di OWASP API Security Top 10 2023. Akar masalahnya: **pemeriksaan kepemilikan dilewatkan**.
+
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Memeriksa kepemilikan pesanan pada setiap query | Prisma (`orderCode` + `userId`), pembatas `order_detail`, Wazuh 110500/110501 | Respons 404 tanpa data; 30 request per menit; 110501: berulang dari IP sama (panduan: 3 kali dalam 300 detik) |
+| 5 Session | Sesi menentukan pemilik; sesi akun penyerang dicabut | JWT HS256 (`jose`), cookie `customer_session_token`, `sessionVersion` | Sesi 7 hari; ban akun menaikkan `sessionVersion`; ban setelah 3 kali dalam 10 menit |
+| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Rule 110501; timeout 1800 detik |
 
 **Yang menutup akar masalah.**
 
@@ -456,6 +522,14 @@ Opsi dapat berbeda antarversi, jadi cek `--help`. Pembatas Nginx (30 request per
 
 **Apa dan kenapa bisa terjadi.** Checkout adalah alur bisnis yang tidak mengikat pembeli untuk membayar. Penyerang (atau bot) bisa membuat banyak pesanan tanpa membayar, menahan stok, dan membebani gateway pembayaran. Tidak ada celah teknis yang dibobol, sehingga WAF biasa sering tidak mendeteksinya. Akar masalahnya: **alur bisnis tanpa batas**. Rujukan: OWASP API6:2023 dan OWASP Automated Threats OAT-021.
 
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Membatasi alur checkout | Turnstile, `checkout-abuse.ts`, pembatas `checkout`, worker kedaluwarsa, Wazuh 110510/110512 | Pending 3 per akun dan 5 per IP; kedaluwarsa 15 menit; 10 request per menit |
+| 5 Session | Batas per akun memakai akun dari sesi login | JWT sesi | ID akun dari sesi |
+| 3 Network | Batas per IP di pintu depan (tanpa blokir) | Nginx `limit_req` (`checkout_limit`) | 10 request per menit, burst 5; lewat dari itu dijawab 503 |
+
 **Yang menutup akar masalah.**
 
 | Lapisan | Tools | Parameter |
@@ -489,6 +563,13 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 ### S07 — Voucher Abuse
 
 **Apa dan kenapa bisa terjadi.** Aturan voucher (sekali pakai per akun, minimal belanja, masa berlaku) hanya aman bila **dipaksakan di server**. Jika hanya ada di tampilan, penyerang bisa melewatinya dengan request langsung. Jika pemeriksaan dan pemakaian tidak atomik, dua checkout bersamaan bisa sama-sama lolos (*race condition*). Nilai diskon dari klien juga tidak boleh dipercaya. Akar masalahnya: **logika bisnis yang bisa dilewati atau dibalap**.
+
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Memaksa aturan voucher di server | Route voucher dan order, Prisma transaction, `pg_advisory_xact_lock`, Wazuh 110520/110521/110524 | Sekali pakai per akun; 20 validasi per menit; field harga dari klien ditolak |
+| 5 Session | Voucher hanya untuk akun yang login | JWT sesi | Wajib login |
 
 **Yang menutup akar masalah.**
 
@@ -534,6 +615,15 @@ Untuk 10 percobaan, pakai beberapa akun uji bergantian atau tunggu 15 menit agar
 
 **Apa dan kenapa bisa terjadi.** Jika input pengguna ditampilkan kembali di halaman **sebagai HTML**, browser bisa menjalankannya sebagai kode. Penyerang menyisipkan `<script>`, lalu kode itu berjalan di browser korban, misalnya mencuri sesi atau mengubah halaman checkout (pola *Magecart*). Akar masalahnya: **output tidak di-encode**.
 
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Mendeteksi pola XSS dan menolak | Middleware (`query-inspection`), API (`detectXSS`), Wazuh 110110 | Respons 400; rule 110110 |
+| 6 Presentation | Mencegah input dijalankan sebagai kode | **Output encoding React**, decode URL | Teks tampil apa adanya (`&lt;b&gt;`); decode hingga 3 putaran |
+| 5 Session | Cookie tidak bisa dicuri skrip | Cookie `HttpOnly`, `SameSite=Lax`, `Secure` | — |
+| 3 Network | Memblokir IP penyerang | Wazuh Active Response + script, Nginx `deny` | Timeout 1800 detik; ditambah ban perangkat 30 menit |
+
 **Yang menutup akar masalah.**
 
 | Lapisan | Tools | Parameter |
@@ -570,6 +660,13 @@ Kontrol normal: `/products?q=minecraft` → 200, tanpa event.
 ### S09 — Manipulasi Webhook Pembayaran
 
 **Apa dan kenapa bisa terjadi.** Setelah pelanggan membayar, Midtrans memanggil endpoint webhook di server toko. Endpoint itu **harus publik** supaya bisa dipanggil Midtrans. Jika server percaya isi pesannya, siapa pun bisa mengirim "pesanan sudah dibayar" dan mendapat produk tanpa membayar. Akar masalahnya: **endpoint publik yang mempercayai data dari luar**.
+
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Menolak notifikasi pembayaran palsu | Route webhook, Prisma `updateMany` atomik, Wazuh 110530/110531 | 403 tanda tangan salah; 400 nominal beda; status `paid` diklaim sekali |
+| 6 Presentation | Membuktikan keaslian pengirim dengan tanda tangan digital | SHA-512 + `MIDTRANS_SERVER_KEY`, `crypto.timingSafeEqual` | `SHA512(order_id + status_code + gross_amount + server key)`, 128 karakter heksadesimal |
 
 **Yang menutup akar masalah.**
 
@@ -634,6 +731,15 @@ p.order.findUnique({ where: { orderCode: process.argv[1] }, select: { paymentSta
 ### S10 — Lupa Password dan Account Enumeration
 
 **Apa dan kenapa bisa terjadi.** Jika form lupa password menjawab berbeda untuk email yang terdaftar dan yang tidak ("email tidak ditemukan"), atau menjawab dengan **waktu** yang berbeda, penyerang bisa mengecek email mana yang punya akun. Daftar itu dipakai untuk credential stuffing (S04) dan phishing. Akar masalahnya: **respons yang membedakan** (isi atau waktu).
+
+**Pemetaan 7 lapisan, tools, dan parameter.**
+
+| Lapisan | Peran di skenario ini | Tools yang terlibat | Parameter |
+|---|---|---|---|
+| 7 Application | Menyamakan respons dan membatasi permintaan | Route forgot-password, pembatas `forgot_password`, Turnstile, Wazuh 110540/110541 | Pesan identik; waktu respons minimum sekitar 0,9–1,1 detik; 5 permintaan per 10 menit |
+| 6 Presentation | Token reset tidak bisa dibaca atau diulang | Token disimpan sebagai hash | Berlaku 1 jam, sekali pakai |
+| 5 Session | Sesi lama dicabut setelah reset berhasil | `sessionVersion` | Naik satu setiap reset |
+| 3 Network | Batas permintaan per IP (tanpa blokir) | Pembatas request aplikasi | 5 permintaan per 10 menit |
 
 **Yang menutup akar masalah.**
 
