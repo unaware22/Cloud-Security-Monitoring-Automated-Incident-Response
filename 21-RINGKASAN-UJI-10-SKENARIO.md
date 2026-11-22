@@ -32,7 +32,7 @@ Contoh Test ID: `S08-V2-03` = XSS, versi konfigurasi 2, percobaan ke-3.
 
 Metrik yang dihitung dari tabel ini: detection rate (TP / jumlah serangan), false positive (alert dari traffic normal), waktu deteksi (serangan → alert), waktu notifikasi (alert → Telegram), dan waktu respons (alert → blokir).
 
-**Aturan pengulangan untuk skenario yang memblokir:** jangan membuka blokir manual di antara percobaan. Tunggu `unblocked` oleh `wazuh:auto-expire` (SQLi 10 menit, lainnya 30 menit) atau gunakan IP lain, lalu buka ban perangkat di dashboard. Membuka blokir manual saat timer masih berjalan menyebabkan blokir berikutnya diabaikan (`duplicate_ignored`).
+**Aturan pengulangan untuk skenario yang memblokir:** jangan membuka blokir manual di antara percobaan. Tunggu `unblocked` oleh `wazuh:auto-expire` (semua 30 menit setelah timeout 110100 diselaraskan) atau gunakan IP lain, lalu buka ban perangkat di dashboard. Membuka blokir manual saat timer masih berjalan menyebabkan blokir berikutnya diabaikan (`duplicate_ignored`).
 
 ## 3. Temuan dan perbaikan selama pengujian (untuk pembahasan)
 

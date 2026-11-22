@@ -128,7 +128,49 @@ Yang **berbeda antarbrowser**: cookie jar (`sv_did`, sesi), User-Agent, penyimpa
 | Blokir manual oleh admin | Sementara atau **permanen** (keputusan admin) | NIST SP 800-61 |
 | Rate limit aplikasi | 1–15 menit sesuai endpoint | Pemulihan otomatis untuk pengguna biasa |
 
-> **Penyesuaian yang disarankan:** konfigurasi Wazuh saat ini memakai `timeout 600` (10 menit) untuk SQLi (rule 110100) dan `1800` untuk rule lain. Agar konsisten dengan landasan di atas, ubah blok 110100 menjadi `<timeout>1800</timeout>` (atau gabungkan 110100 ke blok 1800), lalu `wazuh-analysisd -t` dan restart manager. Dashboard tetap aman karena n8n memanggil `!saladinshop-ip-control.py` yang tidak bergantung pada nama command bertimeout. Jika tetap memakai 10 menit untuk SQLi, landasannya adalah bawaan Fail2ban — tuliskan alasannya secara eksplisit.
+### Keputusan: 30 menit untuk semua blokir otomatis, dan mengapa angka itu
+
+Durasi blokir adalah **keputusan kebijakan (trade-off)**, bukan angka yang bisa dihitung secara eksak. Dua hal yang saling bertentangan:
+
+- **Terlalu singkat** → penyerang cukup menunggu sebentar lalu mengulang, jadi blokir tidak menghambat.
+- **Terlalu lama atau permanen** → pengguna sah yang kebetulan memakai IP yang sama ikut terkunci (CGNAT, VPN bersama).
+
+| Durasi | Keuntungan | Kerugian | Penilaian |
+|---|---|---|---|
+| 5 menit | Risiko salah blokir paling kecil | Penyerang bisa mengulang hampir tanpa hambatan; lebih pendek dari jendela deteksi 10 menit, sehingga serangan yang sama bisa terdeteksi lagi sebelum blokir berakhir | Terlalu singkat |
+| 10 menit (bawaan Fail2ban) | Cukup untuk menghentikan serangan otomatis sederhana | Di bawah batas 30 menit yang dipakai standar pembayaran; efek jera rendah | Lebih rendah dari standar yang relevan |
+| **30 menit** | **Sesuai ambang minimal PCI DSS 8.3.4**; cukup lama untuk membuat serangan otomatis tidak efisien; risiko salah blokir masih bisa diterima karena pulih sendiri | Penyerang yang sabar tetap bisa kembali setelah 30 menit (ditangani deteksi ulang dan eskalasi) | **Dipilih** |
+| 60 menit (eskalasi) | Efek jera lebih kuat bagi pelanggar berulang | Pengguna sah yang salah blokir menunggu lebih lama | Dipakai **hanya** untuk ban perangkat/akun bila mengulang dalam 24 jam |
+| 24 jam | Menghambat penyerang lebih lama | Risiko tinggi mengunci pengguna sah di IP bersama | Tidak dipakai otomatis |
+| Permanen | Menutup IP itu selamanya | IP bukan identitas tetap (CGNAT, IP dinamis, VPN bersama); mudah disalahgunakan agar pengguna sah terkunci (DoS); penyerang tinggal berganti IP | **Hanya manual oleh admin** |
+
+**Alasan memilih 30 menit, ringkasnya:**
+1. **Landasan standar:** PCI DSS v4.0 Req. 8.3.4 menetapkan penguncian setelah percobaan autentikasi gagal berulang dengan durasi **minimal 30 menit** (atau sampai identitas dikonfirmasi). Sistem ini adalah e-commerce yang memproses pembayaran, sehingga standar itu relevan. Catatan kejujuran: standar tersebut mengatur penguncian akun, sedangkan sistem ini menerapkannya pada sumber serangan (IP, perangkat, akun).
+2. **Konsisten dengan jendela deteksi:** deteksi memakai jendela 10 menit. Blokir harus lebih lama dari jendela itu, kalau tidak penyerang kembali sebelum hitungannya habis.
+3. **Dapat dipulihkan sendiri:** blokir otomatis berakhir tanpa campur tangan admin (`wazuh:auto-expire`), sehingga salah blokir tidak menjadi kerugian permanen.
+4. **Seragam untuk semua skenario:** satu angka lebih mudah dijelaskan dan diuji ulang. Perbedaan perlakuan antarskenario ditentukan oleh **jenis respons** (blokir, batasi, atau tolak), bukan oleh durasi yang berbeda-beda.
+5. **Keputusan jangka panjang oleh manusia:** blokir yang lebih lama atau permanen dilakukan admin dari dashboard setelah meninjau alert (selaras dengan NIST SP 800-61, penahanan jangka panjang butuh analisis petugas).
+
+**Nilai ini dapat dievaluasi di Bab 4:** catat apakah penyerang yang kembali setelah 30 menit terdeteksi dan diblokir lagi (uji ulang setelah `auto-expire`), serta apakah ada pengguna sah yang terkena (traffic normal). Bila hasilnya menunjukkan perlu penyesuaian, ubah durasi dan catat sebagai versi eksperimen baru.
+
+### Menyamakan konfigurasi Wazuh (SQLi saat ini masih 10 menit)
+
+Konfigurasi aktif memakai `timeout 600` untuk rule 110100 (SQLi) dan `1800` untuk rule lain. Agar sesuai keputusan di atas, di **EC2 Wazuh**:
+
+```bash
+sudo cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.backup-timeout
+sudo nano /var/ossec/etc/ossec.conf
+```
+
+Cari blok Active Response yang `<rules_id>110100</rules_id>` dan ubah `<timeout>600</timeout>` menjadi `<timeout>1800</timeout>`. Lalu:
+
+```bash
+sudo /var/ossec/bin/wazuh-analysisd -t && sudo systemctl restart wazuh-manager
+sudo systemctl is-active wazuh-manager
+sudo grep -F 'saladinshop-ip-control' /var/ossec/etc/shared/ar.conf
+```
+
+Setelah ini `ar.conf` tidak lagi memuat `saladinshop-ip-control600` bila tidak ada blok lain ber-timeout 600. Dashboard admin tetap aman karena n8n memanggil `!saladinshop-ip-control.py`, bukan nama command bertimeout.
 
 ---
 
