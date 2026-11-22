@@ -30,7 +30,7 @@ Konsep besar yang dipakai semua skenario (siapa yang memblokir, identitas penyer
 
 ### Mengapa blokir 30 menit
 
-(Jawaban lengkap dengan bukti rujukan dan cara menunjukkannya ada di **Lampiran F**.)
+(Jawaban lengkap dengan bukti rujukan dan cara menunjukkannya ada di **Lampiran E**.)
 
 - **Ada acuan standar:** PCI DSS v4.0.1 Req. 8.3.4 (hal. 189) menetapkan penguncian minimal 30 menit setelah paling banyak 10 percobaan gagal. Dipakai sebagai acuan praktik industri pembayaran, bukan kewajiban: Requirement 8 mengatur akun pengguna sistem dan menyatakan tidak berlaku untuk akun konsumen (hal. 175), dan data kartu ditangani Midtrans.
 - **Lebih lama dari jendela deteksi (10 menit)**, kalau tidak penyerang bisa kembali sebelum hitungannya habis.
@@ -1287,15 +1287,15 @@ Buka **Device & Akun Ban**. Kolom **Referensi** harus sama dengan `device_ref`. 
 
 ---
 
-## Lampiran F — Jawaban "kenapa blokir 30 menit", beserta bukti rujukannya
+## Lampiran E — Jawaban "kenapa blokir 30 menit", beserta bukti rujukannya
 
-### F.1 Intinya dalam tiga kalimat
+### E.1 Intinya dalam tiga kalimat
 
 1. **Ada acuan resmi:** PCI DSS v4.0.1 Requirement 8.3.4 menetapkan penguncian setelah paling banyak 10 percobaan gagal, dengan durasi kunci minimal 30 menit.
 2. **Tapi standar itu tidak berlaku langsung** untuk sistem ini: Requirement 8 mengatur akun pengguna sistem (karyawan, administrator, pihak ketiga) dan dokumennya menyatakan tidak berlaku untuk akun konsumen. Jadi angka 30 menit dipakai sebagai **acuan praktik**, bukan kewajiban.
 3. **Alasan lain yang berdiri sendiri:** blokir harus lebih lama dari jendela deteksi 10 menit, dan blokir berakhir sendiri sehingga salah blokir tidak permanen. Angka 30 menit adalah **keputusan kebijakan** yang dievaluasi di Bab 4.
 
-### F.2 Jawaban lisan untuk dosen
+### E.2 Jawaban lisan untuk dosen
 
 > "Saya memilih 30 menit dengan tiga landasan. Pertama, acuan praktik: PCI DSS versi 4.0.1 Requirement 8.3.4 di halaman 189 menyebut penguncian minimal 30 menit setelah paling banyak 10 percobaan gagal. Saya memakainya sebagai acuan, bukan kewajiban, karena standar itu untuk akun pengguna sistem dan dokumennya menyatakan tidak berlaku untuk akun konsumen, dan data kartu di sistem saya ditangani Midtrans. Kedua, jendela deteksi saya 10 menit, jadi blokir harus lebih lama supaya penyerang tidak bisa kembali sebelum hitungannya habis. Ketiga, blokirnya berakhir sendiri, jadi kalau ada pengguna sah yang salah terblokir, dia tidak terkunci selamanya. Blokir permanen saya serahkan ke keputusan admin, karena IP bukan identitas yang tetap. Angka ini keputusan kebijakan, dan saya evaluasi hasilnya di Bab 4."
 
@@ -1305,7 +1305,7 @@ Buka **Device & Akun Ban**. Kolom **Referensi** harus sama dengan `device_ref`. 
 **Jika dosen bertanya "kenapa tidak 10 menit atau 1 jam?"**
 > "Sepuluh menit di bawah batas minimal yang disebut standar dan efek jeranya rendah. Satu jam atau lebih menambah risiko pengguna sah ikut terkunci. Satu jam saya pakai hanya untuk eskalasi perangkat atau akun yang mengulang dalam 24 jam."
 
-### F.3 Bukti rujukan dan cara menampilkannya
+### E.3 Bukti rujukan dan cara menampilkannya
 
 Rujukan di bawah sudah dibaca dari dokumen aslinya (PDF PCI DSS v4.0.1 pada 22 November 2026, dan halaman NIST pada tanggal yang sama). Nomor halaman PCI mengikuti **nomor tercetak** di dokumen; pada penampil PDF nomornya 4 lebih besar.
 
@@ -1324,7 +1324,7 @@ Rujukan di bawah sudah dibaca dari dokumen aslinya (PDF PCI DSS v4.0.1 pada 22 N
 3. Ulangi untuk halaman PDF 179 (catatan lingkup) dan, bila perlu, halaman PDF 8 dan 290.
 4. Beri keterangan gambar, misalnya: *Gambar X. Requirement 8.3.4 PCI DSS v4.0.1 (PCI SSC, 2024, hlm. 189).*
 
-### F.4 Cara mengutip di skripsi
+### E.4 Cara mengutip di skripsi
 
 - **Kutip pendek, jangan menyalin bagian panjang.** Cukup satu frasa kunci (mis. durasi minimal 30 menit atau sampai identitas dikonfirmasi) dalam tanda kutip, lalu jelaskan dengan kalimat sendiri. Salin kalimat aslinya dari PDF, jangan dari tulisan saya.
 - Selalu sertakan **versi dan halaman**: "PCI DSS v4.0.1, Requirement 8.3.4, hlm. 189".
