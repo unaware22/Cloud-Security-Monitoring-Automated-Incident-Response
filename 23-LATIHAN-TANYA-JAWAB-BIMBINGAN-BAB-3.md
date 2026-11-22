@@ -191,4 +191,4 @@ Cara memakainya:
 3. **Akui batasan lebih dulu sebelum dosen menemukannya.** Misalnya ganti browser dan IP tanpa login. Ini menunjukkan kamu paham sistemmu sendiri.
 4. **Jangan mengarang angka.** Kalau ditanya statistik yang tidak kamu punya, jawab "saya tidak punya data pastinya, yang saya uji adalah..."
 5. **Kalau tidak tahu:** "Itu belum saya uji, Pak/Bu. Dalam skripsi ini saya batasi pada ... dan saya masukkan sebagai saran penelitian lanjutan."
-6. **Bawa dokumen cadangan:** tabel peran komponen (doc 22 bagian 3.1), tabel identitas dan VPN (bagian 3.3), dan tabel 10 skenario (doc 21).
+6. **Bawa dokumen cadangan:** tabel peran komponen (doc 22 bagian 3.1), tabel identitas dan VPN (bagian 3.3), dan tabel 10 skenario (doc 15, bagian 5).

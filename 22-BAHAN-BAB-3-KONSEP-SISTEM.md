@@ -2,7 +2,7 @@
 
 Dokumen ini menjelaskan **bagaimana sistem bekerja**, bukan sekadar bagaimana memasangnya. Pertanyaan yang dijawab: siapa yang mencatat serangan, siapa yang memutuskan, siapa yang benar-benar memblokir, parameter apa yang dipakai, dan mengapa setiap teknologi dipilih.
 
-Semua angka dan parameter diambil dari kode dan konfigurasi yang dipakai pada penelitian ini (branch `codex/homelab-staging` dan panduan 13–21). Rujukan standar di bagian akhir ditulis dari pengetahuan umum, jadi **cek dulu ke dokumen aslinya** sebelum dikutip di skripsi.
+Semua angka dan parameter diambil dari kode dan konfigurasi yang dipakai pada penelitian ini (branch `codex/homelab-staging` dan panduan 13 dan 15). Rujukan standar di bagian akhir ditulis dari pengetahuan umum, jadi **cek dulu ke dokumen aslinya** sebelum dikutip di skripsi.
 
 Versi bahasa lisan untuk menjawab dosen ada di `23-LATIHAN-TANYA-JAWAB-BIMBINGAN-BAB-3.md`.
 
@@ -226,6 +226,8 @@ Aplikasi web modern sebenarnya lebih pas digambarkan dengan model TCP/IP, yang m
 ## 3.7 Cara kerja tiap skenario
 
 Setiap skenario dijelaskan dalam empat tahap: **pencegahan** (oleh aplikasi atau Nginx), **deteksi** (event dan rule Wazuh), **notifikasi** (n8n lalu Telegram), dan **respons** (siapa yang bertindak dan dengan parameter apa).
+
+> **Catatan:** penjelasan *mengapa serangan itu bisa terjadi* (akar masalah) dan langkah uji lengkap tiap skenario ada di `15-PANDUAN-UJI-10-SKENARIO.md`. Skenario S02 pada tabel di bawah masih versi proposal (FIM); usulan penggantinya, pemindaian jalur sensitif, ada di dokumen 15 dan menunggu persetujuan dosen.
 
 | ID | Pencegahan (tools dan parameter) | Deteksi (event → rule) | Respons (pelaksana dan parameter) | Lapisan OSI |
 |---|---|---|---|---|
